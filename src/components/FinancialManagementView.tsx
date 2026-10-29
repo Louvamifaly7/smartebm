@@ -34,6 +34,7 @@ export const FinancialManagementView: React.FC = () => {
     closeCashRegisterDay,
     getStudentFinancialSummary,
     selectedAcademicYear,
+    academicYears,
   } = useApp();
 
   const isStudent = currentUser.role === 'STUDENT';
@@ -45,6 +46,7 @@ export const FinancialManagementView: React.FC = () => {
 
   // Payment Recording Modal
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [matriculeSearch, setMatriculeSearch] = useState<string>('EBM-2026-0042');
   const [paymentForm, setPaymentForm] = useState({
     studentId: 'user-student-laurent',
     feeId: fees[0]?.id || 'fee-insc-2026',
@@ -69,7 +71,8 @@ export const FinancialManagementView: React.FC = () => {
     amountAr: 1500000,
     dueDate: new Date().toISOString().split('T')[0],
     category: 'ECOLAGE' as StudentFee['category'],
-    groupId: groups[0]?.id || 'grp-l1-info-a',
+    academicYear: selectedAcademicYear || '2025-2026',
+    groupId: 'ALL',
   });
 
   const students = users.filter((u) => u.role === 'STUDENT');
@@ -109,12 +112,12 @@ export const FinancialManagementView: React.FC = () => {
     if (!feeForm.title.trim() || feeForm.amountAr <= 0) return;
 
     addFee({
-      academicYear: selectedAcademicYear,
+      academicYear: feeForm.academicYear || selectedAcademicYear,
       title: feeForm.title,
       amountAr: Number(feeForm.amountAr),
       dueDate: feeForm.dueDate,
       category: feeForm.category,
-      groupId: feeForm.groupId,
+      groupId: feeForm.groupId === 'ALL' ? undefined : feeForm.groupId,
     });
     setShowAddFeeModal(false);
   };
@@ -819,20 +822,90 @@ export const FinancialManagementView: React.FC = () => {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Étudiant bénéficiaire</label>
-                <select
-                  required
-                  value={paymentForm.studentId}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, studentId: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg p-2 font-medium"
-                >
-                  {students.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.name} ({st.matricule || 'N/A'})
-                    </option>
-                  ))}
-                </select>
+              {/* Saisie rapide Matricule + Liste de choix commençant par matricule */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                <label className="font-bold text-slate-800 flex items-center justify-between text-xs">
+                  <span>Étudiant bénéficiaire</span>
+                  <span className="text-[10px] text-blue-700 font-semibold">Saisie directe du matricule</span>
+                </label>
+
+                {/* Saisie directe du matricule */}
+                <input
+                  type="text"
+                  placeholder="Tapez le matricule (ex: EBM-2026-0042)..."
+                  value={matriculeSearch}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setMatriculeSearch(val);
+                    const clean = val.trim().toLowerCase();
+                    if (clean) {
+                      const match = students.find((s) => s.matricule && s.matricule.toLowerCase().includes(clean));
+                      if (match) {
+                        setPaymentForm((prev) => ({ ...prev, studentId: match.id }));
+                      }
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-blue-900 focus:ring-1 focus:ring-blue-600 outline-none"
+                />
+
+                {/* Liste de choix commençant obligatoirement par le matricule */}
+                <div>
+                  <span className="text-[10px] text-slate-500 block mb-0.5">Ou sélectionner dans la liste :</span>
+                  <select
+                    required
+                    value={paymentForm.studentId}
+                    onChange={(e) => {
+                      const stId = e.target.value;
+                      setPaymentForm({ ...paymentForm, studentId: stId });
+                      const st = students.find((s) => s.id === stId);
+                      if (st?.matricule) setMatriculeSearch(st.matricule);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium"
+                  >
+                    {students.map((st) => {
+                      const grp = groups.find((g) => g.id === st.groupId);
+                      return (
+                        <option key={st.id} value={st.id}>
+                          {st.matricule || 'SANS-MAT'} — {st.name} {grp ? `(${grp.code})` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Nom et synthèse de l'étudiant sélectionné affichés directement */}
+                {(() => {
+                  const currentSt = students.find((s) => s.id === paymentForm.studentId);
+                  const currentGrp = groups.find((g) => g.id === currentSt?.groupId);
+                  const currentSummary = currentSt ? getStudentFinancialSummary(currentSt.id) : null;
+                  if (!currentSt) return null;
+
+                  return (
+                    <div className="mt-2 p-2.5 bg-blue-50/90 border border-blue-200 rounded-lg flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">
+                          Étudiant sélectionné :
+                        </span>
+                        <span className="font-extrabold text-blue-950 text-sm block">
+                          {currentSt.name}
+                        </span>
+                        <span className="text-[11px] text-slate-600">
+                          Matricule : <strong className="font-mono text-blue-900">{currentSt.matricule}</strong> • Promo : {currentGrp?.name || 'Sans groupe'}
+                        </span>
+                      </div>
+                      {currentSummary && (
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-500 block">Solde à régler</span>
+                          <span className={`font-black text-xs ${
+                            currentSummary.balanceDueAr > 0 ? 'text-rose-700' : 'text-emerald-700'
+                          }`}>
+                            {currentSummary.balanceDueAr.toLocaleString()} Ar
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -1064,6 +1137,39 @@ export const FinancialManagementView: React.FC = () => {
                     <option value="ECOLAGE">Écolage semestriel</option>
                     <option value="EXAMEN">Frais d'examen</option>
                     <option value="INDIVIDUEL">Individuel / Matériel</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Année Académique *</label>
+                  <select
+                    value={feeForm.academicYear}
+                    onChange={(e) => setFeeForm({ ...feeForm, academicYear: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg p-2 font-bold text-xs"
+                  >
+                    {academicYears.map((ay) => (
+                      <option key={ay.id} value={ay.code}>
+                        {ay.code} {ay.isCurrent ? '(Active)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Groupe / Promotion *</label>
+                  <select
+                    value={feeForm.groupId}
+                    onChange={(e) => setFeeForm({ ...feeForm, groupId: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg p-2 font-medium text-xs"
+                  >
+                    <option value="ALL">Tous les groupes (Généralisé)</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.code} ({g.name})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

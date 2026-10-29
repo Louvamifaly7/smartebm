@@ -60,6 +60,7 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
   const [selectedRoomId, setSelectedRoomId] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [showWeekendForce, setShowWeekendForce] = useState<boolean>(false);
 
   // Time grid slots (08:00 to 19:00)
   const timeSlots = [
@@ -86,8 +87,6 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     };
   };
 
-  const weekDays = [0, 1, 2, 3, 4, 5, 6].map(getDayInfo);
-
   // Filter sessions
   const filteredSessions = sessions.filter((s) => {
     // Role-based visibility
@@ -108,6 +107,22 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
 
     return true;
   });
+
+  // Check if Saturday (5) or Sunday (6) have activities/sessions in the filtered range
+  const saturdayInfo = getDayInfo(5);
+  const sundayInfo = getDayInfo(6);
+  const hasSaturdaySessions = filteredSessions.some((s) => s.date === saturdayInfo.dateStr);
+  const hasSundaySessions = filteredSessions.some((s) => s.date === sundayInfo.dateStr);
+
+  const displaySaturday = hasSaturdaySessions || showWeekendForce;
+  const displaySunday = hasSundaySessions || showWeekendForce;
+
+  // Lundi au Vendredi par défaut, Samedi et Dimanche uniquement si des activités existent
+  const activeDayIndices = [0, 1, 2, 3, 4];
+  if (displaySaturday) activeDayIndices.push(5);
+  if (displaySunday) activeDayIndices.push(6);
+
+  const weekDays = activeDayIndices.map(getDayInfo);
 
   const canManage =
     currentUser.role === 'ADMIN' ||
@@ -135,7 +150,7 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
             </button>
 
             <span className="text-sm font-bold text-slate-900 px-2 min-w-[210px] text-center">
-              Semaine du {weekDays[0].displayDate} au {weekDays[4].displayDate}
+              Semaine du {weekDays[0]?.displayDate} au {weekDays[weekDays.length - 1]?.displayDate}
             </span>
 
             <button
@@ -149,11 +164,31 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
             {weekOffset !== 0 && (
               <button
                 onClick={() => setWeekOffset(0)}
-                className="text-xs font-semibold text-blue-700 hover:underline px-2"
+                className="text-xs font-semibold text-blue-700 hover:underline px-1 cursor-pointer"
               >
                 Cette semaine
               </button>
             )}
+
+            <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <span className="text-[11px] px-2 py-0.5 rounded-md font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                {weekDays.length === 5 ? 'Lun - Ven (5j)' : `${weekDays.length} jours`}
+              </span>
+              {(hasSaturdaySessions || hasSundaySessions) && (
+                <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                  Cours ce week-end
+                </span>
+              )}
+              {!hasSaturdaySessions && !hasSundaySessions && (
+                <button
+                  type="button"
+                  onClick={() => setShowWeekendForce(!showWeekendForce)}
+                  className="text-[10px] text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer ml-1"
+                >
+                  {showWeekendForce ? 'Masquer Week-end' : '+ Week-end'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Action buttons */}
@@ -259,26 +294,29 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
         </div>
       </div>
 
-      {/* Week Grid (Lundi au Dimanche) */}
+      {/* Week Grid (Lundi à Vendredi, et Samedi/Dimanche si activités) */}
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
-        <div className="min-w-[1100px]">
+        <div style={{ minWidth: weekDays.length <= 5 ? '880px' : '1100px' }}>
           {/* Day Headers */}
-          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70">
+          <div
+            className="grid border-b border-slate-200 bg-slate-50/70"
+            style={{ gridTemplateColumns: `repeat(${weekDays.length}, minmax(0, 1fr))` }}
+          >
             {weekDays.map((day) => (
               <div
                 key={day.dateStr}
                 className={`p-3 text-center border-r border-slate-200 last:border-r-0 ${
-                  day.isWeekend ? 'bg-slate-100/70' : ''
+                  day.isWeekend ? 'bg-amber-50/40' : ''
                 }`}
               >
                 <div className="flex items-center justify-center gap-1">
                   <span className={`block text-xs font-bold uppercase tracking-wider ${
-                    day.isWeekend ? 'text-slate-500' : 'text-slate-900'
+                    day.isWeekend ? 'text-amber-800' : 'text-slate-900'
                   }`}>
                     {day.name}
                   </span>
                   {day.isWeekend && (
-                    <span className="text-[9px] font-semibold text-slate-400 bg-slate-200/60 px-1 rounded">
+                    <span className="text-[9px] font-semibold text-amber-700 bg-amber-100 px-1 rounded">
                       W-E
                     </span>
                   )}
@@ -291,7 +329,10 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
           </div>
 
           {/* Day Columns */}
-          <div className="grid grid-cols-7 min-h-[560px] divide-x divide-slate-200">
+          <div
+            className="grid min-h-[560px] divide-x divide-slate-200"
+            style={{ gridTemplateColumns: `repeat(${weekDays.length}, minmax(0, 1fr))` }}
+          >
             {weekDays.map((day) => {
               const daySessions = filteredSessions
                 .filter((s) => s.date === day.dateStr)

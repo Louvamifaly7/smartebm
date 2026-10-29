@@ -53,15 +53,19 @@ export const LoginPage: React.FC = () => {
       {/* Top Header Bar */}
       <header className="max-w-6xl w-full mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-amber-300 text-base shadow-lg ring-2 ring-blue-400/30">
-            EBM
+          <div className="bg-white p-1.5 rounded-2xl shadow-lg flex items-center justify-center">
+            <img
+              src="/assets/aistudio/logo_540e8d94.png"
+              alt="EBM Institute Business School"
+              className="h-8 w-auto object-contain"
+            />
           </div>
           <div>
             <h1 className="text-sm font-black tracking-tight text-white uppercase">
               EBM Institute
             </h1>
             <p className="text-[11px] text-blue-300">
-              Portail Numérique Officiel • Version 3.2
+              Business School • Portail Numérique Officiel
             </p>
           </div>
         </div>
@@ -82,18 +86,22 @@ export const LoginPage: React.FC = () => {
         <div className="bg-white text-slate-900 rounded-3xl shadow-2xl p-6 sm:p-8 border border-slate-100 relative overflow-hidden">
           
           {/* Decorative Top Accent */}
-          <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-amber-500"></div>
+          <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-red-600 via-blue-900 to-amber-500"></div>
 
-          {/* Heading */}
+          {/* Heading with Logo */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-50 text-blue-800 mb-3 shadow-inner">
-              <Lock className="w-6 h-6 text-blue-700" />
+            <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-slate-50 border border-slate-100 mb-3 shadow-xs">
+              <img
+                src="/assets/aistudio/logo_540e8d94.png"
+                alt="EBM Institute Business School"
+                className="h-9 w-auto object-contain"
+              />
             </div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
               Connexion au Portail
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Accès unifié Web & Android • Emplois du temps & Salles
+              Accès unifié Web & Android • EBM Institute Business School
             </p>
           </div>
 

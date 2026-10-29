@@ -25,6 +25,11 @@ import {
   Shield,
   BookOpen,
   Settings,
+  CalendarDays,
+  Menu,
+  Check,
+  GraduationCap,
+  UserCheck,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -32,6 +37,7 @@ interface HeaderProps {
   onSelectTab: (tab: string) => void;
   onOpenNotifications: () => void;
   onOpenReceptionTests: () => void;
+  onToggleSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTab,
   onOpenNotifications,
   onOpenReceptionTests,
+  onToggleSidebar,
 }) => {
   const {
     currentUser,
@@ -48,9 +55,14 @@ export const Header: React.FC<HeaderProps> = ({
     toggleAndroidView,
     notifications,
     logout,
+    academicYears,
+    selectedAcademicYear,
+    setSelectedAcademicYear,
+    appSettings,
   } = useApp();
 
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+  const [isYearPickerOpen, setIsYearPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -79,6 +91,8 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'HOMEWORK_RESOURCES', label: 'Devoirs & Supports de Cours', icon: BookOpen, category: 'Pédagogie' },
     { id: 'COMMUNICATION', label: 'Messagerie & Mur de Promotion', icon: MessageSquare, category: 'Campus' },
     { id: 'VOLUMES', label: 'Suivi des Volumes Horaires', icon: Clock, category: 'Planning' },
+    { id: 'STUDENTS', label: 'Répertoire Étudiants (Notes & Impayés)', icon: GraduationCap, category: 'Annuaire' },
+    { id: 'TEACHERS', label: 'Corps Enseignant & Charges', icon: UserCheck, category: 'Annuaire' },
     { id: 'USERS_MANAGEMENT', label: 'Gestion des Utilisateurs', icon: Users, category: 'Administration' },
     { id: 'DATA_MANAGEMENT', label: 'Création des Données & Salles', icon: Database, category: 'Administration' },
     { id: 'AUDIT', label: 'Journal d’Audit', icon: History, category: 'Administration' },
@@ -106,27 +120,96 @@ export const Header: React.FC<HeaderProps> = ({
       {/* 1. Top Bar: Branding, Quick Profile Switcher, Search, Recette & Mode Toggles */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80">
         
-        {/* Logo and Brand */}
-        <div
-          onClick={() => handleNavigate('HOME')}
-          className="flex items-center gap-3 cursor-pointer hover:opacity-95 transition-opacity"
-          title="Aller à l'accueil"
-        >
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-black text-amber-300 text-sm shadow-md ring-2 ring-blue-400/20">
-            EBM
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-black tracking-tight text-white uppercase">
-                EBM Institute
-              </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-950 text-blue-300 border border-blue-800 rounded-md">
-                v3.2 SIS
-              </span>
+        {/* Left: Sidebar toggle (if vertical) + Official Logo & Brand */}
+        <div className="flex items-center gap-3">
+          {appSettings.menuLayout === 'vertical' && onToggleSidebar && (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-850 transition-colors"
+              title="Menu latéral"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
+
+          <div
+            onClick={() => handleNavigate('HOME')}
+            className="flex items-center gap-3 cursor-pointer hover:opacity-95 transition-opacity"
+            title="Aller à l'accueil"
+          >
+            <div className="bg-white p-1 rounded-xl shadow-xs flex-shrink-0 flex items-center justify-center">
+              <img
+                src="/assets/aistudio/logo_540e8d94.png"
+                alt="EBM Institute Business School"
+                className="h-7 w-auto object-contain"
+              />
             </div>
-            <p className="text-[11px] text-slate-400 leading-none mt-0.5">
-              Système de Gestion Universitaire Centralisé (Web & Android)
-            </p>
+            <div className="hidden sm:block">
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-black tracking-tight text-white uppercase">
+                  EBM Institute
+                </h1>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 bg-red-950 text-red-300 border border-red-800 rounded">
+                  Business School
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-none mt-0.5">
+                Système Universitaire Intégré
+              </p>
+            </div>
+          </div>
+
+          {/* Persistent Academic Year Switcher Pill */}
+          <div className="relative hidden md:block">
+            <button
+              type="button"
+              onClick={() => setIsYearPickerOpen(!isYearPickerOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 transition-all cursor-pointer"
+              title="Changer d'année académique active"
+            >
+              <CalendarDays className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{selectedAcademicYear}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            {isYearPickerOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-60 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                <div className="text-[10px] uppercase font-bold text-slate-400 px-2 py-1">
+                  Année Académique Active
+                </div>
+                {academicYears.map((ay) => (
+                  <button
+                    key={ay.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAcademicYear(ay.code);
+                      setIsYearPickerOpen(false);
+                    }}
+                    className={`w-full text-left p-2 rounded-lg flex items-center justify-between text-xs transition-colors ${
+                      ay.code === selectedAcademicYear
+                        ? 'bg-blue-600 text-white font-bold'
+                        : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <span>{ay.code} {ay.isCurrent ? '(Active)' : ''}</span>
+                    {ay.code === selectedAcademicYear && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                ))}
+                <div className="mt-1 pt-1 border-t border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsYearPickerOpen(false);
+                      handleNavigate('ACADEMIC_YEARS');
+                    }}
+                    className="w-full text-left p-1.5 text-indigo-400 hover:text-indigo-300 font-bold text-[11px]"
+                  >
+                    + Gérer les Années Académiques
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -274,6 +357,20 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
+          {/* Settings button */}
+          <button
+            type="button"
+            onClick={() => handleNavigate('SETTINGS')}
+            className={`p-2 rounded-xl transition-all border cursor-pointer ${
+              currentTab === 'SETTINGS'
+                ? 'bg-blue-600 text-white border-blue-400'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
+            title="Paramètres de l'application"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
           {/* User Profile & Logout */}
           {currentUser && (
             <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
@@ -301,8 +398,8 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* 2. Main Navigation Bar: 100% DIRECT CLICKABLE TABS */}
-      {!isAndroidView && (
+      {/* 2. Main Navigation Bar: Only visible when menuLayout is 'horizontal' */}
+      {!isAndroidView && appSettings.menuLayout === 'horizontal' && (
         <>
           <nav className="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-1 overflow-x-auto no-scrollbar text-xs font-bold relative">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -465,6 +562,28 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1 mr-1">
                 <Shield className="w-3.5 h-3.5" /> Administration :
               </span>
+
+              <button
+                type="button"
+                onClick={() => handleNavigate('STUDENTS')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  currentTab === 'STUDENTS' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5 text-cyan-300" />
+                <span>Répertoire Étudiants</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavigate('TEACHERS')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  currentTab === 'TEACHERS' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Corps Enseignant</span>
+              </button>
 
               <button
                 type="button"

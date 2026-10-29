@@ -190,6 +190,14 @@ export const AndroidSimulator: React.FC = () => {
     return true;
   });
 
+  // Check if Saturday or Sunday have sessions for the current week
+  const hasSaturdayAndroid = userSessions.some((s) => s.date === getDateStr(5));
+  const hasSundayAndroid = userSessions.some((s) => s.date === getDateStr(6));
+
+  const androidDayOffsets = [0, 1, 2, 3, 4];
+  if (hasSaturdayAndroid) androidDayOffsets.push(5);
+  if (hasSundayAndroid) androidDayOffsets.push(6);
+
   const todayDateStr = getDateStr(selectedDayOffset);
   const todaySessions = userSessions.filter((s) => s.date === todayDateStr);
 
@@ -639,15 +647,15 @@ export const AndroidSimulator: React.FC = () => {
                       agendaMode === 'WEEK' ? 'bg-white text-blue-900 shadow-xs' : 'text-slate-600'
                     }`}
                   >
-                    Semaine Complète (7j)
+                    {androidDayOffsets.length === 5 ? 'Semaine (Lun-Ven)' : `Semaine (${androidDayOffsets.length}j)`}
                   </button>
                 </div>
 
-                {/* Day selector chips (7 jours de Lun à Dim) */}
+                {/* Day selector chips (Lundi à Vendredi, et Samedi/Dimanche si activités créées) */}
                 <div className="flex justify-between gap-1 overflow-x-auto no-scrollbar pb-0.5">
-                  {[0, 1, 2, 3, 4, 5, 6].map((offset, i) => {
+                  {androidDayOffsets.map((offset) => {
                     const isSelected = selectedDayOffset === offset;
-                    const isWeekend = i >= 5;
+                    const isWeekend = offset >= 5;
                     return (
                       <button
                         key={offset}
@@ -656,11 +664,11 @@ export const AndroidSimulator: React.FC = () => {
                           isSelected
                             ? 'bg-blue-600 text-white shadow-sm'
                             : isWeekend
-                            ? 'bg-slate-200/80 text-slate-500 border border-slate-300'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
                             : 'bg-white text-slate-600 border border-slate-200'
                         }`}
                       >
-                        <span className="uppercase text-[9px]">{dayNames[i]}</span>
+                        <span className="uppercase text-[9px]">{dayNames[offset]}</span>
                         <span className="text-xs">{new Date(getDateStr(offset)).getDate()}</span>
                       </button>
                     );

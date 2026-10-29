@@ -29,6 +29,8 @@ import {
   HomeworkAssignment,
   HomeworkSubmission,
   LearningResource,
+  AppSettings,
+  ChatMessage,
 } from '../types';
 import {
   initialAuditLogs,
@@ -150,6 +152,10 @@ interface AppContextType {
   academicYears: AcademicYear[];
   selectedAcademicYear: string;
   setSelectedAcademicYear: (year: string) => void;
+  createAcademicYear: (data: { code: string; name: string; startDate: string; endDate: string; isCurrent?: boolean; cloneFromPrevious?: boolean }) => { success: boolean; academicYear?: AcademicYear; error?: string };
+  updateAcademicYear: (id: string, updates: Partial<AcademicYear>) => void;
+  deleteAcademicYear: (id: string) => void;
+  setActiveAcademicYear: (code: string) => void;
   ues: UniteEnseignement[];
   ecs: ElementConstitutif[];
   inscriptions: StudentInscription[];
@@ -209,6 +215,16 @@ interface AppContextType {
   // Selective student export
   getSelectiveStudentExportData: (role: 'TEACHER' | 'ADMIN', groupId?: string) => { headers: string[]; rows: string[][] };
 
+  // Application Settings (OpenEduCat vertical/horizontal layout, visible items, etc.)
+  appSettings: AppSettings;
+  updateAppSettings: (updates: Partial<AppSettings>) => void;
+
+  // Messenger / Live Chat
+  chatMessages: ChatMessage[];
+  sendChatMessage: (recipientId: string, text: string) => void;
+  markChatAsRead: (recipientId: string) => void;
+  onlineUsers: string[];
+
   // Helpers
   resetToDefaultData: () => void;
 }
@@ -227,6 +243,8 @@ const STORAGE_KEYS = {
   CURRENT_USER_ID: 'ebm_current_user_id_v3',
   ACADEMIC_YEARS: 'ebm_academic_years_v3',
   SELECTED_YEAR: 'ebm_selected_year_v3',
+  APP_SETTINGS: 'ebm_app_settings_v3',
+  CHAT_MESSAGES: 'ebm_chat_messages_v3',
   UES: 'ebm_ues_v3',
   ECS: 'ebm_ecs_v3',
   INSCRIPTIONS: 'ebm_inscriptions_v3',
@@ -297,14 +315,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lastSyncDate, setLastSyncDate] = useState<Date>(new Date());
   const [activePushBanner, setActivePushBanner] = useState<AppNotification | null>(null);
 
-  // Complementary LMD states
-  const [academicYears] = useState<AcademicYear[]>(() => {
+  // Complementary LMD states & Academic Years
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ACADEMIC_YEARS);
     return saved ? JSON.parse(saved) : initialAcademicYears;
   });
 
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(() => {
     return localStorage.getItem(STORAGE_KEYS.SELECTED_YEAR) || '2026-2027';
+  });
+
+  // App Settings (OpenEduCat vertical vs horizontal layout, custom visible items)
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    const defaultSettings: AppSettings = {
+      menuLayout: 'vertical', // OpenEduCat 19 vertical sidebar by default!
+      visibleMenuItems: [
+        'HOME',
+        'TIMETABLE',
+        'ROOMS',
+        'LMD_MAQUETTES',
+        'GRADES',
+        'QR_ATTENDANCE',
+        'STUDENTS',
+        'TEACHERS',
+        'FINANCIAL',
+        'HOMEWORK_RESOURCES',
+        'COMMUNICATION',
+        'ACADEMIC_YEARS',
+        'SETTINGS',
+        'USERS_MANAGEMENT',
+      ],
+      compactMode: false,
+      showLiveChat: true,
+      theme: 'light',
+      primaryColor: '#c2182b',
+    };
+    const saved = localStorage.getItem(STORAGE_KEYS.APP_SETTINGS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const items = parsed.visibleMenuItems || [];
+      if (!items.includes('STUDENTS')) items.push('STUDENTS');
+      if (!items.includes('TEACHERS')) items.push('TEACHERS');
+      return { ...defaultSettings, ...parsed, visibleMenuItems: items };
+    }
+    return defaultSettings;
+  });
+
+  const updateAppSettings = (updates: Partial<AppSettings>) => {
+    setAppSettings((prev) => {
+      const updated = { ...prev, ...updates };
+      localStorage.setItem(STORAGE_KEYS.APP_SETTINGS, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Live Chat / Messenger Messages
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    const defaultChat: ChatMessage[] = [
+      {
+        id: 'msg-1',
+        senderId: 'user-teacher-1',
+        recipientId: 'user-admin',
+        text: 'Bonjour ! Les syllabus et maquettes pour le cours d\'Algorithmique ont été mis à jour.',
+        timestamp: 'Hier 16:40',
+        isRead: true,
+      },
+      {
+        id: 'msg-2',
+        senderId: 'user-admin',
+        recipientId: 'user-teacher-1',
+        text: 'Parfait Dr. Claire, les étudiants peuvent désormais y accéder sur Web & Android.',
+        timestamp: 'Hier 17:15',
+        isRead: true,
+      },
+      {
+        id: 'msg-3',
+        senderId: 'user-student-1',
+        recipientId: 'user-admin',
+        text: 'Bonjour, j\'ai une question concernant mon attestation d\'inscription pour 2026-2027.',
+        timestamp: 'Aujourd\'hui 08:30',
+        isRead: false,
+      },
+    ];
+    const saved = localStorage.getItem(STORAGE_KEYS.CHAT_MESSAGES);
+    return saved ? JSON.parse(saved) : defaultChat;
   });
 
   const [ues, setUes] = useState<UniteEnseignement[]>(() => {
@@ -442,6 +536,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.RESOURCES, JSON.stringify(learningResources));
   }, [learningResources]);
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.ACADEMIC_YEARS, JSON.stringify(academicYears));
+  }, [academicYears]);
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CHAT_MESSAGES, JSON.stringify(chatMessages));
+  }, [chatMessages]);
 
   const currentUser = users.find((u) => u.id === currentUserId) || users[0];
 
@@ -1444,6 +1544,167 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('INSCRIPTION_ETUDIANT', `Inscription de l’étudiant ${studentId} pour l’année ${academicYear} (Groupe: ${groupId})`);
   };
 
+  // Academic Year Management Functions (OpenEduCat inspiration)
+  const createAcademicYear = (data: {
+    code: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    isCurrent?: boolean;
+    cloneFromPrevious?: boolean;
+  }): { success: boolean; academicYear?: AcademicYear; error?: string } => {
+    const cleanCode = data.code.trim();
+    const cleanName = data.name.trim();
+    if (!cleanCode || !cleanName) {
+      return { success: false, error: 'Le code et l’intitulé de l’année sont obligatoires.' };
+    }
+    if (academicYears.some((ay) => ay.code.toLowerCase() === cleanCode.toLowerCase())) {
+      return { success: false, error: `L’année académique "${cleanCode}" existe déjà.` };
+    }
+
+    const startYear = cleanCode.split('-')[0] || '2027';
+    const endYear = cleanCode.split('-')[1] || String(Number(startYear) + 1);
+
+    const newYear: AcademicYear = {
+      id: `ay-${cleanCode.replace(/[^a-zA-Z0-9]/g, '-')}`,
+      code: cleanCode,
+      name: cleanName,
+      startDate: data.startDate || `${startYear}-09-01`,
+      endDate: data.endDate || `${endYear}-06-30`,
+      isCurrent: !!data.isCurrent,
+      status: 'OPEN',
+      semesters: [
+        { code: 'S1', name: 'Semestre 1 (Automne)', startDate: data.startDate || `${startYear}-09-01`, endDate: `${startYear}-12-31`, isActive: true },
+        { code: 'S2', name: 'Semestre 2 (Printemps)', startDate: `${endYear}-01-01`, endDate: data.endDate || `${endYear}-06-30`, isActive: false },
+      ],
+    };
+
+    setAcademicYears((prev) => {
+      let list = [...prev];
+      if (data.isCurrent) {
+        list = list.map((ay) => ({ ...ay, isCurrent: false }));
+      }
+      return [newYear, ...list];
+    });
+
+    if (data.isCurrent) {
+      setSelectedAcademicYear(newYear.code);
+    }
+
+    if (data.cloneFromPrevious && selectedAcademicYear) {
+      duplicateMaquette(selectedAcademicYear, newYear.code);
+    }
+
+    logAudit('CREATION_ANNEE_ACADEMIQUE', `Création de l'année académique ${newYear.code} (${newYear.name})`);
+    return { success: true, academicYear: newYear };
+  };
+
+  const updateAcademicYear = (id: string, updates: Partial<AcademicYear>) => {
+    setAcademicYears((prev) =>
+      prev.map((ay) => {
+        if (ay.id === id) {
+          return { ...ay, ...updates };
+        }
+        if (updates.isCurrent && ay.id !== id) {
+          return { ...ay, isCurrent: false };
+        }
+        return ay;
+      })
+    );
+    if (updates.code && updates.isCurrent) {
+      setSelectedAcademicYear(updates.code);
+    }
+    logAudit('MODIFICATION_ANNEE_ACADEMIQUE', `Mise à jour de l'année académique ${id}`);
+  };
+
+  const deleteAcademicYear = (id: string) => {
+    setAcademicYears((prev) => prev.filter((ay) => ay.id !== id));
+    logAudit('SUPPRESSION_ANNEE_ACADEMIQUE', `Suppression de l'année académique ${id}`);
+  };
+
+  const setActiveAcademicYear = (code: string) => {
+    setAcademicYears((prev) =>
+      prev.map((ay) => ({
+        ...ay,
+        isCurrent: ay.code === code,
+        status: ay.code === code ? 'OPEN' : ay.status,
+      }))
+    );
+    setSelectedAcademicYear(code);
+    logAudit('CHANGEMENT_ANNEE_ACTIVE', `L'année ${code} a été définie comme année académique courante.`);
+  };
+
+  // Messenger / Live Chat Functions
+  const sendChatMessage = (recipientId: string, text: string) => {
+    if (!text.trim() || !currentUser) return;
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newMsg: ChatMessage = {
+      id: `chat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      senderId: currentUser.id,
+      recipientId,
+      text: text.trim(),
+      timestamp: timeStr,
+      isRead: false,
+    };
+
+    setChatMessages((prev) => [...prev, newMsg]);
+
+    setTimeout(() => {
+      const recipientUser = users.find((u) => u.id === recipientId);
+      if (recipientUser && recipientUser.id !== currentUser.id) {
+        const smartReplies: Record<string, string[]> = {
+          TEACHER: [
+            "Bonjour, j'ai bien pris note de votre message. Le document est disponible sur le portail.",
+            "Merci pour votre message ! Nous aborderons ce sujet également lors de la prochaine séance.",
+            "Bien reçu, je consulte le dossier sur la plateforme EBM.",
+          ],
+          STUDENT: [
+            "Bonjour ! Merci pour le retour, je regarde tout de suite.",
+            "C'est bien noté, je prépare le devoir demandé.",
+            "Merci beaucoup pour votre disponibilité !",
+          ],
+          ADMIN: [
+            "Bonjour, votre demande a bien été enregistrée par l'administration EBM.",
+            "C'est validé dans le système central EBM Institute.",
+            "N'hésitez pas si vous avez besoin d'une attestation ou d'un relevé officiel.",
+          ],
+        };
+        const pool = smartReplies[recipientUser.role] || smartReplies.ADMIN;
+        const randomReply = pool[Math.floor(Math.random() * pool.length)];
+
+        const replyMsg: ChatMessage = {
+          id: `chat-${Date.now()}-reply`,
+          senderId: recipientId,
+          recipientId: currentUser.id,
+          text: randomReply,
+          timestamp: timeStr,
+          isRead: false,
+        };
+        setChatMessages((prev) => [...prev, replyMsg]);
+      }
+    }, 1500);
+  };
+
+  const markChatAsRead = (partnerId: string) => {
+    if (!currentUser) return;
+    setChatMessages((prev) =>
+      prev.map((m) =>
+        m.senderId === partnerId && m.recipientId === currentUser.id
+          ? { ...m, isRead: true }
+          : m
+      )
+    );
+  };
+
+  const onlineUsers = [
+    currentUser?.id,
+    'user-admin',
+    'user-teacher-1',
+    'user-student-1',
+    'user-scheduler',
+  ].filter(Boolean) as string[];
+
   // Formule d'évaluation : 40% CC + 60% Examen OU Évaluation Directe 100%
   const calculateEcFinalScore = (quizScore?: number, examScore?: number, ecId?: string): number | undefined => {
     const targetEc = ecId ? ecs.find((e) => e.id === ecId) : undefined;
@@ -2214,10 +2475,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getCourseHourlyStats,
         getTeacherHourlyStats,
 
-        // Complementary LMD Exports
+        // Complementary LMD Exports & Academic Years
         academicYears,
         selectedAcademicYear,
         setSelectedAcademicYear,
+        createAcademicYear,
+        updateAcademicYear,
+        deleteAcademicYear,
+        setActiveAcademicYear,
         ues,
         ecs,
         inscriptions,
@@ -2264,6 +2529,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addLearningResource,
         deleteLearningResource,
         getSelectiveStudentExportData,
+
+        // Application Settings (Layout, Menus) & Live Messenger
+        appSettings,
+        updateAppSettings,
+        chatMessages,
+        sendChatMessage,
+        markChatAsRead,
+        onlineUsers,
 
         resetToDefaultData,
       }}

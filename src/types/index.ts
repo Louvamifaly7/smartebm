@@ -401,3 +401,21 @@ export interface LearningResource {
   fileSize?: string;
   publishedAt: string;
 }
+
+export interface AppSettings {
+  menuLayout: 'vertical' | 'horizontal'; // Sidebar vertical (OpenEduCat) ou Topbar horizontal
+  visibleMenuItems: string[];            // Identifiants des onglets visibles dans le menu
+  compactMode: boolean;
+  showLiveChat: boolean;
+  theme: 'light' | 'dark' | 'system';
+  primaryColor: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  text: string;
+  timestamp: string;
+  isRead: boolean;
+}

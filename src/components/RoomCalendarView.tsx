@@ -135,6 +135,13 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
     showNotification(`Équipements et fiche de la salle ${activeRoom.code} mis à jour avec succès !`);
   };
 
+  // Sessions assigned to this specific room
+  const roomSessions = sessions.filter(
+    (s) => s.roomId === activeRoom?.id && s.status !== 'CANCELLED'
+  );
+
+  const [showWeekendForce, setShowWeekendForce] = useState<boolean>(false);
+
   // Helper date for days of current week
   const getDayInfo = (offset: number) => {
     const now = new Date();
@@ -143,17 +150,27 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
     const monday = new Date(now);
     monday.setDate(now.getDate() - distanceToMonday + offset);
     return {
+      offset,
       dateStr: monday.toISOString().split('T')[0],
       display: monday.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }),
+      isWeekend: offset >= 5,
     };
   };
 
-  const weekDays = [0, 1, 2, 3, 4, 5, 6].map(getDayInfo);
+  const saturdayInfo = getDayInfo(5);
+  const sundayInfo = getDayInfo(6);
 
-  // Sessions assigned to this specific room
-  const roomSessions = sessions.filter(
-    (s) => s.roomId === activeRoom?.id && s.status !== 'CANCELLED'
-  );
+  const hasSaturdaySessions = roomSessions.some((s) => s.date === saturdayInfo.dateStr);
+  const hasSundaySessions = roomSessions.some((s) => s.date === sundayInfo.dateStr);
+
+  const displaySaturday = hasSaturdaySessions || showWeekendForce;
+  const displaySunday = hasSundaySessions || showWeekendForce;
+
+  const activeDayIndices = [0, 1, 2, 3, 4];
+  if (displaySaturday) activeDayIndices.push(5);
+  if (displaySunday) activeDayIndices.push(6);
+
+  const weekDays = activeDayIndices.map(getDayInfo);
 
   return (
     <div className="space-y-4">
@@ -372,13 +389,27 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                 </p>
               </div>
 
-              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg">
-                Semaine complète (7 jours)
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg">
+                  {weekDays.length === 5 ? 'Lundi au Vendredi (5 jours)' : `${weekDays.length} jours affichés`}
+                </span>
+                {!hasSaturdaySessions && !hasSundaySessions && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWeekendForce(!showWeekendForce)}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer"
+                  >
+                    {showWeekendForce ? 'Masquer Week-end' : '+ Week-end'}
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Week days columns (Lundi à Dimanche) */}
-            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2 flex-1 min-h-[380px]">
+            {/* Week days columns */}
+            <div
+              className="grid gap-2 flex-1 min-h-[380px]"
+              style={{ gridTemplateColumns: `repeat(${weekDays.length}, minmax(0, 1fr))` }}
+            >
               {weekDays.map((day) => {
                 const daySessions = roomSessions
                   .filter((s) => s.date === day.dateStr)
