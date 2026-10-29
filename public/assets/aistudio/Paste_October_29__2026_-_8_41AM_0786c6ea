@@ -1,0 +1,916 @@
+CAHIER DES CHARGES FONCTIONNEL COMPLÉMENTAIRE
+
+Application web et Android de gestion académique, pédagogique, financière et administrative
+
+Établissement : EBM Institute – Engineering and Business Malagasy Institute
+Version : 3.0
+Objet : Extension du cahier des charges fonctionnel initial
+Type de solution : Application web et application mobile Android connectées à une base de données centralisée.
+
+1. OBJET DU DOCUMENT
+
+Le présent document complète le cahier des charges fonctionnel initial relatif à la conception de l’application de gestion de l’EBM Institute.
+
+Il définit les fonctionnalités complémentaires nécessaires à la gestion du système LMD, des inscriptions annuelles, des unités d’enseignement, des éléments constitutifs, des évaluations, des présences, de la communication, des devoirs, des ressources pédagogiques, des paiements et de la comptabilité journalière.
+
+Ces fonctionnalités doivent être intégrées à l’application principale et accessibles depuis un menu d’accueil organisé selon le profil et les autorisations de chaque utilisateur.
+
+Toutes les fonctionnalités décrites ci-dessous font partie du périmètre fonctionnel attendu, sauf décision contraire validée par l’EBM Institute.
+
+2. GESTION DE LA STRUCTURE ACADÉMIQUE LMD
+
+2.1. Gestion des années universitaires
+
+L’application doit permettre à l’administration de créer et de gérer les années universitaires.
+
+Chaque année universitaire doit être associée aux formations, niveaux, groupes, étudiants, enseignants et maquettes pédagogiques concernés.
+
+L’application doit notamment permettre de :
+
+créer une nouvelle année universitaire ;
+
+ouvrir et clôturer les inscriptions et réinscriptions ;
+
+gérer les semestres de l’année ;
+
+consulter les données des années antérieures ;
+
+archiver une année universitaire clôturée ;
+
+conserver l’historique académique et administratif des étudiants.
+
+Chaque année universitaire comprend deux semestres, S1 et S2, conformément à l’organisation retenue par l’établissement.
+
+2.2. Gestion des maquettes pédagogiques annuelles
+
+Les UE et les EC doivent être entièrement configurables et modifiables d’une année universitaire à l’autre. Aucune maquette pédagogique ne doit être figée définitivement dans le code de l’application.
+
+L’administration doit pouvoir créer une maquette pédagogique propre à chaque année universitaire, formation et niveau.
+
+Pour chaque nouvelle année, elle doit pouvoir :
+
+créer une nouvelle maquette ;
+
+recopier la maquette d’une année précédente pour servir de base ;
+
+ajouter, modifier, remplacer, réorganiser ou supprimer des UE et des EC ;
+
+affecter chaque UE et chaque EC au semestre concerné ;
+
+définir les crédits ECTS ;
+
+définir les volumes horaires et les modalités d’évaluation ;
+
+affecter les EC aux groupes et aux enseignants concernés ;
+
+enregistrer les modifications et consulter leur historique.
+
+La copie d’une ancienne maquette doit créer une nouvelle version indépendante. Les modifications apportées à la nouvelle année ne doivent pas modifier les données académiques des années antérieures.
+
+Une maquette peut suivre les états suivants : brouillon, en vérification, validée, publiée et archivée.
+
+Une fois publiée, toute modification doit être soumise à une autorisation appropriée et conservée dans l’historique des modifications. Les notes, crédits et résultats déjà enregistrés ne doivent pas être altérés rétroactivement par un changement de maquette.
+
+Le remplacement d’un EC ne doit pas entraîner automatiquement le transfert de ses anciennes notes vers le nouvel EC. Une éventuelle équivalence doit être définie et validée par l’administration.
+
+2.3. Gestion des UE et des EC
+
+L’application doit respecter l’organisation pédagogique suivante :
+
+Année universitaire → Formation → Niveau → Semestre → UE → EC.
+
+UE : Unité d’Enseignement.
+
+EC : Élément Constitutif d’une UE.
+
+Chaque UE doit pouvoir comporter un ou plusieurs EC.
+
+Pour chaque UE, l’application doit permettre de renseigner au minimum :
+
+un code et un intitulé ;
+
+le semestre concerné ;
+
+le nombre de crédits ;
+
+les EC qui la composent ;
+
+les règles de validation applicables.
+
+Pour chaque EC, l’application doit permettre de renseigner au minimum :
+
+un code et un intitulé ;
+
+l’UE de rattachement ;
+
+le semestre ;
+
+le nombre de crédits, si applicable ;
+
+le volume horaire ;
+
+le ou les enseignants responsables ;
+
+les groupes concernés ;
+
+les modalités d’évaluation ;
+
+le statut actif ou archivé.
+
+L’application doit contrôler la cohérence des crédits entre les UE et les EC selon les règles définies par l’établissement. Elle ne doit pas compter deux fois les mêmes crédits dans les totaux.
+
+2.4. Inscriptions annuelles des étudiants
+
+L’application doit gérer l’inscription ou la réinscription de chaque étudiant pour chaque année universitaire.
+
+Une inscription doit notamment comporter :
+
+l’étudiant concerné ;
+
+l’année universitaire ;
+
+la formation ;
+
+le niveau ;
+
+le groupe ;
+
+le statut de l’inscription ;
+
+la date d’inscription ;
+
+les éventuelles informations administratives complémentaires.
+
+Un même étudiant doit pouvoir disposer d’un historique de ses inscriptions sur plusieurs années universitaires.
+
+Les changements de groupe, de niveau ou de formation doivent être historisés. Ils ne doivent pas modifier les résultats historiques d’un étudiant.
+
+L’accès aux cours, aux EC, aux devoirs, aux évaluations et aux espaces de groupe doit dépendre de l’inscription active de l’étudiant et des autorisations qui lui sont attribuées.
+
+3. GESTION DES ÉVALUATIONS ET DES RÉSULTATS
+
+3.1. Évaluations par EC
+
+Pour chaque EC, l’application doit permettre de gérer deux évaluations principales :
+
+Quiz : 40 % de la note finale ;
+
+Examen : 60 % de la note finale.
+
+La formule de calcul de la note finale de l’EC est :
+
+Note finale de l’EC = (Note du Quiz × 0,40) + (Note de l’Examen × 0,60).
+
+Exemple : pour un Quiz de 15/20 et un Examen de 12/20 :
+
+Note finale = (15 × 0,40) + (12 × 0,60) = 13,20/20.
+
+Les coefficients doivent être configurables par l’administration pour permettre une éventuelle évolution des règles de l’établissement. La répartition 40 % / 60 % constitue la règle initiale demandée.
+
+L’application doit permettre de :
+
+saisir ou importer les notes ;
+
+contrôler les valeurs saisies ;
+
+enregistrer les notes en brouillon ;
+
+modifier une note tant que les droits et le statut de publication le permettent ;
+
+publier les résultats ;
+
+conserver l’historique des modifications ;
+
+consulter les résultats par étudiant, EC, UE, groupe, semestre et année universitaire.
+
+Les étudiants ne doivent consulter que leurs propres notes et résultats. Les enseignants ne doivent accéder qu’aux évaluations qui relèvent de leurs responsabilités.
+
+3.2. Validation des UE et des semestres
+
+Les règles de validation des EC, UE et semestres doivent être paramétrables conformément aux décisions académiques de l’EBM Institute.
+
+L’application doit permettre de configurer :
+
+les seuils de validation ;
+
+les règles de compensation ;
+
+les règles de calcul des moyennes ;
+
+les crédits acquis ;
+
+les modalités de rattrapage ;
+
+les règles de validation du semestre et de progression entre les niveaux.
+
+Les résultats doivent être calculés selon les règles effectivement validées par l’établissement. En cas de modification de ces règles, les résultats déjà publiés doivent rester traçables et ne pas être recalculés silencieusement.
+
+4. GESTION DES PRÉSENCES PAR QR CODE
+
+4.1. Génération du QR code
+
+L’application doit intégrer un système de pointage des présences par QR code pour chaque séance de cours.
+
+Seuls les utilisateurs autorisés, notamment les enseignants et l’administration, peuvent ouvrir une séance et générer son QR code.
+
+Le QR code doit :
+
+être associé à une séance précise ;
+
+être temporaire et expirer automatiquement ;
+
+être renouvelable si nécessaire ;
+
+être inutilisable en dehors de la période autorisée ;
+
+être validé par le serveur lors du pointage.
+
+4.2. Pointage des étudiants
+
+L’étudiant doit se connecter à son compte et scanner le QR code depuis l’application Android ou toute interface compatible prévue par le système.
+
+Le pointage doit être enregistré avec, au minimum :
+
+l’identité de l’étudiant ;
+
+la séance concernée ;
+
+la date et l’heure du pointage ;
+
+le statut de présence.
+
+Un étudiant ne doit pas pouvoir enregistrer plusieurs pointages valides pour une même séance.
+
+Tout étudiant qui ne pointe pas pendant la période autorisée doit être marqué absent par défaut, sauf correction autorisée ou justification validée.
+
+L’application doit prévoir les statuts suivants :
+
+présent ;
+
+absent ;
+
+en retard ;
+
+absence justifiée.
+
+Les règles de retard, de justification et de correction doivent être configurables.
+
+L’enseignant ou l’administration doit pouvoir consulter les présences par séance, EC, groupe, étudiant et période. Toute correction doit conserver l’auteur, la date et le motif de la modification.
+
+Le système doit limiter les risques de fraude. Le QR code seul ne garantit pas la présence physique de l’étudiant ; des contrôles complémentaires pourront être ajoutés si l’établissement le juge nécessaire.
+
+5. MESSAGERIE INTERNE ET MUR DES GROUPES
+
+5.1. Messagerie interne
+
+L’application doit comporter une messagerie permettant les échanges suivants :
+
+étudiant vers enseignant ;
+
+enseignant vers étudiant ;
+
+enseignant vers groupe d’étudiants ;
+
+administration vers un étudiant ;
+
+administration vers un groupe ou l’ensemble des étudiants, selon les autorisations.
+
+La messagerie doit permettre :
+
+l’envoi et la réception de messages ;
+
+la consultation de l’historique des conversations ;
+
+l’identification des messages lus et non lus ;
+
+l’affichage des notifications de nouveaux messages ;
+
+la recherche ou le filtrage des conversations ;
+
+le contrôle des pièces jointes, si cette fonctionnalité est activée.
+
+L’accès aux conversations doit respecter les droits de chaque utilisateur. Les utilisateurs ne doivent pas pouvoir consulter des conversations privées qui ne leur sont pas destinées.
+
+5.2. Mur de publication des groupes
+
+Chaque groupe d’étudiants doit disposer d’un mur de publication.
+
+Les enseignants affectés au groupe et les utilisateurs administratifs autorisés doivent pouvoir publier :
+
+des annonces ;
+
+des rappels de cours ;
+
+des informations sur les évaluations ;
+
+des changements d’emploi du temps ;
+
+des consignes de devoirs ;
+
+des documents ou liens pédagogiques ;
+
+des informations administratives.
+
+Les étudiants doivent pouvoir consulter les publications de leur groupe.
+
+L’application doit permettre d’identifier les publications importantes, de notifier les utilisateurs concernés et de conserver un historique des publications. Les droits de commentaire ou de réponse doivent être configurables.
+
+6. GESTION FINANCIÈRE ET DES PAIEMENTS
+
+6.1. Paramétrage des frais
+
+Le module financier doit permettre à l’administration de définir les frais applicables aux étudiants.
+
+Les frais peuvent être associés :
+
+à une année universitaire ;
+
+à une formation ou à un niveau ;
+
+à un groupe ;
+
+à une inscription ou réinscription ;
+
+à un étudiant individuellement ;
+
+à une prestation particulière.
+
+L’administration doit pouvoir définir les frais par défaut pour un groupe, tout en ajoutant des frais individuels ou exceptionnels à certains étudiants.
+
+Tous les frais applicables à un étudiant doivent apparaître dans son dossier financier, y compris les frais individuels qui ne sont pas prévus dans le paramétrage général de son groupe.
+
+Chaque frais doit pouvoir comporter un intitulé, un montant, une date d’échéance, une année de rattachement et les règles applicables.
+
+La devise utilisée est l’Ariary (Ar). Les montants doivent être affichés de manière cohérente dans l’ensemble de l’application.
+
+6.2. Suivi des paiements
+
+Pour chaque étudiant, l’application doit afficher :
+
+le montant total des frais dus ;
+
+le montant déjà payé ;
+
+le solde restant à payer ;
+
+les échéances ;
+
+les éventuels retards ;
+
+l’historique des paiements ;
+
+les reçus correspondants.
+
+Les statuts financiers doivent inclure au minimum :
+
+non payé ;
+
+partiellement payé ;
+
+payé.
+
+Le système doit prendre en charge les paiements partiels. Un paiement partiel doit diminuer le solde restant sans marquer automatiquement la totalité des frais comme réglée.
+
+6.3. Modes de paiement
+
+Les modes de paiement à prendre en charge sont :
+
+espèces ;
+
+Mobile Money ;
+
+dépôt bancaire ;
+
+virement bancaire.
+
+Le système doit permettre d’enregistrer le montant, la date, le mode de paiement, la référence éventuelle de la transaction et l’utilisateur ayant enregistré l’opération.
+
+L’application ne doit pas déclarer automatiquement qu’un paiement Mobile Money ou bancaire a été reçu sans validation ou confirmation appropriée.
+
+6.4. Reçus de paiement
+
+Chaque paiement enregistré doit pouvoir générer un reçu comportant notamment :
+
+un numéro unique ;
+
+l’identité de l’établissement ;
+
+l’identité de l’étudiant ;
+
+le montant payé en Ariary ;
+
+le mode de paiement ;
+
+la date et l’heure ;
+
+le motif ou la nature du paiement ;
+
+le solde restant, le cas échéant ;
+
+l’identité de l’utilisateur ayant enregistré le paiement.
+
+Le reçu doit pouvoir être consulté, imprimé ou téléchargé.
+
+L’annulation, la correction ou le remboursement d’un paiement doit respecter les droits attribués et conserver une trace de l’opération initiale et de sa modification.
+
+6.5. Journal financier journalier
+
+L’application doit intégrer un journal financier permettant de suivre les opérations de chaque journée.
+
+Le journal doit notamment afficher :
+
+le solde d’ouverture ;
+
+les encaissements de la journée ;
+
+les encaissements ventilés par mode de paiement ;
+
+les éventuels remboursements ;
+
+les corrections ou ajustements autorisés ;
+
+les versements et dépôts effectués ;
+
+le solde théorique de clôture ;
+
+les écarts constatés ;
+
+l’utilisateur responsable de la clôture.
+
+Les fonds en espèces doivent être distingués des sommes encaissées par Mobile Money et des fonds bancaires. Le système ne doit pas considérer automatiquement ces différents moyens de paiement comme un même solde de caisse disponible.
+
+La clôture journalière doit permettre de confirmer les montants enregistrés et de documenter les versements ou dépôts correspondants.
+
+Une fois le journal clôturé, les opérations de la journée doivent être verrouillées. Toute correction ultérieure doit être effectuée au moyen d’une opération d’ajustement autorisée, datée, justifiée et historisée, sans effacer les données initiales.
+
+Les droits de saisie des paiements, de validation, de remboursement, de clôture et de consultation doivent être distincts selon les responsabilités définies par l’établissement.
+
+6.6. États et rapports financiers
+
+L’administration doit pouvoir générer des états financiers par :
+
+journée, semaine, mois ou période personnalisée ;
+
+étudiant ;
+
+groupe ;
+
+formation ou niveau ;
+
+nature des frais ;
+
+mode de paiement ;
+
+situation des impayés ;
+
+échéances ;
+
+versements et clôtures.
+
+Les rapports doivent pouvoir être exportés dans des formats exploitables, notamment PDF et Excel, selon les besoins.
+
+7. GESTION DES DEVOIRS ET TRAVAUX À RENDRE
+
+7.1. Publication des devoirs
+
+Un enseignant doit pouvoir créer un devoir associé à un groupe et à un EC.
+
+Chaque devoir doit comporter au minimum :
+
+un titre ;
+
+des consignes ;
+
+l’EC concerné ;
+
+le groupe destinataire ;
+
+la date de publication ;
+
+la date et l’heure limites de remise ;
+
+les fichiers joints éventuels ;
+
+les modalités de correction ou de notation.
+
+7.2. Remise par les étudiants
+
+L’étudiant doit pouvoir :
+
+consulter les devoirs qui lui sont destinés ;
+
+télécharger les consignes et les fichiers ;
+
+déposer un ou plusieurs fichiers selon les règles du devoir ;
+
+ajouter un commentaire à sa remise ;
+
+vérifier que sa soumission a bien été enregistrée ;
+
+consulter son statut de remise.
+
+L’application doit conserver la date et l’heure de soumission. Elle doit permettre de distinguer les devoirs remis à temps, en retard ou non remis.
+
+Le traitement des soumissions tardives doit être configurable : refus automatique, acceptation avec signalement du retard ou autre règle décidée par l’établissement.
+
+7.3. Consultation et correction par les enseignants
+
+L’enseignant doit pouvoir consulter les soumissions de tous les étudiants des groupes et EC qui lui sont attribués.
+
+Il doit pouvoir télécharger les fichiers, consulter les commentaires, attribuer une note si nécessaire, ajouter une appréciation et enregistrer le statut de correction.
+
+Les droits d’accès doivent empêcher un enseignant de consulter les devoirs de groupes ou d’EC dont il n’a pas la charge, sauf autorisation spécifique.
+
+8. PUBLICATION DES SUPPORTS PÉDAGOGIQUES
+
+L’application doit permettre aux enseignants de publier des ressources pédagogiques destinées aux étudiants de leurs groupes et EC.
+
+Les ressources peuvent comprendre :
+
+des documents PDF ;
+
+des fichiers bureautiques ;
+
+des présentations ;
+
+des images ;
+
+des liens vers des ressources externes ;
+
+des vidéos ou autres contenus pédagogiques compatibles.
+
+Chaque ressource doit être associée à un EC et, si nécessaire, à un groupe ou à une séance.
+
+L’enseignant doit pouvoir ajouter un titre, une description, une date de publication et des consignes éventuelles.
+
+Les étudiants doivent pouvoir consulter et télécharger les ressources auxquelles ils ont accès. L’application doit permettre de remplacer ou d’archiver une ressource tout en conservant un historique approprié.
+
+La taille des fichiers, les types autorisés et les capacités de stockage doivent être définis lors de la conception technique.
+
+9. EXPORT DES LISTES D’ÉTUDIANTS
+
+9.1. Export réservé aux enseignants
+
+Les enseignants doivent pouvoir exporter la liste des étudiants des groupes qui leur sont attribués, notamment au format Excel.
+
+Cette liste peut comporter :
+
+le numéro ou identifiant étudiant ;
+
+le nom et le prénom ;
+
+la formation et le niveau ;
+
+le groupe ;
+
+les informations académiques nécessaires à l’enseignement.
+
+Les numéros de téléphone et les autres coordonnées personnelles des étudiants ne doivent pas figurer dans l’export accessible aux enseignants.
+
+9.2. Export réservé à l’administration
+
+L’administration autorisée doit pouvoir exporter des listes plus complètes, comprenant notamment les coordonnées des étudiants lorsque cela est nécessaire à la gestion administrative.
+
+Les champs exportables doivent dépendre du rôle et des permissions de l’utilisateur. Les exports doivent respecter les règles de confidentialité et de protection des données.
+
+10. MENU D’ACCUEIL ET TABLEAU DE BORD
+
+10.1. Principe général
+
+L’application doit disposer d’un menu d’accueil clair, organisé et personnalisé selon le profil de l’utilisateur.
+
+Les fonctionnalités ne doivent pas être présentées dans une seule interface identique pour tous les utilisateurs. Chaque utilisateur doit accéder directement aux modules correspondant à ses responsabilités.
+
+Les menus et les autorisations doivent être contrôlés côté serveur, et pas uniquement masqués dans l’interface.
+
+10.2. Menu de l’étudiant
+
+Le menu étudiant doit proposer au minimum :
+
+Accueil ;
+
+Mon emploi du temps ;
+
+Mes cours et EC ;
+
+Mes notes et résultats ;
+
+Mes présences ;
+
+Mes devoirs ;
+
+Messagerie ;
+
+Mur de mon groupe ;
+
+Ma situation financière ;
+
+Notifications ;
+
+Mon compte.
+
+Le tableau de bord étudiant doit notamment afficher les prochains cours, les devoirs à rendre, les nouveaux messages, les dernières annonces et la situation financière personnelle.
+
+10.3. Menu de l’enseignant
+
+Le menu enseignant doit proposer au minimum :
+
+Accueil ;
+
+Mon emploi du temps ;
+
+Mes EC et groupes ;
+
+Notes et évaluations ;
+
+Présences et QR codes ;
+
+Devoirs et corrections ;
+
+Supports pédagogiques ;
+
+Messagerie ;
+
+Mur des groupes ;
+
+Listes d’étudiants et export Excel ;
+
+Notifications ;
+
+Mon compte.
+
+Le tableau de bord enseignant doit notamment afficher les prochains cours, les séances nécessitant un pointage, les devoirs à corriger, les évaluations à compléter et les messages non lus.
+
+10.4. Menu de l’administration
+
+Le menu administratif doit proposer au minimum :
+
+Tableau de bord général ;
+
+Années universitaires et semestres ;
+
+Formations, niveaux et groupes ;
+
+Maquettes pédagogiques, UE, EC et crédits ;
+
+Étudiants, inscriptions et réinscriptions ;
+
+Enseignants et personnel ;
+
+Emplois du temps et salles ;
+
+Notes, résultats et validations ;
+
+Présences et justificatifs ;
+
+Gestion financière et paiements ;
+
+Journal financier, versements et clôtures ;
+
+Messagerie et publications ;
+
+Devoirs et ressources pédagogiques ;
+
+Notifications ;
+
+Rapports et exports ;
+
+Paramètres et gestion des permissions ;
+
+Historique des opérations et audit.
+
+Les entrées de menu visibles doivent dépendre des permissions accordées à chaque utilisateur administratif.
+
+10.5. Ergonomie et navigation
+
+L’interface web doit proposer une navigation adaptée à un ordinateur, notamment un menu latéral ou une structure équivalente.
+
+L’application Android doit proposer une navigation adaptée aux écrans mobiles, avec un menu principal et, si nécessaire, des menus secondaires.
+
+L’interface doit prévoir :
+
+un accès rapide aux fonctions les plus utilisées ;
+
+l’affichage de l’année universitaire active ;
+
+des indicateurs de nouveaux messages et notifications ;
+
+des confirmations pour les opérations sensibles ;
+
+des messages d’erreur compréhensibles ;
+
+une navigation cohérente entre les modules ;
+
+un affichage responsive adapté aux différentes tailles d’écran.
+
+Le changement d’année universitaire pour consulter des données historiques doit être possible lorsque le profil et les droits de l’utilisateur le permettent.
+
+11. NOTIFICATIONS
+
+L’application doit intégrer un système de notifications permettant d’informer les utilisateurs des événements qui les concernent.
+
+Les notifications doivent notamment couvrir :
+
+la publication d’un emploi du temps ou sa modification ;
+
+l’ajout d’un devoir et l’approche de sa date limite ;
+
+la publication de notes ;
+
+les nouveaux messages ;
+
+les annonces publiées sur le mur d’un groupe ;
+
+les rappels de paiement et les échéances financières ;
+
+les modifications administratives importantes.
+
+Les notifications doivent être ciblées selon le profil, le groupe, l’EC et les droits d’accès.
+
+L’application doit permettre de consulter les notifications reçues et de distinguer celles qui ont été lues de celles qui ne l’ont pas été.
+
+Les notifications Android et par courrier électronique pourront être activées selon les possibilités techniques, les préférences de l’établissement et les paramètres de chaque utilisateur.
+
+12. SÉCURITÉ, DROITS D’ACCÈS ET TRAÇABILITÉ
+
+L’application doit comporter un système de gestion des utilisateurs, des rôles et des permissions.
+
+Les profils minimaux sont :
+
+étudiant ;
+
+enseignant ;
+
+personnel administratif ;
+
+administrateur.
+
+Des permissions plus précises doivent pouvoir être attribuées à certains utilisateurs selon leurs fonctions.
+
+Le système doit notamment garantir :
+
+l’authentification des utilisateurs ;
+
+l’accès aux seules données autorisées ;
+
+la confidentialité des notes et des dossiers financiers ;
+
+la protection des coordonnées personnelles ;
+
+la traçabilité des modifications importantes ;
+
+la journalisation des opérations sensibles ;
+
+la gestion des sessions et des déconnexions ;
+
+la sauvegarde régulière de la base de données ;
+
+la possibilité de restaurer les données en cas d’incident.
+
+Les opérations sensibles, notamment la modification des notes publiées, les corrections de paiement, les remboursements, les clôtures financières et les changements de maquette pédagogique, doivent être historisées.
+
+L’historique doit permettre d’identifier l’utilisateur à l’origine d’une opération, sa date et son heure, la nature de la modification et, lorsque nécessaire, le motif indiqué.
+
+13. EXIGENCES TECHNIQUES ET D’INTÉGRATION
+
+Les fonctionnalités de ce document doivent être intégrées à la solution principale décrite dans le cahier des charges initial.
+
+L’application web et l’application Android doivent exploiter une base de données centralisée afin de garantir la cohérence des informations entre les plateformes.
+
+Les modifications effectuées sur une plateforme doivent être répercutées sur les autres plateformes selon les règles de synchronisation définies.
+
+La conception technique doit prévoir :
+
+une architecture permettant l’évolution des fonctionnalités ;
+
+une gestion fiable des accès concurrents ;
+
+des mécanismes de validation des données ;
+
+la protection des fichiers et des pièces jointes ;
+
+des sauvegardes et une procédure de restauration ;
+
+des performances adaptées au nombre d’utilisateurs attendu ;
+
+des tests fonctionnels et de sécurité ;
+
+une documentation technique et utilisateur.
+
+Les technologies, les capacités d’hébergement, les volumes de stockage et les limites de taille des fichiers doivent être précisés dans la conception technique et validés avec l’EBM Institute.
+
+14. TESTS ET CRITÈRES DE VALIDATION
+
+Avant la livraison, le développeur devra démontrer que les fonctionnalités complémentaires répondent aux exigences suivantes.
+
+REC-01 – Maquettes annuelles : l’administration peut créer une nouvelle année universitaire et une nouvelle maquette sans modifier les résultats des années précédentes.
+
+REC-02 – Modification des UE et EC : l’administration peut ajouter, modifier, remplacer, réorganiser et archiver les UE et EC d’une année donnée.
+
+REC-03 – Historique académique : les résultats historiques restent consultables après une modification de maquette.
+
+REC-04 – Inscriptions : un étudiant peut être inscrit dans une année, une formation, un niveau et un groupe déterminés.
+
+REC-05 – Calcul des notes : le calcul Quiz 40 % et Examen 60 % produit le résultat attendu.
+
+REC-06 – Validation académique : les règles de validation, de compensation et de crédits appliquent les paramètres approuvés par l’établissement.
+
+REC-07 – Présences : un QR code expiré ou déjà utilisé par un étudiant ne permet pas un nouveau pointage valide.
+
+REC-08 – Absences : les étudiants n’ayant pas pointé pendant la période autorisée sont marqués absents, sous réserve des corrections autorisées.
+
+REC-09 – Messagerie : les utilisateurs peuvent communiquer uniquement dans les limites de leurs droits.
+
+REC-10 – Mur des groupes : les annonces sont accessibles aux groupes concernés et aux utilisateurs autorisés.
+
+REC-11 – Paiements partiels : un paiement partiel met à jour le solde sans déclarer à tort les frais entièrement réglés.
+
+REC-12 – Frais individuels : les frais ajoutés individuellement apparaissent dans le dossier financier de l’étudiant, même s’ils ne figurent pas dans les frais par défaut du groupe.
+
+REC-13 – Reçus : chaque paiement enregistré produit un reçu identifiable et consultable.
+
+REC-14 – Clôture financière : un journal clôturé ne peut pas être modifié directement sans procédure d’ajustement autorisée et historisée.
+
+REC-15 – Devoirs : les étudiants peuvent déposer leurs fichiers et les enseignants concernés peuvent consulter les soumissions.
+
+REC-16 – Supports pédagogiques : les enseignants peuvent publier des documents et des liens accessibles aux étudiants concernés.
+
+REC-17 – Export enseignant : l’export Excel destiné aux enseignants ne contient pas les numéros de téléphone des étudiants.
+
+REC-18 – Export administratif : les utilisateurs administratifs autorisés peuvent exporter les coordonnées nécessaires à leurs missions.
+
+REC-19 – Menus : chaque profil dispose d’un menu adapté à ses permissions.
+
+REC-20 – Sécurité : un utilisateur ne peut pas accéder directement, par une URL ou une requête, à une fonction ou à une donnée qui ne lui est pas autorisée.
+
+REC-21 – Notifications : les notifications sont envoyées aux utilisateurs concernés et non à des groupes non destinataires.
+
+REC-22 – Sauvegarde : les données peuvent être sauvegardées et restaurées selon la procédure prévue.
+
+15. ORGANISATION RECOMMANDÉE DU DÉVELOPPEMENT
+
+Pour limiter les erreurs et garantir la cohérence de l’application, le développement doit suivre un ordre logique.
+
+Phase 1 : fondations académiques
+
+années universitaires ;
+
+formations, niveaux et groupes ;
+
+inscriptions et réinscriptions ;
+
+maquettes annuelles ;
+
+UE, EC, crédits et enseignants affectés.
+
+Phase 2 : fonctions pédagogiques
+
+emplois du temps ;
+
+évaluations, notes et résultats ;
+
+présences par QR code ;
+
+devoirs ;
+
+supports pédagogiques ;
+
+exports de listes d’étudiants.
+
+Phase 3 : communication
+
+messagerie ;
+
+murs des groupes ;
+
+notifications.
+
+Phase 4 : gestion financière
+
+paramétrage des frais ;
+
+dossiers financiers ;
+
+paiements partiels ;
+
+reçus ;
+
+journal journalier ;
+
+versements, clôtures et rapports.
+
+Phase 5 : interface, sécurité et validation
+
+menus personnalisés ;
+
+tableaux de bord ;
+
+permissions ;
+
+audit ;
+
+tests fonctionnels et de sécurité ;
+
+documentation et formation des utilisateurs.
+
+Cet ordre constitue une recommandation de mise en œuvre. Le développeur pourra proposer un calendrier détaillé, à condition de respecter l’ensemble des fonctionnalités validées par l’établissement.

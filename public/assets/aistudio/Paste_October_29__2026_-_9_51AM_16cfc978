@@ -1,0 +1,1198 @@
+# CAHIER DES CHARGES FONCTIONNEL SUPPLÉMENTAIRE
+## Version 1.0 — Extension du SIS de l’EBM Institute
+
+**Établissement :** EBM Institute — Engineering and Business Malagasy Institute  
+**Objet :** Ajout des fonctionnalités complémentaires de gestion universitaire, administrative, financière et institutionnelle  
+**Nature du document :** Complément aux cahiers des charges fonctionnels existants  
+**Statut :** Document de référence pour la conception, le développement et la recette fonctionnelle
+
+---
+
+# 1. OBJET ET PORTÉE DU DOCUMENT
+
+Le présent document définit les fonctionnalités supplémentaires à intégrer à la plateforme SIS de l’EBM Institute.
+
+Il complète les cahiers des charges existants, notamment ceux portant sur :
+
+- la gestion des utilisateurs, des étudiants, des enseignants et des groupes ;
+- la gestion des formations, des cours et des emplois du temps ;
+- l’organisation académique selon le système LMD ;
+- la gestion des notes, des UE, des EC et des résultats ;
+- le suivi des présences par QR code ;
+- la messagerie et les notifications ;
+- les devoirs et les ressources pédagogiques ;
+- la gestion des frais de scolarité, des paiements et de la caisse ;
+- les tableaux de bord et les exports.
+
+Les fonctionnalités déjà spécifiées ne doivent pas être supprimées ni développées en double. Les nouveaux modules devront s’intégrer à l’architecture existante et partager les mêmes données de référence.
+
+Le système devra permettre à l’établissement de gérer ses activités au moyen d’une plateforme centralisée, accessible par des menus adaptés aux responsabilités de chaque utilisateur.
+
+# 2. PRINCIPES GÉNÉRAUX D’INTÉGRATION
+
+## 2.1. Architecture modulaire
+
+La plateforme devra être organisée en modules fonctionnels indépendants mais interconnectés.
+
+Les principaux modules complémentaires seront :
+
+1. Admissions et candidatures.
+2. Dossiers administratifs et parcours des étudiants.
+3. Scolarité officielle, examens et délibérations.
+4. Diplômes, attestations et documents officiels.
+5. Comptabilité et contrôle financier.
+6. Ressources humaines et rémunération des enseignants.
+7. Stages, insertion professionnelle et relations avec les entreprises.
+8. Bibliothèque et ressources documentaires.
+9. Gestion des équipements, des achats et des fournisseurs.
+10. Qualité, statistiques et pilotage institutionnel.
+11. Gestion documentaire et circuits de validation.
+12. Communication institutionnelle et anciens étudiants.
+
+Ces modules devront pouvoir être activés et utilisés selon les besoins de l’établissement.
+
+## 2.2. Base de données centralisée
+
+Les informations concernant les étudiants, les enseignants, les formations, les inscriptions, les résultats, les paiements et les documents devront être reliées entre elles.
+
+Une même information ne devra pas être ressaisie inutilement dans plusieurs modules.
+
+Exemples :
+
+- Une admission validée devra permettre de créer le dossier étudiant correspondant.
+- Une inscription administrative validée devra déterminer la formation, le niveau et l’année universitaire de l’étudiant.
+- Les notes publiées devront alimenter le dossier académique officiel.
+- Les frais associés à une inscription devront alimenter le suivi financier de l’étudiant.
+- Les heures d’enseignement validées devront pouvoir alimenter le calcul des rémunérations lorsque cette méthode de paiement est utilisée.
+- La validation du parcours académique devra permettre de préparer le dossier de délivrance du diplôme.
+
+## 2.3. Paramétrage annuel
+
+Les formations, les niveaux, les parcours, les maquettes pédagogiques, les UE, les EC, les crédits, les coefficients et les règles académiques devront rester configurables.
+
+Le système ne devra pas imposer une liste fixe de matières ou une structure pédagogique immuable.
+
+Toute modification devra être associée à une période d’application et à un historique. Les modifications des paramètres ne devront pas modifier silencieusement les résultats académiques déjà publiés.
+
+## 2.4. Gestion des rôles et des permissions
+
+Chaque module devra être accessible uniquement aux profils autorisés.
+
+Les droits devront pouvoir être définis par module et, lorsque nécessaire, par action : consulter, créer, modifier, valider, publier, exporter, annuler ou supprimer.
+
+Les permissions devront être contrôlées côté serveur. Le simple fait de masquer une option dans l’interface ne sera pas considéré comme une protection suffisante.
+
+# 3. MODULE ADMISSIONS ET CANDIDATURES
+
+## 3.1. Objectif
+
+Permettre de gérer les candidatures des futurs étudiants avant leur inscription définitive.
+
+## 3.2. Gestion des campagnes d’admission
+
+L’administration devra pouvoir créer plusieurs campagnes de recrutement, notamment par année universitaire, niveau et formation.
+
+Chaque campagne devra comporter :
+
+- une année universitaire de référence ;
+- les formations et niveaux ouverts aux candidatures ;
+- les dates d’ouverture et de clôture ;
+- les conditions d’admission ;
+- les pièces exigées ;
+- les frais éventuels de candidature, si applicables ;
+- le statut de la campagne : brouillon, ouverte, suspendue ou clôturée.
+
+Les critères devront être configurables et ne devront pas être codés définitivement dans l’application.
+
+## 3.3. Dépôt des candidatures
+
+Le système devra permettre l’enregistrement d’une candidature par un agent administratif et, si l’établissement le souhaite, par le candidat lui-même au moyen d’un formulaire en ligne.
+
+Le dossier pourra comprendre :
+
+- identité et coordonnées du candidat ;
+- date de naissance et informations administratives nécessaires ;
+- diplôme antérieur ;
+- établissement d’origine ;
+- formation et niveau demandés ;
+- relevés de notes antérieurs ;
+- copie du diplôme ;
+- pièce d’identité ;
+- photographie ;
+- autres documents configurés par l’établissement.
+
+Les pièces demandées devront pouvoir varier selon le niveau et la formation.
+
+Le système devra contrôler les champs obligatoires et signaler les dossiers incomplets.
+
+## 3.4. Instruction des candidatures
+
+Chaque candidature devra posséder un numéro de référence unique et un statut.
+
+Statuts possibles, configurables selon le processus retenu :
+
+- Brouillon.
+- Soumise.
+- Incomplète.
+- En cours d’examen.
+- En attente de complément.
+- Acceptée.
+- Refusée.
+- Liste d’attente.
+- Retirée.
+
+Le système devra conserver les observations, les pièces examinées, les décisions et les dates correspondantes.
+
+Les décisions d’admission devront être réservées aux personnes habilitées.
+
+## 3.5. Admission et création du dossier étudiant
+
+Après validation de l’admission, le système devra permettre de convertir la candidature en dossier étudiant sans ressaisie des informations déjà enregistrées.
+
+Il devra éviter la création de doublons et permettre de rechercher un étudiant déjà connu de l’établissement.
+
+L’admission ne devra pas être confondue avec l’inscription administrative définitive.
+
+Le système devra permettre de distinguer les candidats admis, les étudiants inscrits et les étudiants effectivement autorisés à suivre les enseignements.
+
+# 4. MODULE DOSSIER ADMINISTRATIF ET PARCOURS ÉTUDIANT
+
+## 4.1. Dossier étudiant centralisé
+
+Chaque étudiant devra disposer d’un dossier administratif unique, relié à son identifiant étudiant.
+
+Le dossier devra pouvoir regrouper :
+
+- identité et coordonnées ;
+- photographie ;
+- numéro étudiant ;
+- informations administratives nécessaires ;
+- personne à contacter en cas de besoin, si applicable ;
+- diplômes et documents antérieurs ;
+- historique des candidatures ;
+- historique des inscriptions ;
+- formations, niveaux et années universitaires suivis ;
+- résultats et décisions de jury ;
+- relevés de notes délivrés ;
+- attestations et certificats délivrés ;
+- situation financière ;
+- justificatifs administratifs ;
+- historique des changements de situation.
+
+L’accès à chaque catégorie de données devra respecter les permissions et les exigences de confidentialité.
+
+## 4.2. Historique des inscriptions
+
+Le système devra conserver toutes les inscriptions successives d’un étudiant.
+
+Il devra distinguer, notamment :
+
+- première inscription ;
+- réinscription ;
+- changement de formation ;
+- changement de niveau ;
+- transfert ou équivalence ;
+- redoublement ;
+- progression conditionnelle, si les règles de l’établissement la prévoient ;
+- interruption ou suspension des études ;
+- abandon ;
+- radiation ou départ définitif ;
+- fin de cycle.
+
+Chaque changement de situation devra être daté, motivé lorsque nécessaire et attribué à son auteur.
+
+Une inscription antérieure ne devra pas être écrasée par une nouvelle inscription.
+
+## 4.3. Gestion des pièces et de la conformité du dossier
+
+L’administration devra pouvoir configurer la liste des pièces exigées par formation, niveau et type d’admission.
+
+Chaque pièce pourra avoir les statuts suivants :
+
+- Non fournie.
+- Reçue.
+- À vérifier.
+- Validée.
+- Rejetée.
+- À renouveler, lorsque pertinent.
+
+Le système devra signaler les dossiers incomplets et permettre de produire une liste des étudiants dont les pièces restent à fournir.
+
+## 4.4. Équivalences et dispenses
+
+Le système devra permettre d’enregistrer les décisions d’équivalence et de dispense portant sur des cours, EC, UE ou crédits.
+
+Chaque décision devra préciser :
+
+- l’étudiant concerné ;
+- les éléments académiques concernés ;
+- le motif ;
+- la décision prise ;
+- l’autorité ayant validé la décision ;
+- la date d’application ;
+- les justificatifs éventuels.
+
+Les équivalences et dispenses devront être intégrées au calcul du parcours sans modifier arbitrairement les notes historiques.
+
+# 5. MODULE SCOLARITÉ OFFICIELLE, EXAMENS ET DÉLIBÉRATIONS
+
+## 5.1. Gestion des sessions d’examen
+
+Le système devra permettre de créer et de gérer les sessions d’examen selon les règles de l’établissement.
+
+Il devra distinguer les examens ordinaires, les rattrapages et toute autre session définie par l’administration.
+
+Pour chaque session, le système devra permettre de définir :
+
+- l’année universitaire ;
+- le semestre ;
+- les EC et UE concernés ;
+- les groupes et étudiants concernés ;
+- les dates ;
+- les enseignants ou surveillants affectés ;
+- les salles et capacités ;
+- les modalités de publication des résultats.
+
+Les calendriers d’examen devront tenir compte des disponibilités et signaler les conflits.
+
+## 5.2. Gestion des notes et des résultats officiels
+
+Le module devra s’appuyer sur les fonctionnalités de notes déjà prévues.
+
+Il devra compléter celles-ci par un processus de validation officielle :
+
+1. Saisie ou importation des notes.
+2. Contrôle des données.
+3. Enregistrement en brouillon.
+4. Vérification par les personnes autorisées.
+5. Préparation des résultats provisoires.
+6. Délibération.
+7. Validation officielle.
+8. Publication des résultats.
+9. Archivage de la version officielle.
+
+Le système devra distinguer clairement les résultats provisoires des résultats officiels.
+
+Une fois les résultats publiés, toute modification devra être soumise à une procédure autorisée, avec motif, identité de l’auteur, date, ancienne valeur, nouvelle valeur et validation éventuelle.
+
+## 5.3. Paramétrage des règles LMD
+
+Les règles de calcul et de validation devront être configurables pour chaque année universitaire et chaque formation concernée.
+
+Le système devra pouvoir gérer, selon les décisions officiellement adoptées par l’établissement :
+
+- les moyennes des EC et des UE ;
+- les coefficients ;
+- les crédits ECTS ;
+- les seuils d’acquisition ;
+- les règles de compensation ;
+- la capitalisation ;
+- les rattrapages ;
+- les équivalences et dispenses ;
+- la validation des semestres ;
+- la validation des années ;
+- les conditions de passage au niveau supérieur ;
+- le redoublement ;
+- les décisions de jury ;
+- les conditions de validation du cycle.
+
+Aucune règle chiffrée ne devra être imposée définitivement par le développeur sans validation de l’établissement.
+
+Chaque ensemble de règles devra être associé à une période d’application.
+
+Le système devra conserver les règles utilisées pour calculer les résultats publiés. Une modification ultérieure des paramètres ne devra pas recalculer automatiquement les anciens résultats.
+
+## 5.4. Délibérations et procès-verbaux
+
+Le système devra permettre de préparer les dossiers de délibération par formation, niveau, semestre, année ou session.
+
+Il devra produire des états permettant au jury de prendre ses décisions.
+
+Les procès-verbaux pourront notamment comporter :
+
+- la liste des étudiants concernés ;
+- les moyennes et crédits ;
+- les UE et EC acquis ou non acquis ;
+- les décisions de validation ;
+- les décisions de passage ou de redoublement ;
+- les observations et décisions particulières ;
+- les membres du jury et les signatures prévues.
+
+Les décisions définitives devront être validées par les autorités compétentes et archivées.
+
+## 5.5. Publication des résultats et gestion des réclamations
+
+Le système devra permettre :
+
+- de publier les résultats par groupe ou formation ;
+- d’informer les étudiants de leur disponibilité ;
+- de limiter l’accès de chaque étudiant à ses propres résultats ;
+- d’enregistrer les réclamations ;
+- d’attribuer chaque réclamation à un responsable ;
+- de suivre son traitement ;
+- de communiquer la décision finale ;
+- de conserver les preuves et l’historique du traitement.
+
+Les réclamations ne devront pas entraîner une modification automatique des notes.
+
+# 6. MODULE DIPLÔMES, ATTESTATIONS ET DOCUMENTS OFFICIELS
+
+## 6.1. Types de documents
+
+Le système devra permettre de générer, selon les modèles validés par l’établissement :
+
+- certificats de scolarité ;
+- attestations d’inscription ;
+- attestations de réussite ;
+- relevés de notes ;
+- relevés de crédits ;
+- attestations de fin de formation ;
+- attestations de validation de cycle ;
+- diplômes ;
+- duplicatas ;
+- autres documents administratifs configurés.
+
+Les documents devront pouvoir être générés en PDF avec une mise en page institutionnelle.
+
+## 6.2. Modèles de documents
+
+L’administration habilitée devra pouvoir paramétrer les modèles comportant notamment :
+
+- logo et identité de l’établissement ;
+- intitulé officiel du document ;
+- informations de l’étudiant ;
+- formation et niveau ;
+- année universitaire ;
+- résultats ou mentions, selon le document ;
+- date de délivrance ;
+- numéro unique du document ;
+- noms et qualités des signataires ;
+- zones de signature et de cachet ;
+- QR code ou mécanisme de vérification, si retenu.
+
+Les modèles devront pouvoir évoluer sans nécessiter une modification du code source pour chaque changement de mise en page.
+
+## 6.3. Registre des documents délivrés
+
+Chaque document officiel délivré devra être enregistré dans un registre.
+
+Le registre devra conserver :
+
+- le numéro unique ;
+- le type de document ;
+- l’étudiant bénéficiaire ;
+- la date de délivrance ;
+- l’année universitaire ou le cycle concerné ;
+- la référence de la décision académique, si applicable ;
+- l’utilisateur ayant généré ou validé le document ;
+- le statut du document ;
+- les éventuelles annulations ou rééditions.
+
+Les numéros ne devront pas être réutilisés pour un autre document.
+
+## 6.4. Vérification d’authenticité
+
+Le système devra proposer un mécanisme permettant de vérifier l’authenticité d’un document, par exemple au moyen d’un QR code ou d’un numéro de vérification.
+
+La page de vérification devra afficher uniquement les informations nécessaires à la confirmation de l’authenticité du document, sans exposer inutilement les données personnelles de l’étudiant.
+
+Un document annulé ou remplacé devra être signalé comme tel.
+
+## 6.5. Conditions de délivrance
+
+Le système devra permettre de configurer les conditions de délivrance des documents selon leur nature.
+
+Pour un diplôme, le processus devra notamment vérifier la décision académique définitive et les conditions de validation du cycle.
+
+La situation financière pourra être affichée ou contrôlée selon les règles expressément validées par l’établissement. Le développeur ne devra pas imposer de blocage automatique sans instruction de l’administration.
+
+# 7. MODULE COMPTABILITÉ ET CONTRÔLE FINANCIER
+
+## 7.1. Objectif et périmètre
+
+Le système actuel prévoit déjà la gestion des frais de scolarité, des paiements, des reçus, des impayés et du journal de caisse.
+
+Le présent module vise à compléter ces fonctions par une gestion financière structurée.
+
+Il devra distinguer le suivi financier individuel des étudiants de la comptabilité générale de l’établissement.
+
+## 7.2. Paramétrage des frais
+
+L’administration financière devra pouvoir configurer les frais selon :
+
+- l’année universitaire ;
+- la formation ;
+- le niveau ;
+- le cycle ;
+- le type d’inscription ;
+- le type de frais ;
+- les échéances ;
+- les éventuelles conditions particulières.
+
+Les catégories de frais pourront comprendre les droits d’inscription, les frais de formation, les frais d’examen, les frais de rattrapage, les frais de documents et les autres frais autorisés.
+
+Les montants ne devront pas être codés en dur.
+
+Le système devra conserver l’historique des tarifs et appliquer les tarifs correspondant à la situation concernée.
+
+## 7.3. Comptes individuels des étudiants
+
+Chaque étudiant devra disposer d’un compte financier détaillé indiquant :
+
+- les frais facturés ;
+- les échéances ;
+- les paiements reçus ;
+- les remises ;
+- les bourses et exonérations ;
+- les remboursements ;
+- les avoirs ou régularisations ;
+- le solde restant dû ;
+- l’historique des opérations.
+
+Le système devra permettre de distinguer les montants facturés, encaissés, annulés et restant à payer.
+
+## 7.4. Bourses, remises et exonérations
+
+Le système devra permettre d’enregistrer les bourses, remises et exonérations autorisées.
+
+Chaque avantage financier devra comporter :
+
+- le bénéficiaire ;
+- le type d’avantage ;
+- le montant ou le pourcentage ;
+- les frais concernés ;
+- la période d’application ;
+- le motif ;
+- l’autorité ayant approuvé l’avantage ;
+- les justificatifs éventuels.
+
+Les exonérations totales ou partielles devront être distinguées des paiements effectivement encaissés.
+
+Le système devra permettre de suivre les décisions particulières, notamment les avantages accordés au titre des résultats académiques, si l’établissement adopte ce dispositif.
+
+## 7.5. Remboursements et régularisations
+
+Les remboursements, annulations de paiement, corrections d’imputation et autres régularisations devront suivre une procédure contrôlée.
+
+Toute opération devra comporter un motif, un auteur, une date et, selon les permissions définies, une validation par un responsable.
+
+Une opération déjà comptabilisée ne devra pas disparaître sans trace. Le système devra conserver l’historique complet des corrections.
+
+## 7.6. Comptabilité générale
+
+Si la comptabilité générale est incluse dans le périmètre retenu, le module devra prévoir :
+
+- un plan comptable paramétrable ;
+- les journaux comptables ;
+- les écritures ;
+- les comptes ;
+- le grand livre ;
+- la balance ;
+- les états financiers nécessaires ;
+- les exercices comptables ;
+- la clôture et la réouverture contrôlées des périodes ;
+- le suivi des pièces justificatives.
+
+Les règles comptables applicables devront être confirmées par l’établissement et son responsable comptable. Le développeur ne devra pas inventer les règles réglementaires ou fiscales.
+
+## 7.7. Dépenses, fournisseurs et factures
+
+Le système devra permettre d’enregistrer les dépenses de l’établissement, notamment :
+
+- les factures des fournisseurs ;
+- les achats ;
+- les prestations de services ;
+- les loyers ;
+- les factures d’eau, d’électricité et d’Internet ;
+- les dépenses pédagogiques ;
+- les frais de fonctionnement ;
+- les autres charges autorisées.
+
+Chaque dépense devra pouvoir être associée à une catégorie, un fournisseur, une date, un montant, une pièce justificative et un statut de validation.
+
+Le circuit d’approbation devra être paramétrable selon le montant et la nature de la dépense.
+
+## 7.8. Caisses, banques et Mobile Money
+
+Le système devra permettre de distinguer plusieurs caisses et comptes financiers.
+
+Il devra prendre en charge, selon les moyens réellement utilisés par l’établissement :
+
+- les paiements en espèces ;
+- les virements bancaires ;
+- les dépôts bancaires ;
+- les paiements par Mobile Money ;
+- les autres moyens de paiement autorisés.
+
+Le système devra permettre le rapprochement entre les opérations enregistrées et les relevés ou états de transaction disponibles.
+
+Une intégration automatique avec un opérateur ne sera exigée que si une API ou un moyen technique officiel est disponible et autorisé.
+
+Les écarts de rapprochement devront être identifiables et traités par une personne habilitée.
+
+## 7.9. Budgets et rapports financiers
+
+Le système devra permettre de suivre les recettes et les dépenses par période, catégorie et, lorsque pertinent, par formation ou activité.
+
+Les rapports devront notamment présenter :
+
+- les recettes facturées ;
+- les recettes encaissées ;
+- les montants restant dus ;
+- les retards de paiement ;
+- les remises et exonérations ;
+- les dépenses ;
+- les soldes de caisse ;
+- les mouvements bancaires ;
+- les écarts de rapprochement ;
+- les comparaisons entre périodes.
+
+Les fonctions budgétaires devront permettre de comparer les prévisions aux réalisations.
+
+## 7.10. Contrôle interne et séparation des responsabilités
+
+Le système devra permettre de séparer les responsabilités lorsque cela est nécessaire.
+
+À titre de principe :
+
+- un utilisateur peut enregistrer un paiement ;
+- un autre profil peut contrôler ou valider certaines corrections ;
+- les remboursements peuvent nécessiter une approbation ;
+- les opérations de clôture doivent être réservées aux profils autorisés.
+
+Les règles exactes devront être paramétrables.
+
+Les opérations financières devront être traçables et les suppressions physiques d’écritures validées devront être empêchées ou strictement encadrées.
+
+# 8. MODULE RESSOURCES HUMAINES ET RÉMUNÉRATION
+
+## 8.1. Dossiers du personnel
+
+Le système devra permettre de gérer les dossiers des enseignants et du personnel administratif ou technique.
+
+Les informations pourront comprendre :
+
+- identité et coordonnées professionnelles ;
+- fonction ;
+- service ou département ;
+- statut ;
+- date d’entrée ;
+- contrat ;
+- période de validité du contrat ;
+- qualifications ;
+- documents administratifs ;
+- historique des fonctions ;
+- absences et congés, selon les règles retenues.
+
+L’accès aux informations sensibles du personnel devra être limité aux profils autorisés.
+
+## 8.2. Contrats et affectations
+
+Le système devra permettre d’enregistrer les contrats, avenants et affectations.
+
+Pour les enseignants, il devra permettre de relier chaque affectation aux cours, EC, groupes et périodes concernés.
+
+Il devra conserver l’historique des affectations et signaler les contrats arrivant à échéance lorsque cette fonction est activée.
+
+## 8.3. Suivi des heures d’enseignement
+
+Le système devra exploiter les informations du module existant de planification des cours.
+
+Il devra distinguer :
+
+- les heures prévues ;
+- les heures programmées ;
+- les heures effectivement réalisées ;
+- les heures annulées ;
+- les heures reportées ;
+- les heures validées pour la rémunération ;
+- les heures restant à réaliser.
+
+Les heures prises en compte pour le paiement devront suivre un processus de validation défini par l’établissement.
+
+Les cours simplement programmés ne devront pas être automatiquement considérés comme réalisés.
+
+## 8.4. Calcul des rémunérations
+
+Le système devra permettre de configurer différents modes de rémunération, selon les contrats :
+
+- rémunération horaire ;
+- rémunération forfaitaire ;
+- rémunération mensuelle ;
+- autres modalités autorisées.
+
+Pour les enseignants rémunérés à l’heure, le calcul pourra s’appuyer sur les heures réalisées et validées, multipliées par le tarif applicable.
+
+Les tarifs, périodes, retenues éventuelles et autres paramètres devront être configurables et accessibles uniquement aux profils autorisés.
+
+Le système devra permettre de préparer les états de rémunération et de conserver l’historique des calculs.
+
+Le calcul ne devra pas être assimilé automatiquement à un bulletin de paie réglementaire si les exigences légales et les paramètres nécessaires n’ont pas été définis.
+
+## 8.5. Rapports RH
+
+Les rapports pourront présenter :
+
+- la liste du personnel ;
+- les contrats actifs et arrivant à échéance ;
+- les affectations pédagogiques ;
+- les heures validées par enseignant ;
+- les rémunérations calculées ;
+- les absences et congés, si gérés ;
+- les coûts de personnel par période ou activité.
+
+# 9. MODULE STAGES ET INSERTION PROFESSIONNELLE
+
+## 9.1. Gestion des entreprises partenaires
+
+Le système devra permettre de créer un répertoire des entreprises, administrations et organismes partenaires.
+
+Pour chaque structure, il pourra conserver :
+
+- raison sociale ;
+- secteur d’activité ;
+- coordonnées professionnelles ;
+- personne de contact ;
+- conventions et accords ;
+- historique des collaborations ;
+- offres de stages et d’emploi.
+
+## 9.2. Gestion des stages
+
+Le système devra permettre de gérer les stages obligatoires ou facultatifs selon les formations.
+
+Il devra enregistrer :
+
+- l’étudiant concerné ;
+- la formation ;
+- l’organisme d’accueil ;
+- le responsable académique ;
+- le tuteur professionnel ;
+- les dates prévues ;
+- le sujet du stage ;
+- les documents requis ;
+- les rapports et livrables ;
+- les évaluations ;
+- la décision finale.
+
+Le système devra permettre de suivre les stages en attente, en cours, terminés ou non validés.
+
+## 9.3. Suivi de l’insertion professionnelle
+
+Si l’établissement active cette fonctionnalité, il devra pouvoir enregistrer les informations professionnelles communiquées volontairement par les diplômés.
+
+Les rapports pourront porter sur les stages effectués, les entreprises partenaires, les offres disponibles et les indicateurs d’insertion.
+
+L’accès aux données personnelles devra être contrôlé et les informations de carrière ne devront pas être rendues publiques sans autorisation.
+
+# 10. MODULE BIBLIOTHÈQUE ET RESSOURCES DOCUMENTAIRES
+
+Le système pourra intégrer un module de bibliothèque permettant de gérer les ressources physiques et numériques.
+
+Fonctionnalités attendues :
+
+- catalogue des ouvrages et documents ;
+- auteurs, titres, éditeurs et catégories ;
+- références et codes d’inventaire ;
+- nombre d’exemplaires ;
+- localisation des documents ;
+- emprunts et retours ;
+- dates limites de retour ;
+- réservations ;
+- historique des emprunts ;
+- documents perdus ou détériorés ;
+- gestion des droits d’accès aux ressources numériques.
+
+Le module devra permettre de rechercher les ressources par titre, auteur, catégorie ou mot-clé.
+
+Les règles d’emprunt, la durée maximale, le nombre d’ouvrages autorisés et les éventuelles pénalités devront être configurables.
+
+Ce module devra être distinct des supports pédagogiques déjà prévus, tout en pouvant partager les ressources numériques lorsque cela est pertinent.
+
+# 11. MODULE ÉQUIPEMENTS, ACHATS ET FOURNISSEURS
+
+## 11.1. Inventaire des biens
+
+Le système devra permettre de répertorier les équipements de l’établissement :
+
+- ordinateurs et équipements informatiques ;
+- vidéoprojecteurs ;
+- mobilier ;
+- matériel pédagogique ;
+- équipements réseau ;
+- équipements électriques ;
+- autres biens de l’établissement.
+
+Chaque bien pourra comporter un numéro d’inventaire, une description, une date d’acquisition, une valeur, un emplacement, un responsable et un statut.
+
+## 11.2. Affectation et mouvements
+
+Le système devra permettre de suivre les affectations des biens aux salles, services ou utilisateurs.
+
+Les transferts, retours, sorties d’inventaire et mises au rebut devront être enregistrés avec leur date et leur auteur.
+
+## 11.3. Maintenance
+
+Le système devra permettre de programmer les opérations de maintenance et d’enregistrer les interventions.
+
+Il pourra conserver les demandes d’intervention, les pannes, les pièces utilisées, les prestataires et les coûts.
+
+## 11.4. Achats et fournisseurs
+
+Le système pourra permettre de gérer les demandes d’achat, les validations, les commandes, les livraisons et les factures.
+
+Les dépenses validées devront pouvoir être reliées au module financier.
+
+# 12. MODULE QUALITÉ, STATISTIQUES ET PILOTAGE
+
+## 12.1. Tableaux de bord institutionnels
+
+La direction devra disposer d’un tableau de bord général consolidant les informations des différents modules.
+
+Les indicateurs devront être calculés à partir des données réelles du système et être accompagnés d’une définition précise.
+
+## 12.2. Indicateurs académiques
+
+Le système devra pouvoir produire des rapports sur :
+
+- le nombre de candidats ;
+- le nombre d’admis ;
+- le nombre d’étudiants inscrits ;
+- les effectifs par formation et niveau ;
+- les réinscriptions ;
+- les abandons et interruptions ;
+- les redoublements ;
+- les passages au niveau supérieur ;
+- les taux de réussite ;
+- les validations d’UE et de semestres ;
+- les crédits acquis ;
+- les diplômés par année ;
+- les résultats par formation et par cohorte.
+
+Les taux devront préciser leur dénominateur et leur période de référence afin d’éviter des comparaisons trompeuses.
+
+## 12.3. Indicateurs financiers
+
+Le système devra pouvoir produire :
+
+- les recettes facturées et encaissées ;
+- les taux de recouvrement ;
+- les impayés ;
+- les exonérations et bourses ;
+- les dépenses par catégorie ;
+- les charges de personnel ;
+- les recettes et coûts par formation, lorsque les données nécessaires existent ;
+- les comparaisons entre exercices.
+
+Les indicateurs de rentabilité ne devront être calculés que si les recettes et les coûts sont correctement affectés aux activités concernées.
+
+## 12.4. Comparaison entre années universitaires
+
+L’administration devra pouvoir comparer plusieurs années universitaires.
+
+Les comparaisons devront tenir compte des changements de maquettes, de tarifs, de règles académiques et de périmètre.
+
+Les rapports devront permettre des filtres par année, formation, niveau, groupe et statut, selon les permissions.
+
+## 12.5. Exports et rapports officiels
+
+Les rapports autorisés devront pouvoir être exportés en PDF ou Excel.
+
+Les exports devront respecter les droits d’accès et ne pas divulguer des données personnelles ou financières non nécessaires.
+
+# 13. MODULE GESTION DOCUMENTAIRE ET CIRCUITS DE VALIDATION
+
+## 13.1. Classement documentaire
+
+Le système devra permettre de classer les documents administratifs et institutionnels par catégorie, année, étudiant, employé, formation ou opération.
+
+Les catégories pourront comprendre :
+
+- dossiers étudiants ;
+- dossiers du personnel ;
+- contrats ;
+- conventions ;
+- procès-verbaux ;
+- documents financiers ;
+- décisions administratives ;
+- documents institutionnels ;
+- justificatifs et pièces jointes.
+
+## 13.2. Versionnage et archivage
+
+Les documents importants devront pouvoir être remplacés ou mis à jour sans perdre l’historique requis.
+
+Le système devra conserver, selon les règles de conservation définies :
+
+- la date d’ajout ;
+- l’auteur ;
+- le type de document ;
+- les modifications ;
+- le statut ;
+- la version applicable.
+
+Les durées de conservation et les règles d’archivage devront être déterminées par l’établissement en fonction de ses obligations.
+
+## 13.3. Circuits de validation
+
+Le système devra permettre de définir des workflows selon le type d’opération.
+
+Exemples :
+
+- validation d’une candidature ;
+- validation d’une inscription exceptionnelle ;
+- approbation d’une exonération ;
+- validation d’une dépense ;
+- publication de résultats ;
+- correction d’une note publiée ;
+- validation d’un procès-verbal ;
+- délivrance d’un diplôme ;
+- autorisation d’un remboursement.
+
+Chaque workflow devra définir les étapes, les profils responsables, les conditions de passage, les notifications et l’historique des décisions.
+
+Les demandes en attente devront apparaître dans le tableau de bord du responsable concerné.
+
+# 14. MODULE COMMUNICATION INSTITUTIONNELLE ET ANCIENS ÉTUDIANTS
+
+## 14.1. Communication institutionnelle
+
+Le système devra permettre de préparer et de diffuser des communications ciblées.
+
+Les destinataires pourront être sélectionnés selon les permissions et les critères administratifs autorisés : formation, niveau, groupe, statut d’inscription ou catégorie de personnel.
+
+Les communications pourront concerner :
+
+- les admissions ;
+- les inscriptions et réinscriptions ;
+- les échéances financières ;
+- les résultats ;
+- les réunions ;
+- les événements ;
+- les informations institutionnelles.
+
+Les canaux disponibles pourront inclure les notifications internes, le courrier électronique et les SMS, selon les intégrations effectivement mises en place.
+
+Le système devra conserver un historique des communications envoyées et des éventuelles erreurs de distribution.
+
+## 14.2. Anciens étudiants
+
+Le système devra permettre de conserver un registre des diplômés et anciens étudiants.
+
+Il pourra comprendre les coordonnées professionnelles communiquées, la formation suivie, l’année d’obtention du diplôme et les participations aux activités de l’établissement.
+
+Les communications adressées aux anciens étudiants devront respecter leurs choix de contact et les règles de protection des données applicables.
+
+# 15. SÉCURITÉ, AUDIT ET PROTECTION DES DONNÉES
+
+## 15.1. Journal d’audit
+
+Le système devra conserver un journal des opérations sensibles, notamment :
+
+- création ou modification d’un dossier ;
+- changement de formation ou de statut ;
+- modification de notes ;
+- publication ou correction de résultats ;
+- création ou modification de frais ;
+- encaissement, annulation ou remboursement ;
+- validation d’une dépense ;
+- génération ou annulation d’un document officiel ;
+- modification des permissions ;
+- clôture d’une période financière ou académique.
+
+Le journal devra préciser, selon le type d’opération, l’utilisateur, la date et l’heure, l’action, l’objet concerné et les valeurs avant et après modification.
+
+Les utilisateurs ordinaires ne devront pas pouvoir modifier ou supprimer les traces d’audit qui les concernent.
+
+## 15.2. Protection des comptes
+
+La plateforme devra prévoir :
+
+- une authentification sécurisée ;
+- des permissions fondées sur les rôles ;
+- une réinitialisation sécurisée des mots de passe ;
+- la désactivation rapide d’un compte ;
+- la limitation des tentatives de connexion abusives ;
+- la gestion des sessions ;
+- une procédure de retrait des accès lors du départ d’un membre du personnel.
+
+Une authentification renforcée pourra être activée pour les profils disposant de droits financiers, académiques ou administratifs sensibles.
+
+## 15.3. Sauvegardes et restauration
+
+Le dispositif technique devra préciser :
+
+- la fréquence des sauvegardes ;
+- les données couvertes ;
+- la durée de conservation ;
+- le lieu de stockage ;
+- la séparation entre les sauvegardes et le système principal ;
+- les personnes autorisées à restaurer les données ;
+- la procédure de test des restaurations.
+
+Le prestataire devra proposer des objectifs de perte maximale de données acceptable et de délai de reprise après incident, à faire valider par l’établissement.
+
+## 15.4. Gestion des erreurs et incidents
+
+Le système devra conserver les erreurs techniques importantes et permettre leur diagnostic.
+
+Les opérations critiques devront éviter les enregistrements partiels incohérents.
+
+Les notifications, intégrations et traitements automatiques devront prévoir, lorsque pertinent, la détection des échecs et des possibilités de reprise contrôlée.
+
+# 16. IMPORTATION, EXPORTATION ET INTEROPÉRABILITÉ
+
+## 16.1. Importation des données
+
+L’administration autorisée devra pouvoir importer certaines données depuis des fichiers structurés, notamment Excel ou CSV, lorsque le format est défini.
+
+Les imports pourront concerner :
+
+- les étudiants ;
+- les candidatures ;
+- les enseignants ;
+- les groupes ;
+- les inscriptions ;
+- les notes ;
+- les tarifs ;
+- les paiements ;
+- les données historiques autorisées.
+
+Avant validation, le système devra afficher un bilan des données valides, des erreurs, des doublons potentiels et des lignes qui ne seront pas importées.
+
+Les imports devront être contrôlables et traçables.
+
+## 16.2. Exportation
+
+Les données autorisées devront pouvoir être exportées dans des formats adaptés aux usages administratifs.
+
+Les droits d’exportation devront être distincts des droits de simple consultation lorsque cela est nécessaire.
+
+## 16.3. API et intégrations
+
+La plateforme devra être conçue de manière à permettre des intégrations futures avec des services externes, sous réserve de disponibilité technique et d’autorisation.
+
+Les intégrations envisageables comprennent :
+
+- courrier électronique ;
+- SMS ;
+- Mobile Money ;
+- calendriers ;
+- outils comptables ;
+- signature électronique ;
+- services de vérification documentaire ;
+- plateformes pédagogiques externes.
+
+Aucune intégration ne devra être considérée comme automatiquement disponible sans vérification de son API, de ses conditions d’accès, de ses coûts et de ses contraintes techniques.
+
+# 17. MENU D’ACCUEIL ET ORGANISATION DES INTERFACES
+
+Le menu d’accueil devra présenter les modules en fonction du rôle de l’utilisateur.
+
+L’objectif est d’éviter une interface unique et surchargée.
+
+Exemple d’organisation fonctionnelle :
+
+**Direction**
+- Tableau de bord général.
+- Statistiques académiques.
+- Rapports financiers.
+- Personnel.
+- Qualité et pilotage.
+- Paramètres institutionnels.
+
+**Service des admissions et de la scolarité**
+- Candidatures.
+- Dossiers étudiants.
+- Inscriptions et réinscriptions.
+- Parcours académiques.
+- Examens et délibérations.
+- Relevés et documents officiels.
+
+**Service financier**
+- Frais et facturation.
+- Comptes étudiants.
+- Paiements et reçus.
+- Impayés.
+- Bourses et exonérations.
+- Dépenses et fournisseurs.
+- Caisses et banques.
+- Rapports financiers.
+
+**Service des ressources humaines**
+- Personnel.
+- Contrats.
+- Affectations.
+- Heures validées.
+- Rémunérations.
+- Congés et absences, si activés.
+
+**Responsables pédagogiques et enseignants**
+- Emplois du temps.
+- Groupes et cours attribués.
+- Présences.
+- Notes et évaluations.
+- Délibérations selon autorisation.
+- Ressources pédagogiques.
+- Stages et suivi pédagogique, selon autorisation.
+
+**Étudiants**
+- Emploi du temps.
+- Résultats personnels.
+- Présences.
+- Devoirs et ressources.
+- Situation administrative.
+- Situation financière personnelle.
+- Documents disponibles.
+- Réclamations et demandes.
+
+**Autres profils**
+- Bibliothèque.
+- Inventaire et maintenance.
+- Achats et fournisseurs.
+- Communication.
+- Anciens étudiants.
+
+Cette organisation constitue une proposition de menu. Les intitulés définitifs et les permissions devront être validés par l’établissement.
+
+# 18. EXIGENCES DE QUALITÉ ET DE PERFORMANCE
+
+Les nouveaux modules devront respecter les exigences générales de la plateforme.
+
+Le système devra notamment :
+
+- fonctionner sur ordinateur, tablette et téléphone à travers les interfaces prévues ;
+- conserver la cohérence entre les interfaces utilisant la même base de données ;
+- empêcher les accès non autorisés ;
+- contrôler les champs obligatoires et les formats de données ;
+- gérer les erreurs sans corrompre les données ;
+- afficher des messages compréhensibles ;
+- conserver un historique des opérations sensibles ;
+- permettre la recherche et le filtrage des listes ;
+- proposer des exports adaptés aux usages autorisés ;
+- permettre l’archivage des données historiques ;
+- être maintenable et évolutif.
+
+Le prestataire devra proposer les niveaux de performance, les limites d’utilisation, les volumes de stockage et les exigences techniques en fonction du nombre d’utilisateurs simultanés attendu.
+
+# 19. PRIORISATION DU DÉVELOPPEMENT
+
+Pour maîtriser les coûts et les délais, le développement devra être réalisé par phases.
+
+## Phase 1 — Fonctions indispensables
+
+Priorité élevée :
+
+1. Admissions et candidatures.
+2. Dossier administratif unique et historique des inscriptions.
+3. Scolarité officielle et gestion des parcours LMD.
+4. Examens, délibérations et publication contrôlée des résultats.
+5. Génération des relevés, attestations et diplômes.
+6. Registre et vérification des documents officiels.
+7. Comptes financiers des étudiants, bourses, remises et exonérations.
+8. Contrôle des paiements, remboursements et opérations sensibles.
+9. Gestion des rôles, workflows et journaux d’audit.
+10. Sauvegarde et restauration des données.
+
+## Phase 2 — Gestion institutionnelle approfondie
+
+Priorité intermédiaire :
+
+1. Ressources humaines et contrats.
+2. Validation des heures et préparation des rémunérations.
+3. Dépenses, fournisseurs et comptabilité générale, selon le périmètre retenu.
+4. Gestion des stages et relations avec les entreprises.
+5. Tableaux de bord académiques et financiers.
+6. Gestion documentaire et workflows avancés.
+7. Réclamations et suivi des décisions.
+8. Importations et exports avancés.
+
+## Phase 3 — Extensions et automatisations
+
+Priorité complémentaire :
+
+1. Bibliothèque.
+2. Inventaire et maintenance.
+3. Achats et gestion des fournisseurs.
+4. Gestion des anciens étudiants.
+5. Communication institutionnelle avancée.
+6. Intégrations avec les services externes.
+7. Indicateurs avancés de qualité et d’insertion professionnelle.
+
+Le calendrier précis sera établi après estimation technique, validation des dépendances et accord de l’établissement.
+
+# 20. LIVRABLES ATTENDUS DU PRESTATAIRE
+
+Pour chaque module développé, le prestataire devra fournir :
+
+1. La description des fonctionnalités livrées.
+2. La liste des profils et permissions.
+3. Les écrans et parcours utilisateurs.
+4. Les règles de gestion appliquées.
+5. Les champs et statuts utilisés.
+6. Les modèles de documents concernés.
+7. Les rapports et exports disponibles.
+8. Les scénarios de test.
+9. Les résultats de la recette.
+10. La documentation technique et fonctionnelle.
+11. Les consignes d’exploitation et de sauvegarde.
+12. Les éventuelles limitations ou dépendances externes.
+
+Toute fonctionnalité annoncée comme réalisée devra être effectivement opérationnelle dans l’environnement de recette.
+
+# 21. RECETTE ET CRITÈRES D’ACCEPTATION
+
+Les modules devront être testés avant leur mise en production.
+
+La recette devra vérifier au minimum les scénarios suivants :
+
+- Une candidature acceptée peut être convertie en dossier étudiant sans ressaisie inutile.
+- Un étudiant peut être réinscrit tout en conservant son historique.
+- Une équivalence ou une dispense autorisée apparaît correctement dans son parcours.
+- Les règles académiques sont appliquées conformément au paramétrage validé.
+- Une note publiée ne peut pas être modifiée sans autorisation et traçabilité.
+- Un procès-verbal de délibération peut être généré et archivé.
+- Un document officiel dispose d’un numéro unique et peut être vérifié.
+- Un tarif différent peut être appliqué à une nouvelle année universitaire sans modifier les anciennes opérations.
+- Une bourse ou exonération approuvée modifie correctement le solde dû.
+- Un remboursement ou une correction financière laisse une trace complète.
+- Les heures d’enseignement non validées ne sont pas considérées automatiquement comme rémunérables.
+- Les rapports affichent des résultats cohérents avec les données sources.
+- Un utilisateur ne peut accéder aux données hors de ses permissions.
+- Les sauvegardes permettent une restauration vérifiée.
+- Les imports signalent les erreurs et les doublons potentiels avant validation.
+
+La recette sera validée par l’établissement selon une procédure convenue avec le prestataire.
+
+# 22. GESTION DES MODIFICATIONS ET DES POINTS À VALIDER
+
+Le présent document décrit le périmètre fonctionnel complémentaire attendu. Il ne fixe pas à lui seul toutes les règles administratives, comptables, académiques ou réglementaires.
+
+Avant le développement, l’établissement devra valider les éléments nécessitant une décision interne, notamment :
+
+- les pièces obligatoires pour chaque admission ;
+- les règles d’équivalence ;
+- les règles LMD applicables à chaque formation ;
+- les autorités compétentes pour les délibérations ;
+- les modèles officiels de relevés, attestations et diplômes ;
+- les circuits de signature ;
+- les règles de bourses et d’exonération ;
+- les procédures de remboursement ;
+- le périmètre exact de la comptabilité générale ;
+- les règles de rémunération des enseignants ;
+- les durées de conservation des documents ;
+- les exigences réglementaires applicables.
+
+Toute demande de modification du présent cahier des charges devra être documentée, évaluée et validée avant d’être intégrée au périmètre contractuel.
+
+# 23. DISPOSITION FINALE
+
+Le présent cahier des charges fonctionnel supplémentaire doit être lu conjointement avec les cahiers des charges fonctionnels précédemment transmis pour le SIS de l’EBM Institute.
+
+Il a pour finalité de compléter le système existant et d’assurer une gestion intégrée des admissions, de la scolarité officielle, des résultats, des diplômes, des finances, des ressources humaines et du pilotage institutionnel.
+
+En cas de chevauchement avec une fonctionnalité déjà spécifiée, le prestataire devra privilégier l’intégration et la continuité de la fonctionnalité existante, plutôt que la création d’un module redondant.
+
+Les éventuelles contradictions entre documents devront être signalées à l’établissement pour arbitrage. Aucune règle académique, financière ou administrative ne devra être modifiée unilatéralement par le prestataire.
+
+**Fin du document.**

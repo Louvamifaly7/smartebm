@@ -1,0 +1,592 @@
+# CAHIER DES CHARGES FONCTIONNEL
+
+## Conception d’une application web et Android de gestion des emplois du temps, des salles, des enseignants et des étudiants
+
+**Établissement :** EBM Institute  
+**Version :** 3.2  
+**Type de solution :** Application web et application mobile Android connectées à une base de données centralisée.
+
+---
+
+## 1. Présentation du projet
+
+L’EBM Institute souhaite développer une solution numérique composée de deux interfaces complémentaires :
+
+- Une application web destinée à l’administration, aux responsables pédagogiques, aux enseignants et aux étudiants.
+- Une application mobile Android permettant aux utilisateurs de consulter leurs informations depuis leur smartphone et de recevoir des notifications en temps réel.
+
+Les deux applications devront fonctionner avec les mêmes comptes utilisateurs et partager les mêmes données. Toute modification validée dans l’une des interfaces devra être répercutée dans l’autre.
+
+La solution permettra de centraliser la gestion des emplois du temps, des cours, des salles, des enseignants, des étudiants, des groupes et des volumes horaires.
+
+Elle devra également proposer une planification assistée, des calendriers individuels, des notifications automatiques et une intégration facultative avec Google Calendar.
+
+**L’objectif principal est de disposer d’un système unique, accessible sur ordinateur et sur Android, permettant à l’administration de gérer les emplois du temps et aux étudiants de recevoir rapidement des informations fiables sur leurs cours.**
+
+## 2. Objectifs du projet
+
+La solution devra permettre de :
+
+- Créer et gérer les emplois du temps manuellement ou à l’aide d’un système de planification assistée.
+- Gérer les étudiants, les enseignants, les groupes, les sous-groupes et les salles.
+- Créer les comptes utilisateurs individuellement ou par importation en masse.
+- Utiliser un compte unique sur le web et l’application Android.
+- Attribuer un volume horaire prédéfini à chaque cours.
+- Suivre les heures programmées, réalisées et restantes.
+- Suivre les heures d’enseignement de chaque enseignant.
+- Gérer les disponibilités des enseignants et des salles.
+- Disposer d’un calendrier distinct pour chaque salle.
+- Proposer un emploi du temps personnel à chaque étudiant et enseignant.
+- Permettre la liaison facultative avec Google Calendar.
+- Envoyer des notifications en cas d’annulation, de report ou de modification d’un cours.
+- Envoyer des notifications push directement sur les téléphones Android.
+- Conserver l’historique des modifications, validations et notifications.
+- Assurer la cohérence des données entre les deux plateformes.
+
+## 3. Architecture générale de la solution
+
+### 3.1. Application web
+
+L’application web devra être accessible depuis un navigateur récent, notamment sur ordinateur, tablette et téléphone.
+
+Elle constituera l’interface principale de gestion administrative et pédagogique.
+
+Elle permettra notamment :
+
+- La gestion des utilisateurs et des comptes étudiants.
+- La gestion des filières, niveaux, groupes et sous-groupes.
+- La gestion des cours, des enseignants et des salles.
+- La création et la modification des emplois du temps.
+- La planification assistée et la détection des conflits.
+- La validation et la publication des emplois du temps.
+- Le suivi des volumes horaires.
+- La gestion des annulations et des reports.
+- L’envoi et le suivi des notifications.
+- La génération des tableaux de bord et des rapports.
+- Le paramétrage des intégrations avec Google Calendar.
+
+### 3.2. Application mobile Android
+
+Une application Android devra être développée afin de permettre aux étudiants, aux enseignants et, selon leurs autorisations, aux responsables de consulter les informations essentielles depuis leur smartphone.
+
+Elle devra au minimum permettre :
+
+- La connexion avec les identifiants personnels.
+- La consultation de l’emploi du temps quotidien et hebdomadaire.
+- La consultation des détails d’un cours.
+- La visualisation des changements d’horaire et de salle.
+- La réception de notifications push.
+- La consultation des annulations et des reports.
+- L’accès à l’historique des notifications.
+- La consultation des informations de compte.
+- La modification du mot de passe.
+- La liaison facultative avec Google Calendar.
+
+Les utilisateurs autorisés devront également pouvoir consulter leur charge horaire et les heures restantes.
+
+Les fonctionnalités administratives complexes pourront rester principalement accessibles depuis l’application web, selon les besoins définis lors de la conception.
+
+### 3.3. Base de données centralisée
+
+Les deux applications devront utiliser une même base de données centrale, accessible au moyen d’une interface de communication sécurisée.
+
+L’application web et l’application Android ne devront pas gérer deux bases de données indépendantes pour les emplois du temps officiels.
+
+Une modification validée sur le web devra être répercutée dans l’application Android. De même, une notification consultée sur Android devra pouvoir être marquée comme lue dans l’espace web de l’utilisateur.
+
+Les mises à jour devront être synchronisées sans duplication des cours, des comptes ou des notifications.
+
+### 3.4. Accès selon la connexion
+
+L’application Android devra actualiser les informations depuis le serveur lorsqu’une connexion Internet est disponible.
+
+En cas de perte temporaire de connexion, elle pourra afficher les dernières informations préalablement chargées, en indiquant clairement leur date de mise à jour.
+
+Une modification ou une réservation effectuée hors ligne ne devra jamais être considérée comme officiellement validée sans confirmation du serveur.
+
+La disponibilité hors ligne devra être limitée aux informations nécessaires et déjà synchronisées, afin de protéger les données personnelles.
+
+## 4. Utilisateurs et gestion des accès
+
+### 4.1. Profils utilisateurs
+
+Chaque utilisateur devra disposer d’un compte personnel.
+
+Les profils prévus sont les suivants :
+
+**Administrateur général**
+
+- Gérer les comptes, les rôles et les autorisations.
+- Paramétrer l’année académique, les filières, les niveaux et les groupes.
+- Gérer les cours, les salles et les enseignants.
+- Configurer les notifications et les intégrations.
+- Consulter les rapports et les journaux d’activité.
+
+**Responsable des emplois du temps**
+
+- Créer et modifier les emplois du temps.
+- Affecter les cours aux groupes, enseignants et salles.
+- Utiliser la planification assistée.
+- Vérifier les conflits.
+- Soumettre les modifications à validation.
+
+**Responsable pédagogique ou administratif**
+
+- Valider les emplois du temps et les changements.
+- Suivre l’avancement des cours.
+- Vérifier les volumes horaires.
+- Consulter les rapports.
+
+**Enseignant**
+
+- Consulter son emploi du temps sur le web et Android.
+- Recevoir les notifications relatives à ses cours.
+- Consulter les heures prévues, réalisées et restantes.
+- Signaler une indisponibilité ou demander une modification selon les autorisations accordées.
+
+**Étudiant**
+
+- Consulter son emploi du temps personnel sur le web et Android.
+- Recevoir les notifications importantes.
+- Consulter les annulations, les reports et les changements de salle.
+- Lier facultativement son compte à Google Calendar.
+- Gérer son mot de passe et les paramètres de son compte.
+
+Les droits d’accès devront être contrôlés côté serveur. Un utilisateur ne devra pas pouvoir consulter les informations personnelles ou administratives d’un autre utilisateur sans autorisation.
+
+### 4.2. Création et gestion des comptes étudiants
+
+L’administration devra pouvoir créer les comptes de deux manières.
+
+**Création individuelle**
+
+- Saisir les informations de l’étudiant.
+- Enregistrer son matricule.
+- Renseigner sa date de naissance et son adresse e-mail si nécessaire.
+- Affecter l’étudiant à une année académique, une filière, un niveau et un groupe.
+- Générer automatiquement son compte utilisateur.
+
+**Création en masse**
+
+- Importer une liste d’étudiants au format Excel ou CSV.
+- Créer automatiquement les comptes correspondants.
+- Affecter les étudiants aux groupes à partir des informations importées.
+- Détecter les matricules en double et les informations manquantes.
+- Présenter un rapport indiquant les comptes créés et les erreurs détectées.
+- Permettre l’exportation du résultat de l’importation.
+
+L’administration devra pouvoir modifier les informations d’un étudiant, changer son groupe, désactiver son compte ou le réactiver.
+
+Un même étudiant ne devra pas disposer de plusieurs comptes actifs pour un même matricule.
+
+### 4.3. Identifiant et mot de passe initial
+
+Les règles de connexion prévues pour les étudiants sont les suivantes :
+
+- **Nom d’utilisateur :** matricule de l’étudiant.
+- **Mot de passe par défaut :** date de naissance, selon un format défini par l’établissement.
+- **Première connexion :** changement obligatoire du mot de passe.
+- **Mot de passe oublié :** procédure de réinitialisation sécurisée.
+- **Accès sur plusieurs plateformes :** mêmes identifiants pour le web et Android.
+
+Le mot de passe initial ne devra pas être conservé en clair. Seule une empreinte sécurisée du mot de passe devra être stockée dans la base de données.
+
+La date de naissance étant une information personnelle potentiellement connue de tiers, elle ne devra servir que de mot de passe temporaire. Une procédure sécurisée d’activation et de changement de mot de passe devra être prévue.
+
+### 4.4. Gestion des autres comptes
+
+L’application devra également permettre la création des comptes des enseignants, des responsables pédagogiques et du personnel administratif.
+
+Chaque compte sera associé à un rôle et à des autorisations précises.
+
+La désactivation d’un compte devra bloquer l’accès aux deux plateformes. Les opérations sensibles devront être enregistrées dans un historique.
+
+## 5. Gestion des étudiants, des groupes et des sous-groupes
+
+L’application devra gérer :
+
+- Les années académiques.
+- Les filières et spécialisations.
+- Les niveaux d’études.
+- Les promotions et groupes.
+- Les sous-groupes.
+- Les listes nominatives d’étudiants.
+
+Les cours pourront être attribués à un groupe complet, à plusieurs groupes ou à un sous-groupe.
+
+L’affectation d’un étudiant déterminera automatiquement les cours affichés dans son emploi du temps personnel.
+
+En cas de changement de groupe, son emploi du temps devra être actualisé sur le web, sur Android et dans son calendrier Google s’il est synchronisé.
+
+## 6. Gestion des cours et des volumes horaires
+
+### 6.1. Paramétrage des cours
+
+Chaque cours devra comporter :
+
+- L’intitulé du cours.
+- La filière, le niveau et l’année académique.
+- Le groupe ou sous-groupe concerné.
+- Le ou les enseignants.
+- Le volume horaire total prévu.
+- La durée habituelle d’une séance, le cas échéant.
+- Les contraintes de planification.
+- Le statut du cours.
+
+Le volume horaire total sera défini à l’avance. Par exemple, un cours peut représenter 30 heures.
+
+### 6.2. Suivi des heures
+
+Pour chaque cours, le système devra afficher :
+
+- Le volume horaire total.
+- Les heures programmées.
+- Les heures réalisées et validées.
+- Les heures restant à réaliser.
+- Les heures restant à programmer.
+
+Exemple pour un cours de 30 heures :
+
+| Indicateur | Nombre d’heures |
+|---|---:|
+| Volume total prévu | 30 h |
+| Heures programmées | 24 h |
+| Heures réalisées et validées | 18 h |
+| Heures restant à réaliser | 12 h |
+| Heures restant à programmer | 6 h |
+
+Une séance annulée ne devra pas être comptabilisée comme une séance réalisée.
+
+Les heures réalisées devront être validées par une personne autorisée. Les modifications et corrections seront historisées.
+
+Lorsqu’un cours est partagé entre plusieurs groupes, le système devra éviter de comptabiliser plusieurs fois la même séance dans le volume global du cours. Les heures de chaque enseignant devront cependant être calculées correctement.
+
+## 7. Gestion des enseignants et de leur charge horaire
+
+Chaque enseignant disposera d’une fiche précisant ses informations professionnelles, ses matières et ses disponibilités.
+
+Le système devra calculer :
+
+- Les heures prévues.
+- Les heures programmées.
+- Les heures réalisées et validées.
+- Les heures restant à effectuer.
+- Les séances annulées, reportées, remplacées ou partiellement réalisées.
+- La répartition des heures par semaine, mois et année académique.
+
+Les conflits d’horaires et les dépassements de charge devront être signalés.
+
+Le suivi concernera les heures d’enseignement. Le pointage complet des heures de présence du personnel nécessitera un module distinct.
+
+## 8. Gestion des salles et de leurs calendriers
+
+Chaque salle devra disposer d’une fiche comprenant son nom ou numéro, sa capacité, ses équipements, ses disponibilités et son statut.
+
+**Chaque salle devra avoir son propre calendrier** permettant de consulter les cours et les réservations qui lui sont attribués.
+
+Une salle ne devra pas être affectée à deux cours qui se chevauchent, sauf exception expressément autorisée.
+
+Le calendrier devra afficher les informations utiles : horaires, cours, groupes et enseignants.
+
+Une synchronisation Google Calendar distincte pour les salles pourra être mise en place si l’EBM Institute dispose des comptes ou des calendriers nécessaires.
+
+## 9. Gestion des emplois du temps et planification assistée
+
+### 9.1. Consultation des emplois du temps
+
+Les emplois du temps devront être consultables par jour, semaine et mois, ainsi que par étudiant, groupe, enseignant, salle, cours, filière et niveau.
+
+L’application web permettra également de gérer et de publier les emplois du temps.
+
+Sur Android, l’interface devra privilégier un affichage lisible sur petit écran, avec les cours du jour, les prochains cours et les changements récents clairement visibles.
+
+### 9.2. Planification manuelle et assistée
+
+Les utilisateurs autorisés pourront créer une séance en indiquant le cours, l’enseignant, le groupe, la salle, la date et les horaires.
+
+La planification assistée devra prendre en compte :
+
+- Les disponibilités des enseignants.
+- Les disponibilités des groupes et sous-groupes.
+- Les disponibilités des salles.
+- La capacité et les équipements des salles.
+- Les horaires de fonctionnement de l’établissement.
+- Le volume horaire restant à programmer.
+- Les autres contraintes définies par l’administration.
+
+Les conflits devront être détectés avant publication. L’application devra expliquer les conflits détectés et proposer d’autres créneaux lorsque cela est possible.
+
+La validation finale restera sous la responsabilité d’un utilisateur habilité.
+
+## 10. Annulation, report et modification des cours
+
+Les utilisateurs autorisés pourront annuler ou reporter un cours ou modifier son horaire, sa salle, son enseignant ou son groupe.
+
+Les modifications devront respecter le circuit de validation de l’établissement.
+
+Les statuts possibles seront notamment :
+
+- Brouillon.
+- En attente de validation.
+- Publié.
+- Modifié.
+- Annulé.
+- Reporté.
+- Réalisé et validé.
+
+Avant de publier un changement, le système devra revérifier les disponibilités et les conflits.
+
+L’historique devra conserver l’ancienne et la nouvelle valeur, l’auteur, la date de modification et le motif éventuel.
+
+Une modification validée devra être répercutée sur l’application web, l’application Android et les calendriers synchronisés concernés.
+
+## 11. Notifications automatiques
+
+### 11.1. Événements déclenchant les notifications
+
+Les étudiants et les enseignants concernés devront être notifiés en cas de :
+
+- Annulation d’un cours.
+- Report à une autre date.
+- Changement d’horaire.
+- Changement de salle.
+- Changement d’enseignant.
+- Ajout d’un cours.
+- Modification importante de la séance.
+
+**L’envoi d’une notification en cas d’annulation ou de report est obligatoire.**
+
+### 11.2. Notifications sur Android
+
+L’application Android devra intégrer un système de notifications push permettant d’informer directement l’utilisateur sur son téléphone.
+
+Les notifications devront pouvoir apparaître même lorsque l’application n’est pas ouverte, sous réserve que l’utilisateur ait autorisé les notifications et que le téléphone dispose d’une connexion compatible.
+
+Une notification importante devra présenter un résumé du changement et permettre à l’utilisateur d’ouvrir directement le détail du cours dans l’application.
+
+Lorsqu’un cours est annulé, l’étudiant devra recevoir une notification indiquant qu’il est annulé.
+
+Lorsqu’un cours est reporté, la notification devra préciser, si les informations sont disponibles, l’ancienne date, la nouvelle date, le nouvel horaire et la salle.
+
+Si l’enseignant ou plusieurs groupes sont concernés, les utilisateurs touchés devront être identifiés automatiquement.
+
+Le système devra utiliser un service de notifications push compatible avec Android. L’utilisation de Firebase Cloud Messaging pourra être étudiée lors de la conception technique.
+
+### 11.3. Notifications sur le web
+
+L’application web devra disposer d’un centre de notifications intégré dans l’espace personnel.
+
+Les notifications pourront également être envoyées par e-mail. Les notifications du web et d’Android devront provenir du même événement enregistré sur le serveur afin d’éviter les doublons et les informations contradictoires.
+
+### 11.4. Gestion et historique
+
+Chaque notification devra être associée à son destinataire et à l’événement concerné.
+
+L’application devra suivre les statuts d’envoi : en attente, envoyée, échouée ou à réessayer.
+
+Les notifications devront être conservées dans l’historique de l’utilisateur. Une notification consultée sur Android devra pouvoir être marquée comme lue sur le web, et inversement.
+
+Le système devra prévoir des tentatives de renvoi en cas d’échec et conserver les erreurs pour le suivi technique.
+
+## 12. Intégration avec Google Calendar
+
+### 12.1. Liaison facultative à Gmail
+
+Chaque étudiant et enseignant pourra associer son compte utilisateur à une adresse Gmail ou à un compte Google compatible.
+
+Cette liaison sera facultative et ne sera pas nécessaire pour accéder à l’application web ou Android.
+
+L’autorisation devra être réalisée au moyen du mécanisme officiel de connexion et d’autorisation de Google. L’application ne devra jamais demander ni stocker le mot de passe Gmail.
+
+L’utilisateur devra pouvoir consulter son adresse Google associée, déconnecter le compte et gérer les autorisations proposées.
+
+### 12.2. Calendrier des étudiants et des enseignants
+
+Après autorisation, les séances publiées qui concernent l’utilisateur pourront être synchronisées avec son calendrier Google.
+
+Les ajouts, changements d’horaire, changements de salle, annulations et reports devront être répercutés sans créer de doublons.
+
+La synchronisation Google Calendar devra fonctionner indépendamment de l’appareil utilisé : ordinateur, application Android ou autre appareil connecté au même compte Google.
+
+### 12.3. Calendriers des salles
+
+Chaque salle disposera de son calendrier interne. Une synchronisation Google distincte pourra être configurée pour chaque salle, en fonction des comptes et des autorisations disponibles.
+
+### 12.4. Règles de synchronisation
+
+- Le calendrier officiel de l’EBM Institute reste la source de référence.
+- Seuls les cours publiés et validés sont synchronisés.
+- Les changements validés mettent à jour les événements existants.
+- Les annulations et reports sont répercutés.
+- Les doublons doivent être évités.
+- Les erreurs sont enregistrées et peuvent être réessayées.
+- Une modification faite directement dans Google Calendar ne modifie pas automatiquement l’emploi du temps officiel.
+- La déconnexion de Google arrête les futures synchronisations conformément au choix de l’utilisateur.
+
+Les notifications push Android resteront distinctes de Google Calendar : un étudiant ne devra pas être obligé de lier Gmail pour recevoir les notifications de l’application.
+
+## 13. Tableau de bord et rapports
+
+Les tableaux de bord seront adaptés au rôle de chaque utilisateur.
+
+**Administration :** nombre de cours programmés et réalisés, heures restantes, annulations, reports, salles occupées, conflits, état des notifications et statut des synchronisations.
+
+**Responsables pédagogiques :** avancement des cours par filière, niveau et groupe, heures réalisées par enseignant, heures restant à programmer et historique des modifications.
+
+**Enseignants :** emploi du temps personnel, heures prévues, heures réalisées, heures restantes et changements récents.
+
+**Étudiants :** emploi du temps de la semaine, prochains cours, annulations, reports et historique des notifications.
+
+Les rapports autorisés devront pouvoir être exportés en PDF ou Excel.
+
+## 14. Sécurité et protection des données
+
+La solution devra prévoir :
+
+- Une authentification sécurisée pour le web et Android.
+- Une gestion centralisée des rôles et des autorisations.
+- Le changement obligatoire du mot de passe initial.
+- Une procédure sécurisée de réinitialisation des mots de passe.
+- Le stockage sécurisé des mots de passe sous forme d’empreintes cryptographiques.
+- La protection des données personnelles et des calendriers.
+- La sécurisation des échanges entre les applications et le serveur.
+- La gestion sécurisée des autorisations Google.
+- Des journaux des opérations sensibles.
+- Des sauvegardes régulières.
+- La possibilité de désactiver un compte sur toutes les plateformes.
+- La limitation des accès aux données selon les fonctions de l’utilisateur.
+- Un mécanisme de déconnexion et de renouvellement des sessions.
+
+Les données personnelles, notamment les dates de naissance et les adresses e-mail, devront rester accessibles uniquement aux personnes autorisées.
+
+## 15. Exigences techniques
+
+L’architecture devra comprendre :
+
+- Une application web accessible depuis un navigateur.
+- Une application Android installable sur smartphone.
+- Un serveur central hébergeant la logique métier.
+- Une base de données centralisée.
+- Une interface de communication sécurisée entre les applications et le serveur.
+- Un service de notifications.
+- Un service de synchronisation Google Calendar.
+- Des mécanismes de sauvegarde, de journalisation et de suivi des erreurs.
+
+L’application Android devra être compatible avec les versions d’Android définies lors de la conception et convenir aux téléphones couramment utilisés par les étudiants.
+
+Les choix technologiques devront permettre la maintenance de la solution et son évolution. Le prestataire pourra proposer une technologie Android native ou multiplateforme, à condition de respecter les fonctionnalités, la sécurité et les performances attendues.
+
+Le mode de distribution devra être défini avec l’EBM Institute : publication sur Google Play, distribution directe par fichier d’installation ou autre solution adaptée.
+
+Le mode de publication ne devra pas empêcher la mise à jour sécurisée de l’application.
+
+## 16. Règles de gestion obligatoires
+
+- **RG-01 :** chaque utilisateur dispose d’un compte individuel.
+- **RG-02 :** le matricule constitue le nom d’utilisateur des étudiants.
+- **RG-03 :** le mot de passe initial est temporaire et doit être modifié à la première connexion.
+- **RG-04 :** les comptes étudiants peuvent être créés individuellement ou par importation en masse.
+- **RG-05 :** chaque compte est associé à un rôle et à des autorisations.
+- **RG-06 :** le web et Android utilisent la même base de données officielle.
+- **RG-07 :** les mêmes identifiants permettent d’utiliser les deux plateformes.
+- **RG-08 :** chaque cours possède un volume horaire total défini.
+- **RG-09 :** les heures programmées sont distinctes des heures réellement réalisées.
+- **RG-10 :** les heures d’un cours partagé ne sont pas comptabilisées plusieurs fois dans son volume global.
+- **RG-11 :** chaque salle dispose d’un calendrier distinct.
+- **RG-12 :** les conflits de salles, de groupes et d’enseignants sont détectés.
+- **RG-13 :** les changements soumis à validation ne sont publiés qu’après approbation.
+- **RG-14 :** les étudiants concernés sont notifiés en cas d’annulation ou de report.
+- **RG-15 :** les notifications push Android sont indépendantes de la liaison Gmail.
+- **RG-16 :** les enseignants concernés sont notifiés des modifications.
+- **RG-17 :** la liaison Google Calendar est facultative et nécessite l’autorisation de l’utilisateur.
+- **RG-18 :** le calendrier officiel de l’application constitue la référence.
+- **RG-19 :** les modifications validées sont synchronisées sans duplication.
+- **RG-20 :** les notifications et les opérations importantes sont historisées.
+- **RG-21 :** les utilisateurs ne consultent que les données autorisées.
+- **RG-22 :** la désactivation d’un compte bloque l’accès sur le web et Android.
+
+## 17. Tests de réception
+
+Avant la mise en service, les tests suivants devront être réalisés :
+
+**REC-01 :** créer un compte étudiant et vérifier sa connexion sur le web et Android.
+
+**REC-02 :** importer une liste d’étudiants depuis Excel ou CSV et vérifier la création des comptes et la détection des doublons.
+
+**REC-03 :** vérifier le changement obligatoire du mot de passe initial.
+
+**REC-04 :** vérifier que chaque utilisateur accède uniquement aux informations autorisées.
+
+**REC-05 :** affecter un étudiant à un groupe et vérifier que son emploi du temps est correctement affiché sur les deux plateformes.
+
+**REC-06 :** créer un cours de 30 heures et vérifier le calcul des heures programmées, réalisées et restantes.
+
+**REC-07 :** valider des séances réalisées et vérifier le suivi des heures de l’enseignant.
+
+**REC-08 :** programmer deux cours simultanés dans une même salle et vérifier que le conflit est détecté.
+
+**REC-09 :** vérifier que chaque salle dispose de son propre calendrier.
+
+**REC-10 :** annuler un cours et vérifier que les étudiants concernés et l’enseignant sont notifiés.
+
+**REC-11 :** reporter un cours et vérifier que la nouvelle date et le nouvel horaire sont correctement affichés.
+
+**REC-12 :** vérifier que les notifications push Android sont reçues lorsque l’application n’est pas ouverte, avec la connexion et les autorisations nécessaires.
+
+**REC-13 :** consulter une notification sur Android et vérifier la cohérence de son statut de lecture sur le web.
+
+**REC-14 :** lier un compte étudiant à Google Calendar et vérifier la synchronisation des cours autorisés.
+
+**REC-15 :** modifier ou annuler un cours publié et vérifier que l’événement Google est mis à jour sans doublon.
+
+**REC-16 :** simuler un échec de notification ou de synchronisation et vérifier que le système enregistre l’erreur et permet une nouvelle tentative.
+
+**REC-17 :** désactiver un compte et vérifier que l’accès est bloqué sur le web et Android.
+
+**REC-18 :** vérifier la cohérence des emplois du temps lorsqu’une modification est réalisée par l’administration sur le web.
+
+## 18. Étapes de réalisation recommandées
+
+**Phase 1 — Cadrage :** validation des besoins, des profils, des règles de gestion et de l’architecture générale.
+
+**Phase 2 — Comptes et données :** gestion des utilisateurs, des étudiants, des enseignants, des groupes et de l’importation en masse.
+
+**Phase 3 — Application web :** développement de l’interface administrative et des fonctions de gestion des cours, salles et emplois du temps.
+
+**Phase 4 — Application Android :** développement de l’interface mobile, de la consultation des emplois du temps, des comptes et des notifications push.
+
+**Phase 5 — Planification et suivi :** détection des conflits, planification assistée, suivi des volumes horaires et rapports.
+
+**Phase 6 — Notifications et intégrations :** mise en place des notifications web et Android, de l’e-mail et de Google Calendar.
+
+**Phase 7 — Tests et déploiement :** validation des fonctionnalités, vérification de la sécurité, tests sur plusieurs appareils et formation des utilisateurs.
+
+## 19. Livrables attendus
+
+Le prestataire devra fournir :
+
+- L’application web fonctionnelle.
+- L’application Android installable et fonctionnelle.
+- Le code source des applications selon les conditions contractuelles.
+- La base de données et sa documentation.
+- Le serveur et l’interface de communication entre les plateformes.
+- Le module de gestion des utilisateurs et des droits.
+- Le module de création et d’importation des comptes étudiants.
+- Le module de gestion des emplois du temps et des salles.
+- Le module de suivi des volumes horaires.
+- Le module de notifications web et Android.
+- Le module de synchronisation avec Google Calendar.
+- Les procédures d’installation, de sauvegarde et de restauration.
+- Un guide d’utilisation pour les administrateurs, les enseignants et les étudiants.
+- Les instructions d’installation et de mise à jour de l’application Android.
+- Les résultats des tests de réception.
+
+## Conclusion
+
+La solution attendue pour l’EBM Institute est une plateforme de gestion des emplois du temps disponible simultanément sur le web et sur Android.
+
+Les deux applications devront partager les mêmes comptes et les mêmes données afin de garantir une information cohérente. L’administration pourra gérer les étudiants, les enseignants, les salles, les cours et les emplois du temps depuis l’interface web, tandis que les étudiants et les enseignants pourront consulter leurs calendriers depuis leur téléphone.
+
+Les annulations et les reports devront déclencher des notifications automatiques, en particulier des notifications push sur Android. L’association à Google Calendar restera facultative et ne conditionnera pas l’utilisation de l’application.
+
+La sécurité des accès, la fiabilité des données, la simplicité d’utilisation et la rapidité d’information des étudiants devront constituer les priorités du développement.

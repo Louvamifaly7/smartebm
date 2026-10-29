@@ -1,0 +1,8 @@
+{
+  "name": "EBM Institute - Emplois du Temps & Salles",
+  "description": "Système intégré de gestion académique LMD, emplois du temps, pointage QR Code, évaluations (40/60), caisse en Ariary et messagerie.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
