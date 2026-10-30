@@ -82,13 +82,12 @@ export const MessengerLiveChat: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-0 right-4 z-50 flex items-end gap-3 pointer-events-none select-none">
-      
+    <div className="fixed bottom-16 lg:bottom-0 right-3 sm:right-4 z-40 flex flex-col sm:flex-row items-end gap-2 sm:gap-3 pointer-events-none select-none max-w-[calc(100vw-1.5rem)]">
       {/* 1. Active Chat Popup Window (Like Facebook Messenger) */}
       {activePartner && (
         <div
-          className={`pointer-events-auto bg-white rounded-t-2xl shadow-2xl border border-slate-300 w-80 md:w-88 flex flex-col transition-all duration-200 overflow-hidden ${
-            isMinimizedChatWindow ? 'h-12' : 'h-[440px]'
+          className={`pointer-events-auto bg-white rounded-2xl lg:rounded-b-none lg:rounded-t-2xl shadow-2xl border border-slate-300 w-[calc(100vw-1.5rem)] sm:w-80 md:w-88 flex flex-col transition-all duration-200 overflow-hidden ${
+            isMinimizedChatWindow ? 'h-12' : 'h-[380px] sm:h-[440px] max-h-[70vh]'
           }`}
         >
           {/* Header */}
@@ -208,10 +207,9 @@ export const MessengerLiveChat: React.FC = () => {
 
       {/* 2. Messenger Dock Bar (Docked at bottom-right) */}
       <div className="pointer-events-auto flex flex-col items-end">
-        
         {/* Expanded Connected Users Popup */}
         {isOpen && (
-          <div className="bg-white rounded-t-2xl shadow-2xl border border-slate-300 w-72 h-96 flex flex-col mb-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
+          <div className="bg-white rounded-2xl lg:rounded-b-none lg:rounded-t-2xl shadow-2xl border border-slate-300 w-[calc(100vw-1.5rem)] sm:w-72 h-80 sm:h-96 max-h-[65vh] flex flex-col mb-1.5 lg:mb-1 animate-in fade-in slide-in-from-bottom-2 duration-150 overflow-hidden">
             <div className="bg-slate-900 text-white p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageCircle className="w-4 h-4 text-emerald-400" />
@@ -289,13 +287,14 @@ export const MessengerLiveChat: React.FC = () => {
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-t-xl shadow-xl border-t border-x border-slate-700 flex items-center gap-2.5 transition-all cursor-pointer font-bold text-xs"
+          className="bg-slate-900 hover:bg-slate-800 text-white p-3 sm:px-4 sm:py-2.5 rounded-full lg:rounded-b-none lg:rounded-t-xl shadow-xl border border-slate-700 flex items-center gap-2 transition-all cursor-pointer font-bold text-xs"
         >
           <div className="relative">
             <MessageCircle className="w-4 h-4 text-emerald-400" />
             <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           </div>
-          <span>Discussion & En Ligne ({connectedUsers.length})</span>
+          <span className="hidden sm:inline">Discussion & En Ligne ({connectedUsers.length})</span>
+          <span className="sm:hidden text-[11px]">Chat ({connectedUsers.length})</span>
           {totalUnreadCount > 0 && (
             <span className="px-1.5 py-0.2 bg-red-500 text-white text-[10px] font-bold rounded-full animate-bounce">
               {totalUnreadCount}

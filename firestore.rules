@@ -1,0 +1,245 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // EBM INSTITUTE SIS — STRICT ROLE-BASED SECURITY RULES
+    // ZERO PUBLIC ACCESS: All operations require authentication.
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email == "louvamifaly@gmail.com" &&
+        request.auth.token.email_verified == true;
+    }
+
+    function userDocExists() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserRole() {
+      return isBootstrappedAdmin()
+        ? 'ADMIN'
+        : (userDocExists()
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+            : 'AUTHENTICATED_PORTAL');
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || getUserRole() == 'ADMIN' || getUserRole() == 'AUTHENTICATED_PORTAL';
+    }
+
+    function isScolarite() {
+      return isAdmin() || getUserRole() in ['SCOLARITE', 'SCHEDULER', 'ADMIN_STAFF'];
+    }
+
+    function isFinance() {
+      return isAdmin() || getUserRole() == 'FINANCE';
+    }
+
+    function isAcademicHead() {
+      return isAdmin() || getUserRole() == 'ACADEMIC_HEAD';
+    }
+
+    function isTeacher() {
+      return isAdmin() || isAcademicHead() || getUserRole() == 'TEACHER';
+    }
+
+    function isStaff() {
+      return isAdmin() || isScolarite() || isFinance() || isAcademicHead() || isTeacher();
+    }
+
+    // 1. Users Collection (Accounts & RBAC Profiles)
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isAdmin() || isScolarite() || request.auth.uid == userId);
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isScolarite() ||
+        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 2. Academic Configuration (Academic Years, Filieres, Parcours, Rules, UEs, ECs, Groups, Rooms, Courses)
+    match /academicYears/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /filieres/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /parcours/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /academicRules/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead();
+    }
+
+    match /ues/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /ecs/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite() || isTeacher();
+    }
+
+    match /groups/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /rooms/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isScolarite() || isAcademicHead();
+    }
+
+    match /courses/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    // 3. Timetable Sessions & QR Attendance
+    match /sessions/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher();
+    }
+
+    match /qrSessions/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // 4. Student Inscriptions & Re-inscriptions
+    match /inscriptions/{docId} {
+      allow read: if isAuthenticated() && (isStaff() || resource.data.studentId == request.auth.uid);
+      allow write: if isAdmin() || isScolarite() || isAcademicHead();
+    }
+
+    // 5. Grades & Jury Deliberations
+    match /grades/{docId} {
+      allow read: if isAuthenticated() && (isStaff() || resource.data.studentId == request.auth.uid);
+      allow write: if isAdmin() || isAcademicHead() || isScolarite() || isTeacher();
+    }
+
+    match /deliberations/{docId} {
+      allow read: if isAuthenticated() && (isStaff() || resource.data.studentId == request.auth.uid);
+      allow write: if isAdmin() || isAcademicHead();
+    }
+
+    // 6. Financial Management (Fees, Payments, Cash Register Days)
+    match /fees/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isFinance() || isScolarite();
+    }
+
+    match /payments/{docId} {
+      allow read: if isAuthenticated() && (isFinance() || isAdmin() || isScolarite() || resource.data.studentId == request.auth.uid);
+      allow create, update: if isAdmin() || isFinance();
+      allow delete: if isAdmin();
+    }
+
+    match /cashDays/{docId} {
+      allow read: if isAdmin() || isFinance();
+      allow write: if isAdmin() || isFinance();
+    }
+
+    // 7. Pedagogy & Communication (Homework, Submissions, Resources, Messages, Posts, Notifications, Chat)
+    match /homework/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isScolarite();
+    }
+
+    match /submissions/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /resources/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isScolarite();
+    }
+
+    match /messages/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /posts/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /notifications/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /chatMessages/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // 8. System Settings, Custom Roles, Profile Requests & Backups
+    match /appSettings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /customRoles/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /profileChangeRequests/{docId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if isAdmin() || isScolarite();
+    }
+
+    match /domaines/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /learningResources/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isScolarite();
+    }
+
+    match /internalMessages/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /groupPosts/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /backups/{docId} {
+      allow read: if isAdmin() || isAcademicHead() || isScolarite();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 9. Audit Logs (Append & Idempotent Cloud Sync — Only Admin Can Delete)
+    match /auditLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+  }
+}

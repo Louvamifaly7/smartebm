@@ -14,7 +14,7 @@ import {
   RotateCcw,
   Ban,
 } from 'lucide-react';
-import { TimetableSession } from '../types';
+import { TimetableSession, SessionActivityType } from '../types';
 import { detectSessionConflicts } from '../utils/conflictDetector';
 
 interface SessionModalProps {
@@ -41,11 +41,37 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     rescheduleSession,
     cancelSession,
     validateSession,
+    appSettings,
   } = useApp();
 
   const teachers = users.filter((u) => u.role === 'TEACHER');
 
+  const scheduleConfig = appSettings.scheduleSettings || {
+    dayStartTime: '07:00',
+    dayEndTime: '18:00',
+    slotIntervalMinutes: 30,
+  };
+
+  const configurableTimeSlots = (() => {
+    const [startH, startM] = (scheduleConfig.dayStartTime || '07:00').split(':').map(Number);
+    const [endH, endM] = (scheduleConfig.dayEndTime || '18:00').split(':').map(Number);
+    const step = scheduleConfig.slotIntervalMinutes || 30;
+    const startTotal = (isNaN(startH) ? 7 : startH) * 60 + (isNaN(startM) ? 0 : startM);
+    const endTotal = (isNaN(endH) ? 18 : endH) * 60 + (isNaN(endM) ? 0 : endM);
+    const slots: string[] = [];
+    for (let m = startTotal; m <= endTotal; m += step) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      slots.push(`${hh}:${mm}`);
+    }
+    return slots.length >= 2 ? slots : ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
+  })();
+
   // Form State
+  const [sessionType, setSessionType] = useState<SessionActivityType>('COURSE');
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventSpeaker, setEventSpeaker] = useState('');
+  const [eventCategoryLabel, setEventCategoryLabel] = useState('');
   const [courseId, setCourseId] = useState('');
   const [teacherId, setTeacherId] = useState('');
   const [groupIds, setGroupIds] = useState<string[]>([]);
@@ -72,6 +98,10 @@ export const SessionModal: React.FC<SessionModalProps> = ({
   // Initialize form when opened or mode changed
   useEffect(() => {
     if (sessionToEdit) {
+      setSessionType(sessionToEdit.sessionType || 'COURSE');
+      setEventTitle(sessionToEdit.eventTitle || '');
+      setEventSpeaker(sessionToEdit.eventSpeaker || '');
+      setEventCategoryLabel(sessionToEdit.eventCategoryLabel || '');
       setCourseId(sessionToEdit.courseId);
       setTeacherId(sessionToEdit.teacherId);
       setGroupIds(sessionToEdit.groupIds);
@@ -87,6 +117,10 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       setRescheduleRoomId(sessionToEdit.roomId);
     } else {
       const defaultCourse = courses[0];
+      setSessionType('COURSE');
+      setEventTitle('');
+      setEventSpeaker('');
+      setEventCategoryLabel('');
       setCourseId(defaultCourse?.id || '');
       setTeacherId(defaultCourse?.teacherIds[0] || teachers[0]?.id || '');
       setGroupIds(defaultCourse?.groupIds || [groups[0]?.id || '']);
@@ -103,12 +137,13 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
   // Real-time conflict detection effect
   useEffect(() => {
-    if ((mode === 'CREATE' || mode === 'EDIT') && courseId && teacherId && roomId && date && startTime && endTime) {
+    const validActivity = sessionType === 'COURSE' ? Boolean(courseId) : Boolean(eventTitle.trim());
+    if ((mode === 'CREATE' || mode === 'EDIT') && validActivity && roomId && date && startTime && endTime) {
       const result = detectSessionConflicts(
         {
           id: sessionToEdit?.id,
-          courseId,
-          teacherId,
+          courseId: sessionType === 'COURSE' ? courseId : `EVENT-${sessionType}`,
+          teacherId: teacherId || 'EXTERNAL_SPEAKER',
           groupIds,
           roomId,
           date,
@@ -124,7 +159,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     } else {
       setConflictResult({ hasConflict: false, conflicts: [], suggestions: [] });
     }
-  }, [courseId, teacherId, groupIds, roomId, date, startTime, endTime, mode, sessionToEdit, sessions]);
+  }, [sessionType, eventTitle, courseId, teacherId, groupIds, roomId, date, startTime, endTime, mode, sessionToEdit, sessions]);
 
   if (!isOpen) return null;
 
@@ -176,11 +211,24 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
     // CREATE or EDIT
     const durationHours = calculateDuration(startTime, endTime);
+    const isCustomEvent = sessionType !== 'COURSE';
+
+    if (isCustomEvent && !eventTitle.trim()) {
+      alert('Veuillez saisir le titre de la conférence ou de l’événement.');
+      return;
+    }
 
     if (mode === 'CREATE') {
       const res = addSession({
-        courseId,
-        teacherId,
+        courseId: isCustomEvent ? `EVENT-${sessionType}` : courseId,
+        sessionType,
+        eventTitle: isCustomEvent ? eventTitle.trim() : undefined,
+        eventSpeaker: isCustomEvent ? eventSpeaker.trim() : undefined,
+        eventCategoryLabel:
+          sessionType === 'AUTRE_EVENEMENT' && eventCategoryLabel.trim()
+            ? eventCategoryLabel.trim()
+            : undefined,
+        teacherId: teacherId || 'EXTERNAL_SPEAKER',
         groupIds,
         roomId,
         date,
@@ -199,8 +247,15 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       updateSession(
         sessionToEdit.id,
         {
-          courseId,
-          teacherId,
+          courseId: isCustomEvent ? `EVENT-${sessionType}` : courseId,
+          sessionType,
+          eventTitle: isCustomEvent ? eventTitle.trim() : undefined,
+          eventSpeaker: isCustomEvent ? eventSpeaker.trim() : undefined,
+          eventCategoryLabel:
+            sessionType === 'AUTRE_EVENEMENT' && eventCategoryLabel.trim()
+              ? eventCategoryLabel.trim()
+              : undefined,
+          teacherId: teacherId || 'EXTERNAL_SPEAKER',
           groupIds,
           roomId,
           date,
@@ -242,15 +297,15 @@ export const SessionModal: React.FC<SessionModalProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-900">
-                {mode === 'CREATE' && 'Planifier une nouvelle séance'}
-                {mode === 'EDIT' && 'Modifier la séance'}
-                {mode === 'RESCHEDULE' && 'Reporter la séance de cours'}
+                {mode === 'CREATE' && 'Planifier un Cours, une Conférence ou un Événement'}
+                {mode === 'EDIT' && 'Modifier la séance ou l’événement'}
+                {mode === 'RESCHEDULE' && 'Reporter la séance'}
                 {mode === 'CANCEL' && 'Annuler la séance (Notification automatique)'}
               </h3>
               <p className="text-xs text-slate-500">
                 {mode === 'CANCEL'
                   ? 'Déclenche des notifications automatiques'
-                  : 'Vérification automatique des conflits de salle, enseignant et groupe'}
+                  : 'Insertion directe dans l’emploi du temps des étudiants avec vérification des conflits'}
               </p>
             </div>
           </div>
@@ -335,27 +390,39 @@ export const SessionModal: React.FC<SessionModalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Début
+                    Début ({scheduleConfig.slotIntervalMinutes} mn)
                   </label>
-                  <input
-                    type="time"
+                  <select
                     value={rescheduleStartTime}
                     onChange={(e) => setRescheduleStartTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
                     required
-                  />
+                  >
+                    {configurableTimeSlots.slice(0, -1).map((slot) => (
+                      <option key={`resc-start-${slot}`} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Fin
+                    Fin ({scheduleConfig.slotIntervalMinutes} mn)
                   </label>
-                  <input
-                    type="time"
+                  <select
                     value={rescheduleEndTime}
                     onChange={(e) => setRescheduleEndTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
                     required
-                  />
+                  >
+                    {configurableTimeSlots
+                      .filter((slot) => slot > rescheduleStartTime)
+                      .map((slot) => (
+                        <option key={`resc-end-${slot}`} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                  </select>
                 </div>
               </div>
 
@@ -378,44 +445,143 @@ export const SessionModal: React.FC<SessionModalProps> = ({
           {/* MODE: CREATE OR EDIT */}
           {(mode === 'CREATE' || mode === 'EDIT') && (
             <>
-              {/* Course & Teacher */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Matière / Cours *
-                  </label>
-                  <select
-                    value={courseId}
-                    onChange={(e) => handleCourseChange(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium"
-                    required
-                  >
-                    {courses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code} - {c.title} ({c.totalHours}h)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Enseignant responsable *
-                  </label>
-                  <select
-                    value={teacherId}
-                    onChange={(e) => setTeacherId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm"
-                    required
-                  >
-                    {teachers.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+              {/* Type d'activité à insérer dans l'emploi du temps */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Type d'activité à planifier *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  {[
+                    { id: 'COURSE', label: '📚 Cours académique' },
+                    { id: 'CONFERENCE', label: '🎤 Conférence' },
+                    { id: 'SEMINAIRE', label: '🏛️ Séminaire / Atelier' },
+                    { id: 'SOUTENANCE', label: '🎓 Soutenance / Jury' },
+                    { id: 'EXAMEN', label: '📝 Examen / Épreuve' },
+                    { id: 'AUTRE_EVENEMENT', label: '📌 Autre événement' },
+                  ].map((typeOpt) => (
+                    <button
+                      key={typeOpt.id}
+                      type="button"
+                      onClick={() => setSessionType(typeOpt.id as SessionActivityType)}
+                      className={`px-3 py-2 rounded-xl font-bold text-left border transition-all cursor-pointer ${
+                        sessionType === typeOpt.id
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {typeOpt.label}
+                    </button>
+                  ))}
                 </div>
               </div>
+
+              {sessionType === 'COURSE' ? (
+                /* Course & Teacher */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Matière / Cours *
+                    </label>
+                    <select
+                      value={courseId}
+                      onChange={(e) => handleCourseChange(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium"
+                      required
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} - {c.title} ({c.totalHours}h)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Enseignant responsable *
+                    </label>
+                    <select
+                      value={teacherId}
+                      onChange={(e) => setTeacherId(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                      required
+                    >
+                      {teachers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                /* Custom Event / Conference Fields */
+                <div className="space-y-3 p-3.5 bg-purple-50/60 border border-purple-200 rounded-xl">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className={sessionType === 'AUTRE_EVENEMENT' ? '' : 'sm:col-span-2'}>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                        Intitulé de la conférence / événement *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Conférence sur l'Entrepreneuriat & FinTech à Madagascar"
+                        value={eventTitle}
+                        onChange={(e) => setEventTitle(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-sm font-bold text-slate-900"
+                      />
+                    </div>
+
+                    {sessionType === 'AUTRE_EVENEMENT' && (
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                          Catégorie personnalisée
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Forum Entreprises, Visite d'étude..."
+                          value={eventCategoryLabel}
+                          onChange={(e) => setEventCategoryLabel(e.target.value)}
+                          className="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-sm font-semibold text-slate-800"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                        Intervenant(e) / Conférencier
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: M. Tahiry Rakotoarisoa (DG FinTech Mada)"
+                        value={eventSpeaker}
+                        onChange={(e) => setEventSpeaker(e.target.value)}
+                        className="w-full p-2 bg-white border border-purple-300 rounded-xl text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                        Enseignant référent / Modérateur (optionnel)
+                      </label>
+                      <select
+                        value={teacherId}
+                        onChange={(e) => setTeacherId(e.target.value)}
+                        className="w-full p-2 bg-white border border-purple-300 rounded-xl text-xs"
+                      >
+                        <option value="EXTERNAL_SPEAKER">-- Intervenant externe uniquement --</option>
+                        {teachers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Group selection & Room selection */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -479,27 +645,47 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Heure début
+                    Heure début ({scheduleConfig.slotIntervalMinutes} mn)
                   </label>
-                  <input
-                    type="time"
+                  <select
                     value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    onChange={(e) => {
+                      const st = e.target.value;
+                      setStartTime(st);
+                      const [h, m] = st.split(':').map(Number);
+                      const endMinutes = Math.min(18 * 60, h * 60 + m + 120);
+                      const endH = String(Math.floor(endMinutes / 60)).padStart(2, '0');
+                      const endM = String(endMinutes % 60).padStart(2, '0');
+                      setEndTime(`${endH}:${endM}`);
+                    }}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
                     required
-                  />
+                  >
+                    {configurableTimeSlots.slice(0, -1).map((slot) => (
+                      <option key={`create-start-${slot}`} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Heure fin
+                    Heure fin ({scheduleConfig.slotIntervalMinutes} mn)
                   </label>
-                  <input
-                    type="time"
+                  <select
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
                     required
-                  />
+                  >
+                    {configurableTimeSlots
+                      .filter((slot) => slot > startTime)
+                      .map((slot) => (
+                        <option key={`create-end-${slot}`} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                  </select>
                 </div>
               </div>
 

@@ -54,15 +54,17 @@ export function detectSessionConflicts(
     }
   }
 
-  // 2. Check Teacher conflict
-  for (const session of activeSessionsOnDate) {
-    if (session.teacherId === candidate.teacherId) {
-      if (doIntervalsOverlap(candidate.startTime, candidate.endTime, session.startTime, session.endTime)) {
-        conflicts.push({
-          type: 'TEACHER',
-          message: `L'enseignant(e) ${teacher?.name || 'sélectionné(e)'} a déjà une séance programmée de ${session.startTime} à ${session.endTime}.`,
-          conflictingSession: session,
-        });
+  // 2. Check Teacher conflict (skip if external speaker for a conference/custom event)
+  if (candidate.teacherId && candidate.teacherId !== 'EXTERNAL_SPEAKER') {
+    for (const session of activeSessionsOnDate) {
+      if (session.teacherId === candidate.teacherId) {
+        if (doIntervalsOverlap(candidate.startTime, candidate.endTime, session.startTime, session.endTime)) {
+          conflicts.push({
+            type: 'TEACHER',
+            message: `L'enseignant(e) ${teacher?.name || 'sélectionné(e)'} a déjà une séance programmée de ${session.startTime} à ${session.endTime}.`,
+            conflictingSession: session,
+          });
+        }
       }
     }
   }
@@ -77,7 +79,7 @@ export function detectSessionConflicts(
           .join(', ');
         conflicts.push({
           type: 'GROUP',
-          message: `Le(s) groupe(s) ${groupNames} ont déjà un cours programmé de ${session.startTime} à ${session.endTime}.`,
+          message: `Le(s) groupe(s) ${groupNames} ont déjà une activité programmée de ${session.startTime} à ${session.endTime}.`,
           conflictingSession: session,
         });
       }
@@ -175,9 +177,12 @@ export function findAlternativeSlots(
         const roomBusy = activeSessions.some(
           (s) => s.roomId === targetRoom.id && doIntervalsOverlap(slot.start, slot.end, s.startTime, s.endTime)
         );
-        const teacherBusy = activeSessions.some(
-          (s) => s.teacherId === candidate.teacherId && doIntervalsOverlap(slot.start, slot.end, s.startTime, s.endTime)
-        );
+        const teacherBusy =
+          candidate.teacherId && candidate.teacherId !== 'EXTERNAL_SPEAKER'
+            ? activeSessions.some(
+                (s) => s.teacherId === candidate.teacherId && doIntervalsOverlap(slot.start, slot.end, s.startTime, s.endTime)
+              )
+            : false;
         const groupBusy = activeSessions.some(
           (s) => candidate.groupIds.some((gId) => s.groupIds.includes(gId)) && doIntervalsOverlap(slot.start, slot.end, s.startTime, s.endTime)
         );

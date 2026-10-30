@@ -31,12 +31,41 @@ export const HomeworkAndResourcesView: React.FC = () => {
     gradeSubmission,
     addLearningResource,
     deleteLearningResource,
+    appSettings,
+    selectedAcademicYear,
   } = useApp();
 
   const isStudent = currentUser.role === 'STUDENT';
-  const isTeacherOrAdmin = ['TEACHER', 'ADMIN', 'ACADEMIC_HEAD', 'SCHEDULER'].includes(currentUser.role);
+  const isTeacherOrAdmin = ['TEACHER', 'ADMIN', 'ADMIN_STAFF', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(currentUser.role);
 
   const [activeTab, setActiveTab] = useState<'HOMEWORK' | 'RESOURCES'>('HOMEWORK');
+  const [uploadError, setUploadError] = useState<string>('');
+  const [downloadNotice, setDownloadNotice] = useState<string>('');
+
+  const storageConfig = appSettings.storageSettings || {
+    maxFileSizeMb: 25,
+    allowedExtensions: ['PDF', 'DOCX', 'XLSX', 'PPTX', 'JPG', 'PNG', 'ZIP'],
+    globalQuotaMb: 2048,
+    autoArchivePreviousYears: false,
+  };
+
+  // Real browser file download helper (ACC-021 - no window.alert)
+  const triggerRealFileDownload = (fileName: string, fileUrl?: string, description?: string) => {
+    const a = document.createElement('a');
+    if (fileUrl && fileUrl !== '#') {
+      a.href = fileUrl;
+    } else {
+      const content = `Document Officiel EBM Institute SIS\nFichier : ${fileName}\nDescription : ${description || 'Support pédagogique / Rendu de devoir'}\nAnnée Académique : ${selectedAcademicYear}\nDate d'extraction : ${new Date().toISOString()}`;
+      const blob = new Blob([content], { type: 'application/octet-stream' });
+      a.href = URL.createObjectURL(blob);
+    }
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setDownloadNotice(`Téléchargement lancé : ${fileName}`);
+    setTimeout(() => setDownloadNotice(''), 3500);
+  };
 
   // Modals state
   const [showCreateHwModal, setShowCreateHwModal] = useState<boolean>(false);
@@ -48,11 +77,16 @@ export const HomeworkAndResourcesView: React.FC = () => {
     dueDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 16),
     allowLateSubmission: true,
     maxScore: 20,
+    attachmentFileName: '',
+    attachmentFileUrl: '',
   });
 
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
   const [selectedHwForSubmit, setSelectedHwForSubmit] = useState<HomeworkAssignment | null>(null);
   const [submissionFileName, setSubmissionFileName] = useState<string>('');
+  const [submissionFileSize, setSubmissionFileSize] = useState<string>('1.2 MB');
+  const [submissionFileBytes, setSubmissionFileBytes] = useState<number>(1258291);
+  const [submissionFileUrl, setSubmissionFileUrl] = useState<string>('');
   const [submissionComment, setSubmissionComment] = useState<string>('');
 
   const [showGradeModal, setShowGradeModal] = useState<boolean>(false);
@@ -69,6 +103,8 @@ export const HomeworkAndResourcesView: React.FC = () => {
     category: 'PDF' as LearningResource['category'],
     fileName: 'Support_Cours.pdf',
     fileSize: '2.4 MB',
+    fileSizeBytes: 2516582,
+    fileUrl: '',
   });
 
   const handleCreateHomeworkSubmit = (e: React.FormEvent) => {
@@ -80,7 +116,9 @@ export const HomeworkAndResourcesView: React.FC = () => {
       groupId: hwForm.groupId,
       teacherId: currentUser.id,
       title: hwForm.title,
-      instructions: hwForm.instructions,
+      instructions: hwForm.attachmentFileName
+        ? `${hwForm.instructions}\n\n[Pièce jointe énoncé : ${hwForm.attachmentFileName}]`
+        : hwForm.instructions,
       dueDate: new Date(hwForm.dueDate).toISOString(),
       allowLateSubmission: hwForm.allowLateSubmission,
       maxScore: Number(hwForm.maxScore),
@@ -95,18 +133,33 @@ export const HomeworkAndResourcesView: React.FC = () => {
       dueDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 16),
       allowLateSubmission: true,
       maxScore: 20,
+      attachmentFileName: '',
+      attachmentFileUrl: '',
     });
   };
 
   const handleSubmitHomeworkAction = (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadError('');
     if (!selectedHwForSubmit) return;
 
     const fileToSubmit = submissionFileName.trim() || `${currentUser.name.replace(/\s+/g, '_')}_Devoir.zip`;
-    submitHomework(selectedHwForSubmit.id, fileToSubmit, '1.2 MB', submissionComment);
+    const res = submitHomework(
+      selectedHwForSubmit.id,
+      fileToSubmit,
+      submissionFileSize,
+      submissionComment,
+      submissionFileBytes,
+      submissionFileUrl || undefined
+    );
+    if (!res.success) {
+      setUploadError(res.error || 'Dépôt refusé.');
+      return;
+    }
     setShowSubmitModal(false);
     setSelectedHwForSubmit(null);
     setSubmissionFileName('');
+    setSubmissionFileUrl('');
     setSubmissionComment('');
   };
 
@@ -122,19 +175,27 @@ export const HomeworkAndResourcesView: React.FC = () => {
 
   const handleAddResourceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setUploadError('');
     if (!resourceForm.title.trim()) return;
 
-    addLearningResource({
+    const res = addLearningResource({
       ecId: resourceForm.ecId,
       groupId: resourceForm.groupId,
       teacherId: currentUser.id,
       title: resourceForm.title,
       description: resourceForm.description,
       category: resourceForm.category,
-      fileUrl: '#',
+      fileUrl: resourceForm.fileUrl || '#',
       fileName: resourceForm.fileName,
       fileSize: resourceForm.fileSize,
+      fileSizeBytes: resourceForm.fileSizeBytes,
+      academicYear: selectedAcademicYear,
     });
+
+    if (!res.success) {
+      setUploadError(res.error || 'Ressource refusée.');
+      return;
+    }
 
     setShowAddResourceModal(false);
     setResourceForm({
@@ -145,16 +206,19 @@ export const HomeworkAndResourcesView: React.FC = () => {
       category: 'PDF',
       fileName: 'Support_Cours.pdf',
       fileSize: '2.4 MB',
+      fileSizeBytes: 2516582,
+      fileUrl: '',
     });
   };
 
+  // Enforce strict class/group access control for students (ACC-026)
   const visibleHomework = isStudent
-    ? homework.filter((h) => currentUser.groupId ? h.groupId === currentUser.groupId : true)
+    ? homework.filter((h) => (currentUser.groupId ? h.groupId === currentUser.groupId : false))
     : homework;
 
   const visibleResources = isStudent
-    ? learningResources.filter((r) => currentUser.groupId ? r.groupId === currentUser.groupId : true)
-    : learningResources;
+    ? learningResources.filter((r) => !r.isArchived && (currentUser.groupId ? r.groupId === currentUser.groupId : false))
+    : learningResources.filter((r) => !r.isArchived);
 
   return (
     <div className="space-y-6">
@@ -422,7 +486,7 @@ export const HomeworkAndResourcesView: React.FC = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => alert(`Téléchargement initié pour : ${res.fileName}`)}
+                        onClick={() => triggerRealFileDownload(res.fileName, res.fileUrl, res.description)}
                         className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2.5 py-1 rounded-lg transition-colors cursor-pointer text-[11px]"
                       >
                         <Download className="w-3.5 h-3.5 text-blue-600" />
@@ -435,6 +499,13 @@ export const HomeworkAndResourcesView: React.FC = () => {
             })
           )}
         </div>
+        </div>
+      )}
+
+      {downloadNotice && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-900 text-white px-4 py-2.5 rounded-xl shadow-xl border border-emerald-500 text-xs font-bold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{downloadNotice}</span>
         </div>
       )}
 
@@ -451,7 +522,7 @@ export const HomeworkAndResourcesView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Assigner un Nouveau Devoir</h3>
-                <p className="text-xs text-slate-500">Dépôt et notation sur 20</p>
+                <p className="text-xs text-slate-500">Dépôt et notation sur 20 • Pièce jointe énoncé depuis votre appareil</p>
               </div>
             </div>
 
@@ -502,12 +573,34 @@ export const HomeworkAndResourcesView: React.FC = () => {
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">Consignes et barème :</label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   required
                   placeholder="Détaillez les objectifs, contraintes de rendu (format zip/pdf), et critères..."
                   value={hwForm.instructions}
                   onChange={(e) => setHwForm({ ...hwForm, instructions: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg p-2"
+                />
+              </div>
+
+              {/* Sélecteur de fichier réel depuis l'appareil (ACC-019) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <label className="font-bold text-slate-700 block">
+                  Joindre un sujet / énoncé depuis l'appareil (PDF, DOCX, ZIP...) :
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.xlsx,.pptx,.jpg,.png,.zip"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setHwForm((prev) => ({
+                        ...prev,
+                        attachmentFileName: file.name,
+                        attachmentFileUrl: URL.createObjectURL(file),
+                      }));
+                    }
+                  }}
+                  className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 cursor-pointer"
                 />
               </div>
 
@@ -556,7 +649,7 @@ export const HomeworkAndResourcesView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Déposer mon travail (Étudiant) */}
+      {/* MODAL: Déposer mon travail (Étudiant - ACC-020, ACC-022, ACC-023) */}
       {showSubmitModal && selectedHwForSubmit && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <form
@@ -568,19 +661,52 @@ export const HomeworkAndResourcesView: React.FC = () => {
                 <UploadCloud className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Dépôt de Devoir</h3>
+                <h3 className="text-lg font-bold text-slate-800">Dépôt de Devoir Officiel</h3>
                 <p className="text-xs text-slate-500">{selectedHwForSubmit.title}</p>
               </div>
             </div>
 
+            {uploadError && (
+              <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs font-bold text-rose-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+
             <div className="space-y-3 text-xs">
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                <label className="font-bold text-emerald-950 block">
+                  1. Choisir un fichier depuis votre appareil :
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    setUploadError('');
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSubmissionFileName(file.name);
+                      setSubmissionFileBytes(file.size);
+                      setSubmissionFileSize(`${(file.size / (1024 * 1024)).toFixed(2)} MB`);
+                      setSubmissionFileUrl(URL.createObjectURL(file));
+                    }
+                  }}
+                  className="w-full text-xs text-slate-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
+                />
+                <div className="text-[10px] text-slate-500">
+                  Formats autorisés : <strong>{storageConfig.allowedExtensions.join(', ')}</strong> • Taille max : <strong>{storageConfig.maxFileSizeMb} Mo</strong>
+                </div>
+              </div>
+
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Nom de votre fichier (ex: archive .zip ou .pdf) :</label>
+                <label className="font-semibold text-slate-700 block mb-1">Nom du fichier téléversé :</label>
                 <input
                   type="text"
                   placeholder={`${currentUser.name.replace(/\s+/g, '_')}_Devoir.zip`}
                   value={submissionFileName}
-                  onChange={(e) => setSubmissionFileName(e.target.value)}
+                  onChange={(e) => {
+                    setUploadError('');
+                    setSubmissionFileName(e.target.value);
+                  }}
                   className="w-full border border-slate-300 rounded-lg p-2 font-mono"
                 />
               </div>
@@ -600,7 +726,10 @@ export const HomeworkAndResourcesView: React.FC = () => {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setShowSubmitModal(false)}
+                onClick={() => {
+                  setUploadError('');
+                  setShowSubmitModal(false);
+                }}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
               >
                 Annuler
@@ -634,11 +763,21 @@ export const HomeworkAndResourcesView: React.FC = () => {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-600">
-                <span className="font-bold text-slate-800">Fichier soumis :</span> {selectedSubForGrade.fileName}
-                {selectedSubForGrade.studentComment && (
-                  <p className="italic text-slate-500 mt-1">"{selectedSubForGrade.studentComment}"</p>
-                )}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-600 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800">Fichier soumis :</span> {selectedSubForGrade.fileName}
+                  {selectedSubForGrade.studentComment && (
+                    <p className="italic text-slate-500 mt-1">"{selectedSubForGrade.studentComment}"</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => triggerRealFileDownload(selectedSubForGrade.fileName, selectedSubForGrade.fileUrl, selectedSubForGrade.studentComment)}
+                  className="px-2.5 py-1 bg-blue-600 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer"
+                >
+                  <Download className="w-3 h-3" />
+                  Télécharger
+                </button>
               </div>
 
               <div>
@@ -687,7 +826,7 @@ export const HomeworkAndResourcesView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Ajouter support pédagogique */}
+      {/* MODAL: Ajouter support pédagogique (ACC-019, ACC-022, ACC-023) */}
       {showAddResourceModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <form
@@ -700,24 +839,47 @@ export const HomeworkAndResourcesView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Ajouter un Support de Cours</h3>
-                <p className="text-xs text-slate-500">Mise à disposition pour les étudiants</p>
+                <p className="text-xs text-slate-500">Téléversement direct depuis votre appareil</p>
               </div>
             </div>
 
+            {uploadError && (
+              <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs font-bold text-rose-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+
             <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Élément Constitutif (EC) :</label>
-                <select
-                  value={resourceForm.ecId}
-                  onChange={(e) => setResourceForm({ ...resourceForm, ecId: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg p-2 font-bold"
-                >
-                  {ecs.map((ec) => (
-                    <option key={ec.id} value={ec.id}>
-                      {ec.code} - {ec.title}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Élément Constitutif (EC) :</label>
+                  <select
+                    value={resourceForm.ecId}
+                    onChange={(e) => setResourceForm({ ...resourceForm, ecId: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg p-2 font-bold"
+                  >
+                    {ecs.map((ec) => (
+                      <option key={ec.id} value={ec.id}>
+                        {ec.code} - {ec.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Groupe / Classe cible :</label>
+                  <select
+                    value={resourceForm.groupId}
+                    onChange={(e) => setResourceForm({ ...resourceForm, groupId: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg p-2 font-bold"
+                  >
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.code} ({g.name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -730,6 +892,33 @@ export const HomeworkAndResourcesView: React.FC = () => {
                   onChange={(e) => setResourceForm({ ...resourceForm, title: e.target.value })}
                   className="w-full border border-slate-300 rounded-lg p-2"
                 />
+              </div>
+
+              <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-1.5">
+                <label className="font-bold text-purple-950 block">
+                  Sélectionner le fichier depuis votre appareil :
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    setUploadError('');
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setResourceForm((prev) => ({
+                        ...prev,
+                        fileName: file.name,
+                        fileSizeBytes: file.size,
+                        fileSize: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+                        fileUrl: URL.createObjectURL(file),
+                        title: prev.title || file.name.replace(/\.[^/.]+$/, ''),
+                      }));
+                    }
+                  }}
+                  className="w-full text-xs text-slate-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer"
+                />
+                <div className="text-[10px] text-slate-500">
+                  Extensions autorisées : <strong>{storageConfig.allowedExtensions.join(', ')}</strong> • Max : <strong>{storageConfig.maxFileSizeMb} Mo</strong>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -754,7 +943,10 @@ export const HomeworkAndResourcesView: React.FC = () => {
                     type="text"
                     required
                     value={resourceForm.fileName}
-                    onChange={(e) => setResourceForm({ ...resourceForm, fileName: e.target.value })}
+                    onChange={(e) => {
+                      setUploadError('');
+                      setResourceForm({ ...resourceForm, fileName: e.target.value });
+                    }}
                     className="w-full border border-slate-300 rounded-lg p-2 font-mono"
                   />
                 </div>
@@ -775,7 +967,10 @@ export const HomeworkAndResourcesView: React.FC = () => {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setShowAddResourceModal(false)}
+                onClick={() => {
+                  setUploadError('');
+                  setShowAddResourceModal(false);
+                }}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
               >
                 Annuler

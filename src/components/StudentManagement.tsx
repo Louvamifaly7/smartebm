@@ -1,82 +1,116 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
-  Users,
   UserPlus,
   Upload,
   Download,
   AlertTriangle,
   CheckCircle,
-  XCircle,
   FileSpreadsheet,
-  Lock,
-  Power,
-  Shield,
   Search,
-  Filter,
   GraduationCap,
-  Banknote,
-  Award,
-  ChevronRight,
   Eye,
-  Calendar,
-  Layers,
   ArrowUpDown,
   X,
   CreditCard,
-  Mail,
-  Phone,
-  Clock,
-  Sparkles,
+  Edit2,
+  Plus,
+  Trash2,
+  History,
+  Linkedin,
+  Camera,
+  ShieldCheck,
+  QrCode,
 } from 'lucide-react';
-import { ImportResult, ImportStudentRow, User, PaymentMethod } from '../types';
+import { ImportResult, ImportStudentRow, User, PaymentMethod, ParentContactEntry } from '../types';
+import { UniversalStudentSelector } from './UniversalStudentSelector';
+import { StudentCardModal } from './StudentCardModal';
 
 interface StudentManagementProps {
   onNavigateToCreate?: () => void;
 }
 
-export const StudentManagement: React.FC<StudentManagementProps> = ({ onNavigateToCreate }) => {
+export const StudentManagement: React.FC<StudentManagementProps> = () => {
   const {
+    currentUser,
     users,
     groups,
     filieres,
+    parcours,
     academicYears,
     selectedAcademicYear,
+    setSelectedAcademicYear,
     ues,
     ecs,
-    courses,
     grades,
     fees,
     payments,
     getStudentFinancialSummary,
     getStudentEcGrade,
+    computeStudentDeliberationPreview,
     recordPayment,
+    cancelPayment,
     createStudent,
     importStudents,
-    toggleUserStatus,
+    updateUser,
+    profileChangeRequests,
+    requestProfileChange,
+    approveProfileChangeRequest,
+    rejectProfileChangeRequest,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'REPERTOIRE' | 'INDIVIDUAL' | 'MASS_IMPORT'>('REPERTOIRE');
-  
-  // Filtering & Sorting State
+
+  // Filtering & Sorting State (ACC-043 to ACC-046)
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMention, setSelectedMention] = useState<string>('ALL');
+  const [selectedParcours, setSelectedParcours] = useState<string>('ALL');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<string>('ALL');
   const [financialFilter, setFinancialFilter] = useState<'ALL' | 'UNPAID' | 'PAID'>('ALL');
   const [sortBy, setSortBy] = useState<'NAME_ASC' | 'MATRICULE_ASC' | 'UNPAID_DESC' | 'GRADE_DESC'>('NAME_ASC');
 
-  // Modal Detail State
-  const [selectedStudentDetail, setSelectedStudentDetail] = useState<User | null>(null);
+  // Modal Detail State & Card Modal State
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'GRADES' | 'FINANCES' | 'PROFILE'>('GRADES');
+  const [studentGradeSemester, setStudentGradeSemester] = useState<'ANNUEL' | 'S1' | 'S2'>('ANNUEL');
+  const [cardModalStudent, setCardModalStudent] = useState<User | null>(null);
 
-  // Quick In-Modal Payment
+  // Edit Mode inside Fiche Individuelle Étudiant (ACC-055 to ACC-062)
+  const [isEditingSheet, setIsEditingSheet] = useState(false);
+  const [editCivilite, setEditCivilite] = useState<'M.' | 'Mme' | 'Mlle' | 'Dr.' | 'Prof.'>('M.');
+  const [editLastName, setEditLastName] = useState('');
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editBirthDate, setEditBirthDate] = useState('');
+  const [editBirthPlace, setEditBirthPlace] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPostalCode, setEditPostalCode] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editOriginSchool, setEditOriginSchool] = useState('');
+  const [editBacSeries, setEditBacSeries] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhones, setEditPhones] = useState<string[]>(['']);
+  const [editLinkedIn, setEditLinkedIn] = useState('');
+  const [editPhotoUrl, setEditPhotoUrl] = useState('');
+  const [editParentContacts, setEditParentContacts] = useState<ParentContactEntry[]>([]);
+  const [editConsent, setEditConsent] = useState({ academic: true, attendance: true, financial: true });
+  const [sheetSaveBanner, setSheetSaveBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Student change request state (ACC-059)
+  const [changeReqField, setChangeReqField] = useState('Nom / Prénom / État civil');
+  const [changeReqNewVal, setChangeReqNewVal] = useState('');
+  const [changeReqReason, setChangeReqReason] = useState('');
+
+  // Quick In-Modal Payment & Cancellation
   const [isQuickPayOpen, setIsQuickPayOpen] = useState(false);
   const [quickPayFeeId, setQuickPayFeeId] = useState(fees[0]?.id || '');
-  const [quickPayAmount, setQuickPayAmount] = useState(250000);
+  const [quickPayAmount, setQuickPayAmount] = useState(fees[0]?.amountAr || 250000);
   const [quickPayMethod, setQuickPayMethod] = useState<PaymentMethod>('MOBILE_MONEY');
   const [quickPayRef, setQuickPayRef] = useState('');
   const [quickPaySuccess, setQuickPaySuccess] = useState<string | null>(null);
+  const [quickPayError, setQuickPayError] = useState<string | null>(null);
+  const [cancellingPaymentId, setCancellingPaymentId] = useState<string | null>(null);
+  const [cancelReasonText, setCancelReasonText] = useState('Erreur de saisie / Encaissement par erreur');
 
   // Individual Form
   const [matricule, setMatricule] = useState('');
@@ -93,39 +127,170 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({ onNavigate
   const [importReport, setImportReport] = useState<ImportResult | null>(null);
 
   const students = useMemo(() => users.filter((u) => u.role === 'STUDENT'), [users]);
+  const selectedStudentDetail = useMemo(
+    () => (selectedStudentId ? users.find((u) => u.id === selectedStudentId) || null : null),
+    [users, selectedStudentId]
+  );
+
+  const canDirectEditIdentity = ['ADMIN', 'SCOLARITE', 'SCHEDULER', 'ADMIN_STAFF'].includes(currentUser.role);
+
+  const openStudentSheet = (student: User, initialTab: 'GRADES' | 'FINANCES' | 'PROFILE' = 'PROFILE') => {
+    setSelectedStudentId(student.id);
+    setDetailTab(initialTab);
+    setIsEditingSheet(false);
+    setSheetSaveBanner(null);
+    setQuickPayError(null);
+    setQuickPaySuccess(null);
+    const fin = getStudentFinancialSummary(student.id);
+    const firstUnpaid = fin.feeDetails.find((fd) => fd.remainingAr > 0);
+    if (firstUnpaid) {
+      setQuickPayFeeId(firstUnpaid.fee.id);
+      setQuickPayAmount(firstUnpaid.remainingAr);
+    } else if (fees[0]) {
+      setQuickPayFeeId(fees[0].id);
+      setQuickPayAmount(fees[0].amountAr);
+    }
+  };
+
+  const startEditingSheet = (student: User) => {
+    setEditCivilite(student.civilite || 'M.');
+    setEditLastName(student.lastName || student.name.split(' ').slice(-1)[0] || '');
+    setEditFirstName(student.firstName || student.name.split(' ').slice(0, -1).join(' ') || '');
+    setEditBirthDate(student.birthDate || '2005-01-01');
+    setEditBirthPlace(student.birthPlace || 'Antananarivo');
+    setEditAddress(student.address || '');
+    setEditPostalCode(student.postalCode || '101');
+    setEditCity(student.city || 'Antananarivo');
+    setEditOriginSchool(student.originSchool || '');
+    setEditBacSeries(student.bacSeries || 'Série C');
+    setEditEmail(student.email || '');
+    setEditPhones(student.phones && student.phones.length > 0 ? [...student.phones] : [student.phone || '']);
+    setEditLinkedIn(student.linkedInUrl || '');
+    setEditPhotoUrl(student.photoUrl || student.avatar || student.avatarUrl || '');
+    setEditParentContacts(
+      student.parentContacts && student.parentContacts.length > 0
+        ? [...student.parentContacts]
+        : [
+            {
+              id: `pc-${Date.now()}`,
+              relation: 'PERE',
+              nom: student.lastName || '',
+              prenoms: '',
+              phone: '+261 34 00 000 00',
+              email: '',
+              profession: '',
+              address: student.address || 'Antananarivo',
+            },
+          ]
+    );
+    setEditConsent({
+      academic: student.parentAccessConsent?.academic ?? true,
+      attendance: student.parentAccessConsent?.attendance ?? true,
+      financial: student.parentAccessConsent?.financial ?? true,
+    });
+    setIsEditingSheet(true);
+    setSheetSaveBanner(null);
+  };
+
+  const handleSaveStudentSheet = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudentDetail) return;
+
+    const cleanPhones = editPhones.map((p) => p.trim()).filter(Boolean);
+    const fullName = `${editFirstName.trim()} ${editLastName.trim()}`.trim() || selectedStudentDetail.name;
+
+    if (!editEmail.trim() || !editEmail.includes('@')) {
+      setSheetSaveBanner({ type: 'error', text: 'Format d’adresse e-mail invalide.' });
+      return;
+    }
+
+    const updates: Partial<User> = {
+      email: editEmail.trim(),
+      phone: cleanPhones[0] || undefined,
+      phones: cleanPhones,
+      linkedInUrl: editLinkedIn.trim() || undefined,
+      photoUrl: editPhotoUrl || undefined,
+      address: editAddress.trim() || undefined,
+      postalCode: editPostalCode.trim() || undefined,
+      city: editCity.trim() || undefined,
+      parentAccessConsent: editConsent,
+    };
+
+    if (canDirectEditIdentity) {
+      updates.civilite = editCivilite;
+      updates.lastName = editLastName.trim();
+      updates.firstName = editFirstName.trim();
+      updates.name = fullName;
+      updates.birthDate = editBirthDate;
+      updates.birthPlace = editBirthPlace.trim();
+      updates.originSchool = editOriginSchool.trim();
+      updates.bacSeries = editBacSeries.trim();
+      updates.parentContacts = editParentContacts;
+    }
+
+    updateUser(selectedStudentDetail.id, updates);
+    setIsEditingSheet(false);
+    setSheetSaveBanner({
+      type: 'success',
+      text: 'Fiche individuelle étudiant enregistrée et journalisée avec succès.',
+    });
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setEditPhotoUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDownloadPhoto = (student: User) => {
+    const url = student.photoUrl || student.avatar;
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Photo_${student.matricule || student.id}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   // Compute helper metrics per student
   const studentMetrics = useMemo(() => {
-    const map = new Map<string, {
-      averageGrade: number;
-      gradeCount: number;
-      totalFeesAr: number;
-      totalPaidAr: number;
-      unpaidBalanceAr: number;
-      filiereName: string;
-      groupCode: string;
-      academicYear: string;
-    }>();
+    const map = new Map<
+      string,
+      {
+        averageGrade: number;
+        gradeCount: number;
+        totalFeesAr: number;
+        totalPaidAr: number;
+        unpaidBalanceAr: number;
+        filiereName: string;
+        parcoursCode: string;
+        groupCode: string;
+        academicYear: string;
+      }
+    >();
 
     students.forEach((st) => {
-      // 1. Grades average
       const studentGrades = grades.filter((g) => g.studentId === st.id);
       let avg = 0;
       if (studentGrades.length > 0) {
         const sum = studentGrades.reduce((acc, curr) => acc + (curr.finalScore ?? 12), 0);
         avg = Math.round((sum / studentGrades.length) * 10) / 10;
       } else {
-        // Mock fallback baseline grade around 12-14 based on matricule hash for demo consistency
         const hash = (st.matricule || st.name).charCodeAt(st.name.length - 1) % 5;
         avg = 11.5 + hash * 0.8;
       }
 
-      // 2. Financial summary
       const fin = getStudentFinancialSummary(st.id);
-
-      // 3. Group & Filiere info
       const grp = groups.find((g) => g.id === st.groupId);
       const fil = filieres.find((f) => f.id === grp?.filiereId);
+      const parc = parcours.find((p) => p.id === grp?.parcoursId || p.filiereId === fil?.id);
 
       map.set(st.id, {
         averageGrade: avg,
@@ -134,67 +299,59 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({ onNavigate
         totalPaidAr: fin.totalPaidAr,
         unpaidBalanceAr: fin.balanceDueAr,
         filiereName: fil?.name || 'Mention Non Définie',
+        parcoursCode: parc?.code || 'TRONC-COMMUN',
         groupCode: grp?.code || 'Sans groupe',
         academicYear: grp?.academicYear || selectedAcademicYear,
       });
     });
 
     return map;
-  }, [students, grades, groups, filieres, selectedAcademicYear, getStudentFinancialSummary]);
+  }, [students, grades, groups, filieres, parcours, selectedAcademicYear, getStudentFinancialSummary]);
 
   // Filtered & Sorted Students
   const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
-      const metrics = studentMetrics.get(s.id);
-
-      // Mention Filter
-      if (selectedMention !== 'ALL') {
+    return students
+      .filter((s) => {
+        const metrics = studentMetrics.get(s.id);
         const grp = groups.find((g) => g.id === s.groupId);
-        if (grp?.filiereId !== selectedMention) return false;
-      }
 
-      // Group Filter
-      if (selectedGroup !== 'ALL' && s.groupId !== selectedGroup) return false;
+        if (selectedMention !== 'ALL' && grp?.filiereId !== selectedMention) return false;
+        if (selectedParcours !== 'ALL') {
+          const parc = parcours.find((p) => p.id === selectedParcours);
+          if (grp?.parcoursId && grp.parcoursId !== selectedParcours && grp?.filiereId !== parc?.filiereId) {
+            return false;
+          }
+        }
+        if (selectedGroup !== 'ALL' && s.groupId !== selectedGroup) return false;
+        if (selectedYear !== 'ALL' && metrics?.academicYear !== selectedYear) return false;
+        if (financialFilter === 'UNPAID' && (metrics?.unpaidBalanceAr || 0) <= 0) return false;
+        if (financialFilter === 'PAID' && (metrics?.unpaidBalanceAr || 0) > 0) return false;
 
-      // Academic Year Filter
-      if (selectedYear !== 'ALL') {
-        if (metrics?.academicYear !== selectedYear) return false;
-      }
+        if (searchTerm.trim()) {
+          const q = searchTerm.toLowerCase();
+          const matchesName = s.name.toLowerCase().includes(q);
+          const matchesLastName = s.lastName?.toLowerCase().includes(q);
+          const matchesFirstName = s.firstName?.toLowerCase().includes(q);
+          const matchesMatricule = s.matricule && s.matricule.toLowerCase().includes(q);
+          const matchesEmail = s.email && s.email.toLowerCase().includes(q);
+          const matchesGroup = metrics?.groupCode.toLowerCase().includes(q);
+          if (!matchesName && !matchesLastName && !matchesFirstName && !matchesMatricule && !matchesEmail && !matchesGroup)
+            return false;
+        }
 
-      // Financial Filter
-      if (financialFilter === 'UNPAID' && (metrics?.unpaidBalanceAr || 0) <= 0) return false;
-      if (financialFilter === 'PAID' && (metrics?.unpaidBalanceAr || 0) > 0) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const mA = studentMetrics.get(a.id);
+        const mB = studentMetrics.get(b.id);
 
-      // Search Term
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase();
-        const matchesName = s.name.toLowerCase().includes(q);
-        const matchesMatricule = s.matricule && s.matricule.toLowerCase().includes(q);
-        const matchesEmail = s.email && s.email.toLowerCase().includes(q);
-        const matchesGroup = metrics?.groupCode.toLowerCase().includes(q);
-        if (!matchesName && !matchesMatricule && !matchesEmail && !matchesGroup) return false;
-      }
-
-      return true;
-    }).sort((a, b) => {
-      const mA = studentMetrics.get(a.id);
-      const mB = studentMetrics.get(b.id);
-
-      if (sortBy === 'NAME_ASC') {
-        return a.name.localeCompare(b.name);
-      }
-      if (sortBy === 'MATRICULE_ASC') {
-        return (a.matricule || '').localeCompare(b.matricule || '');
-      }
-      if (sortBy === 'UNPAID_DESC') {
-        return (mB?.unpaidBalanceAr || 0) - (mA?.unpaidBalanceAr || 0);
-      }
-      if (sortBy === 'GRADE_DESC') {
-        return (mB?.averageGrade || 0) - (mA?.averageGrade || 0);
-      }
-      return 0;
-    });
-  }, [students, selectedMention, selectedGroup, selectedYear, financialFilter, searchTerm, sortBy, studentMetrics, groups]);
+        if (sortBy === 'NAME_ASC') return a.name.localeCompare(b.name);
+        if (sortBy === 'MATRICULE_ASC') return (a.matricule || '').localeCompare(b.matricule || '');
+        if (sortBy === 'UNPAID_DESC') return (mB?.unpaidBalanceAr || 0) - (mA?.unpaidBalanceAr || 0);
+        if (sortBy === 'GRADE_DESC') return (mB?.averageGrade || 0) - (mA?.averageGrade || 0);
+        return 0;
+      });
+  }, [students, selectedMention, selectedParcours, selectedGroup, selectedYear, financialFilter, searchTerm, sortBy, studentMetrics, groups, parcours]);
 
   // Overall Statistics for the filtered dataset
   const stats = useMemo(() => {
@@ -221,7 +378,10 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({ onNavigate
       totalPaid,
       averageGrade: avg,
       countUnpaid,
-      regularRate: filteredStudents.length > 0 ? Math.round(((filteredStudents.length - countUnpaid) / filteredStudents.length) * 100) : 100,
+      regularRate:
+        filteredStudents.length > 0
+          ? Math.round(((filteredStudents.length - countUnpaid) / filteredStudents.length) * 100)
+          : 100,
     };
   }, [filteredStudents, studentMetrics]);
 
@@ -309,6 +469,26 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
     }
   };
 
+  const pendingRequests = profileChangeRequests.filter((r) => r.status === 'PENDING');
+
+  // Strict RBAC guard: Répertoire étudiant doit être masqué pour les étudiants et enseignants
+  const isRestrictedDirectoryRole = ['STUDENT', 'TEACHER'].includes(currentUser.role);
+  if (isRestrictedDirectoryRole) {
+    return (
+      <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm text-center max-w-xl mx-auto my-8 space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mx-auto">
+          <ShieldCheck className="w-6 h-6 text-indigo-600" />
+        </div>
+        <h2 className="text-lg font-black text-slate-900">
+          Répertoire Étudiant Réservé à l'Administration
+        </h2>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Conformément aux règles de confidentialité d'EBM Institute, le répertoire général des étudiants et leurs dossiers financiers/administratifs sont masqués pour les profils Étudiant et Enseignant. Vous pouvez consulter votre propre fiche en cliquant sur votre nom en haut de l'écran.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* 1. Header & Quick View Switcher */}
@@ -320,11 +500,11 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 <GraduationCap className="w-5 h-5" />
               </div>
               <h2 className="text-lg font-bold text-slate-900">
-                Répertoire & Suivi Global des Étudiants
+                Répertoire, Fiches Individuelles & Cartes Étudiants (Code-Barres / QR)
               </h2>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Vue synthétique : tri par mention, groupe, année académique, moyennes de notes et suivi des impayés en Ariary.
+              Identification par scan code-barres/QR, fiches individuelles modifiables, cartes officielles et suivi académique/financier.
             </p>
           </div>
 
@@ -358,15 +538,70 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
         </div>
       </div>
 
-      {/* 2. TAB: REPERTOIRE (État complet multi-critères) */}
+      {/* Pending Profile Change Requests Banner for Admin/Scolarité (ACC-059) */}
+      {canDirectEditIdentity && pendingRequests.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-900">
+              Demandes de rectification d'état civil en attente de validation ({pendingRequests.length})
+            </span>
+          </div>
+          <div className="space-y-2">
+            {pendingRequests.map((req) => (
+              <div
+                key={req.id}
+                className="bg-white p-3 rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+              >
+                <div>
+                  <span className="font-bold text-slate-900">{req.studentName}</span> ({req.matricule}) —{' '}
+                  {req.changes.map((c, idx) => (
+                    <span key={idx}>
+                      Champ : <span className="font-semibold text-blue-700">{c.label}</span> → Nouvelle valeur :{' '}
+                      <span className="font-bold text-emerald-700">"{c.newValue}"</span>
+                    </span>
+                  ))}{' '}
+                  (Motif : {req.reason})
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => approveProfileChangeRequest(req.id)}
+                    className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+                  >
+                    Approuver
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rejectProfileChangeRequest(req.id)}
+                    className="px-2.5 py-1 bg-rose-600 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+                  >
+                    Rejeter
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2. TAB: REPERTOIRE */}
       {activeTab === 'REPERTOIRE' && (
         <div className="space-y-4">
+          {/* Universal Barcode / QR & Quick Student Lookup Bar (ACC-072, ACC-074) */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+            <UniversalStudentSelector
+              selectedStudentId={selectedStudentId || ''}
+              onSelectStudent={(_id, st) => {
+                if (st) openStudentSheet(st, 'PROFILE');
+              }}
+              label="Guichet Scolarité : Recherche instantanée ou Scan Carte Étudiant (Douchette USB / Caméra QR)"
+            />
+          </div>
+
           {/* KPI Dashboard Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                Étudiants affichés
-              </span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Étudiants affichés</span>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-slate-900">{stats.count}</span>
                 <span className="text-xs text-slate-500">inscrits</span>
@@ -374,23 +609,15 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] uppercase font-bold text-amber-600 block mb-1">
-                Total Impayés / Retards
-              </span>
+              <span className="text-[10px] uppercase font-bold text-amber-600 block mb-1">Total Impayés / Retards</span>
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-rose-700">
-                  {stats.totalUnpaid.toLocaleString()} Ar
-                </span>
-                <span className="text-xs text-rose-600 font-bold">
-                  ({stats.countUnpaid} ét.)
-                </span>
+                <span className="text-2xl font-black text-rose-700">{stats.totalUnpaid.toLocaleString()} Ar</span>
+                <span className="text-xs text-rose-600 font-bold">({stats.countUnpaid} ét.)</span>
               </div>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] uppercase font-bold text-blue-600 block mb-1">
-                Moyenne académique
-              </span>
+              <span className="text-[10px] uppercase font-bold text-blue-600 block mb-1">Moyenne académique</span>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-blue-900">{stats.averageGrade}</span>
                 <span className="text-xs text-slate-500">/ 20</span>
@@ -398,9 +625,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] uppercase font-bold text-emerald-600 block mb-1">
-                Régularité financière
-              </span>
+              <span className="text-[10px] uppercase font-bold text-emerald-600 block mb-1">Régularité financière</span>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-emerald-700">{stats.regularRate}%</span>
                 <span className="text-xs text-slate-500">à jour</span>
@@ -410,17 +635,14 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
 
           {/* Filtering Toolbar */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs">
-              
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 text-xs">
               {/* Search Bar */}
               <div className="relative">
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  Recherche
-                </label>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Recherche</label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Nom, matricule, promo..."
+                    placeholder="Nom, prénom, matricule..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white outline-none"
@@ -429,11 +651,9 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 </div>
               </div>
 
-              {/* Mention / Filiere Filter */}
+              {/* Mention Filter */}
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  Mention / Filière
-                </label>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Mention / Filière</label>
                 <select
                   value={selectedMention}
                   onChange={(e) => setSelectedMention(e.target.value)}
@@ -448,11 +668,26 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 </select>
               </div>
 
+              {/* Parcours Filter (ACC-043) */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Parcours</label>
+                <select
+                  value={selectedParcours}
+                  onChange={(e) => setSelectedParcours(e.target.value)}
+                  className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                >
+                  <option value="ALL">Tous les parcours</option>
+                  {parcours.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} — {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Groupe Filter */}
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  Groupe / Promotion
-                </label>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Groupe / Promotion</label>
                 <select
                   value={selectedGroup}
                   onChange={(e) => setSelectedGroup(e.target.value)}
@@ -469,9 +704,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
 
               {/* Année Académique Filter */}
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  Année Académique
-                </label>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Année Académique</label>
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(e.target.value)}
@@ -488,17 +721,15 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
 
               {/* Situation Financière Filter */}
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                  Situation Financière
-                </label>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Situation Financière</label>
                 <select
                   value={financialFilter}
                   onChange={(e) => setFinancialFilter(e.target.value as any)}
                   className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
                 >
                   <option value="ALL">Tous les règlements</option>
-                  <option value="UNPAID">🔴 Avec impayés / retard</option>
-                  <option value="PAID">🟢 En règle (à jour)</option>
+                  <option value="UNPAID">Avec impayés / retard</option>
+                  <option value="PAID">En règle (à jour)</option>
                 </select>
               </div>
             </div>
@@ -546,11 +777,17 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 </button>
               </div>
 
-              {(selectedMention !== 'ALL' || selectedGroup !== 'ALL' || selectedYear !== 'ALL' || financialFilter !== 'ALL' || searchTerm) && (
+              {(selectedMention !== 'ALL' ||
+                selectedParcours !== 'ALL' ||
+                selectedGroup !== 'ALL' ||
+                selectedYear !== 'ALL' ||
+                financialFilter !== 'ALL' ||
+                searchTerm) && (
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedMention('ALL');
+                    setSelectedParcours('ALL');
                     setSelectedGroup('ALL');
                     setSelectedYear('ALL');
                     setFinancialFilter('ALL');
@@ -572,11 +809,11 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                   <tr>
                     <th className="p-3">Matricule</th>
                     <th className="p-3">Étudiant</th>
-                    <th className="p-3">Mention & Groupe</th>
+                    <th className="p-3">Mention, Parcours & Groupe</th>
                     <th className="p-3 text-center">Année</th>
                     <th className="p-3 text-center">Moyenne Notes</th>
                     <th className="p-3 text-right">Situation Financière</th>
-                    <th className="p-3 text-center">Action</th>
+                    <th className="p-3 text-center">Actions & Carte</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -594,51 +831,51 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                       return (
                         <tr
                           key={student.id}
-                          onClick={() => setSelectedStudentDetail(student)}
+                          onClick={() => openStudentSheet(student, 'PROFILE')}
                           className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
                         >
-                          {/* Matricule */}
                           <td className="p-3">
                             <span className="font-mono font-bold text-xs bg-blue-50 group-hover:bg-blue-600 group-hover:text-white text-blue-800 px-2 py-1 rounded-md transition-colors border border-blue-200">
                               {student.matricule || 'SANS-MAT'}
                             </span>
                           </td>
 
-                          {/* Student Name & Avatar */}
                           <td className="p-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                                {student.name.substring(0, 2).toUpperCase()}
-                              </div>
+                              {student.photoUrl || student.avatar ? (
+                                <img
+                                  src={student.photoUrl || student.avatar}
+                                  alt={student.name}
+                                  className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                  {student.name.substring(0, 2).toUpperCase()}
+                                </div>
+                              )}
                               <div>
                                 <span className="font-bold text-slate-900 block group-hover:text-blue-700">
+                                  {student.civilite ? `${student.civilite} ` : ''}
                                   {student.name}
                                 </span>
-                                <span className="text-[11px] text-slate-500">
-                                  {student.email || 'Pas d’email'}
-                                </span>
+                                <span className="text-[11px] text-slate-500">{student.email || 'Pas d’email'}</span>
                               </div>
                             </div>
                           </td>
 
-                          {/* Mention & Group */}
                           <td className="p-3">
                             <span className="font-bold text-slate-800 block">
-                              {m?.groupCode}
+                              {m?.groupCode} <span className="text-[10px] font-mono text-blue-600">({m?.parcoursCode})</span>
                             </span>
-                            <span className="text-[11px] text-slate-500">
-                              {m?.filiereName}
-                            </span>
+                            <span className="text-[11px] text-slate-500">{m?.filiereName}</span>
                           </td>
 
-                          {/* Academic Year */}
                           <td className="p-3 text-center">
                             <span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
                               {m?.academicYear}
                             </span>
                           </td>
 
-                          {/* Notes / Moyenne */}
                           <td className="p-3 text-center">
                             <div className="inline-flex flex-col items-center">
                               <span
@@ -652,13 +889,9 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                               >
                                 {m?.averageGrade} / 20
                               </span>
-                              <span className="text-[9px] text-slate-400 font-semibold mt-0.5">
-                                {(m?.averageGrade || 0) >= 10 ? 'Validé' : 'À rattraper'}
-                              </span>
                             </div>
                           </td>
 
-                          {/* Financial Situation */}
                           <td className="p-3 text-right">
                             {isUnpaid ? (
                               <div>
@@ -671,9 +904,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                               </div>
                             ) : (
                               <div>
-                                <span className="font-extrabold text-xs text-emerald-700 block">
-                                  À jour (0 Ar)
-                                </span>
+                                <span className="font-extrabold text-xs text-emerald-700 block">À jour (0 Ar)</span>
                                 <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                   Soldé 100%
                                 </span>
@@ -681,19 +912,26 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                             )}
                           </td>
 
-                          {/* Action Button */}
-                          <td className="p-3 text-center">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedStudentDetail(student);
-                              }}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-slate-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>Détails</span>
-                            </button>
+                          <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openStudentSheet(student, 'PROFILE')}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-blue-600 hover:text-white rounded-lg text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Fiche</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCardModalStudent(student)}
+                                className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Carte Étudiant Officielle (Code-barres + QR Code)"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>Carte</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -710,11 +948,9 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
       {activeTab === 'INDIVIDUAL' && (
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 space-y-4">
           <div className="pb-3 border-b border-slate-200">
-            <h3 className="text-base font-bold text-slate-900">
-              Création d'un Compte Étudiant Individuel
-            </h3>
+            <h3 className="text-base font-bold text-slate-900">Création d'un Compte Étudiant Individuel</h3>
             <p className="text-xs text-slate-500">
-              Le matricule attribué est unique. Le mot de passe par défaut est la date de naissance (format AAAA-MM-JJ).
+              Le matricule attribué est unique. Un jeton de carte étudiant (Code-barres & QR) est généré automatiquement.
             </p>
           </div>
 
@@ -735,9 +971,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
           <form onSubmit={handleIndividualSubmit} className="space-y-4 max-w-2xl">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Matricule Étudiant *
-                </label>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Matricule Étudiant *</label>
                 <input
                   type="text"
                   value={matricule}
@@ -749,9 +983,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Nom et Prénom *
-                </label>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Nom et Prénom *</label>
                 <input
                   type="text"
                   value={name}
@@ -778,9 +1010,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Groupe d'affectation *
-                </label>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Groupe d'affectation *</label>
                 <select
                   value={groupId}
                   onChange={(e) => setGroupId(e.target.value)}
@@ -797,9 +1027,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Adresse e-mail
-                </label>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Adresse e-mail</label>
                 <input
                   type="email"
                   value={email}
@@ -810,9 +1038,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
-                  Numéro de téléphone
-                </label>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">Numéro de téléphone</label>
                 <input
                   type="tel"
                   value={phone}
@@ -839,9 +1065,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
             <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Importation en masse d'étudiants (Excel / CSV)
-              </h3>
+              <h3 className="text-base font-bold text-slate-900">Importation en masse d'étudiants (Excel / CSV)</h3>
               <p className="text-xs text-slate-500">
                 Détection automatique des doublons de matricule, validation des champs et rapport d'anomalies.
               </p>
@@ -907,17 +1131,24 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
         </div>
       )}
 
-      {/* 5. MODAL: FICHE DÉTAIL ÉTUDIANT (Pédagogie & Finances) */}
+      {/* 5. MODAL: FICHE INDIVIDUELLE ÉTUDIANT (ACC-055 to ACC-062) */}
       {selectedStudentDetail && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            
             {/* Modal Header */}
-            <div className="p-5 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white flex items-start justify-between gap-4">
+            <div className="p-5 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
-                <div className="w-14 h-14 rounded-2xl bg-white/10 text-white border border-white/20 flex items-center justify-center font-black text-xl shadow-inner">
-                  {selectedStudentDetail.name.substring(0, 2).toUpperCase()}
-                </div>
+                {selectedStudentDetail.photoUrl || selectedStudentDetail.avatar ? (
+                  <img
+                    src={selectedStudentDetail.photoUrl || selectedStudentDetail.avatar}
+                    alt={selectedStudentDetail.name}
+                    className="w-14 h-14 rounded-2xl object-cover border-2 border-white/30"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-white/10 text-white border border-white/20 flex items-center justify-center font-black text-xl shadow-inner">
+                    {selectedStudentDetail.name.substring(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="bg-blue-600 text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-blue-400">
@@ -928,25 +1159,63 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                     </span>
                   </div>
                   <h3 className="text-lg font-black text-white mt-0.5">
+                    {selectedStudentDetail.civilite ? `${selectedStudentDetail.civilite} ` : ''}
                     {selectedStudentDetail.name}
                   </h3>
                   <p className="text-xs text-blue-200">
-                    {studentMetrics.get(selectedStudentDetail.id)?.filiereName} • Année {studentMetrics.get(selectedStudentDetail.id)?.academicYear}
+                    {studentMetrics.get(selectedStudentDetail.id)?.filiereName} • Année{' '}
+                    {studentMetrics.get(selectedStudentDetail.id)?.academicYear}
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedStudentDetail(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Carte Étudiant Button (ACC-069, ACC-070) */}
+                <button
+                  type="button"
+                  onClick={() => setCardModalStudent(selectedStudentDetail)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  Carte Étudiant (QR/Code-barres)
+                </button>
+
+                {/* Modifier la fiche Button (ACC-055, ACC-056) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailTab('PROFILE');
+                    startEditingSheet(selectedStudentDetail);
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  Modifier la fiche
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentId(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Tabs Bar */}
             <div className="flex border-b border-slate-200 bg-slate-50 px-5 pt-2 text-xs font-bold gap-3">
+              <button
+                type="button"
+                onClick={() => setDetailTab('PROFILE')}
+                className={`py-2 px-3 border-b-2 transition-all cursor-pointer ${
+                  detailTab === 'PROFILE'
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Fiche Individuelle Complète (État civil, Famille & Historique)
+              </button>
               <button
                 type="button"
                 onClick={() => setDetailTab('GRADES')}
@@ -969,114 +1238,838 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               >
                 Situation Financière & Impayés
               </button>
-              <button
-                type="button"
-                onClick={() => setDetailTab('PROFILE')}
-                className={`py-2 px-3 border-b-2 transition-all cursor-pointer ${
-                  detailTab === 'PROFILE'
-                    ? 'border-blue-600 text-blue-700'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Identité & Coordonnées
-              </button>
             </div>
 
             {/* Modal Body Content */}
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
-              
-              {/* TAB 1: GRADES & PEDAGOGY */}
-              {detailTab === 'GRADES' && (
+              {/* TAB 1: PROFILE & FICHE INDIVIDUELLE COMPLÈTE (ACC-055 to ACC-062) */}
+              {detailTab === 'PROFILE' && (
                 <div className="space-y-4 text-xs">
-                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-blue-600 block">
-                        Synthèse Pédagogique
-                      </span>
-                      <h4 className="text-base font-black text-blue-950">
-                        Moyenne Générale : {studentMetrics.get(selectedStudentDetail.id)?.averageGrade} / 20
-                      </h4>
-                      <p className="text-slate-600 text-xs mt-0.5">
-                        Système LMD conforme aux coefficients ECTS et modalité de contrôle continue / examen.
-                      </p>
+                  {sheetSaveBanner && (
+                    <div
+                      className={`p-3 rounded-xl font-semibold flex items-center gap-2 ${
+                        sheetSaveBanner.type === 'success'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border border-rose-200'
+                      }`}
+                    >
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>{sheetSaveBanner.text}</span>
                     </div>
-                    <span className="px-3 py-1 bg-blue-600 text-white rounded-xl font-bold text-xs">
-                      {(studentMetrics.get(selectedStudentDetail.id)?.averageGrade || 0) >= 10 ? 'Admis(e)' : 'En rattrapage'}
-                    </span>
-                  </div>
+                  )}
 
-                  <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
-                        <tr>
-                          <th className="p-3">UE / Matière</th>
-                          <th className="p-3">Éléments Constitutifs (EC)</th>
-                          <th className="p-3 text-center">Formule</th>
-                          <th className="p-3 text-center">CC (40%)</th>
-                          <th className="p-3 text-center">Examen (60%)</th>
-                          <th className="p-3 text-center">Note Finale</th>
-                          <th className="p-3 text-center">Statut</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {ecs.map((ec) => {
-                          const ue = ues.find((u) => u.id === ec.ueId);
-                          const studentGrade = getStudentEcGrade(selectedStudentDetail.id, ec.id);
-                          const finalG = studentGrade?.finalScore ?? (ec.creditsEcts >= 3 ? 14 : 12.5);
-                          const isSuccess = finalG >= 10;
+                  {isEditingSheet ? (
+                    <form onSubmit={handleSaveStudentSheet} className="space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <h4 className="font-bold text-slate-900 text-sm">
+                          Édition de la Fiche Individuelle Étudiant ({selectedStudentDetail.matricule})
+                        </h4>
+                        <span className="text-[11px] text-slate-500">
+                          {canDirectEditIdentity
+                            ? 'Droits Scolarité/Admin : Modification complète autorisée'
+                            : 'Droits Étudiant : Coordonnées modifiables directement'}
+                        </span>
+                      </div>
 
-                          return (
-                            <tr key={ec.id} className="hover:bg-slate-50">
-                              <td className="p-3">
-                                <span className="font-bold text-slate-800 block">{ec.title}</span>
-                                <span className="text-[10px] text-slate-400">{ue?.title || 'UE LMD'}</span>
-                              </td>
-                              <td className="p-3 font-mono font-semibold text-slate-600">
-                                {ec.code} ({ec.creditsEcts} ECTS)
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-semibold">
-                                  {ec.examWeight === 1 ? '100% Examen' : '40 / 60'}
+                      {/* Identity & Photo */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Civilité</label>
+                          <select
+                            value={editCivilite}
+                            onChange={(e) => setEditCivilite(e.target.value as any)}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg font-semibold disabled:opacity-60"
+                          >
+                            <option value="M.">M.</option>
+                            <option value="Mme">Mme</option>
+                            <option value="Mlle">Mlle</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Nom de famille *</label>
+                          <input
+                            type="text"
+                            value={editLastName}
+                            onChange={(e) => setEditLastName(e.target.value)}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg font-semibold disabled:opacity-60"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Prénom(s) *</label>
+                          <input
+                            type="text"
+                            value={editFirstName}
+                            onChange={(e) => setEditFirstName(e.target.value)}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg font-semibold disabled:opacity-60"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Photo d'identité</label>
+                          <label className="flex items-center justify-center gap-1.5 p-2 bg-white border border-slate-300 rounded-lg cursor-pointer hover:bg-blue-50 text-blue-700 font-bold">
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>Téléverser photo</span>
+                            <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Birth & Origin School */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Date de naissance</label>
+                          <input
+                            type="date"
+                            value={editBirthDate}
+                            onChange={(e) => setEditBirthDate(e.target.value)}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg disabled:opacity-60"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Lieu de naissance</label>
+                          <input
+                            type="text"
+                            value={editBirthPlace}
+                            onChange={(e) => setEditBirthPlace(e.target.value)}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg disabled:opacity-60"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Lycée / Établissement d'origine</label>
+                          <input
+                            type="text"
+                            value={editOriginSchool}
+                            onChange={(e) => setEditOriginSchool(e.target.value)}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg disabled:opacity-60"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Série du Baccalauréat</label>
+                          <input
+                            type="text"
+                            value={editBacSeries}
+                            onChange={(e) => setEditBacSeries(e.target.value)}
+                            disabled={!canDirectEditIdentity}
+                            placeholder="Série C, D, A2, OSE..."
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg disabled:opacity-60"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Address & Contact */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Adresse postale complète</label>
+                          <input
+                            type="text"
+                            value={editAddress}
+                            onChange={(e) => setEditAddress(e.target.value)}
+                            placeholder="Lot II M 45 Analamahitsy"
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Code Postal</label>
+                          <input
+                            type="text"
+                            value={editPostalCode}
+                            onChange={(e) => setEditPostalCode(e.target.value)}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Ville</label>
+                          <input
+                            type="text"
+                            value={editCity}
+                            onChange={(e) => setEditCity(e.target.value)}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Email universitaire / personnel *</label>
+                          <input
+                            type="email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Lien Profil LinkedIn</label>
+                          <input
+                            type="url"
+                            value={editLinkedIn}
+                            onChange={(e) => setEditLinkedIn(e.target.value)}
+                            placeholder="https://linkedin.com/in/..."
+                            className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Multiple Phones (ACC-057) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold uppercase text-slate-600">
+                            Numéros de téléphone (plusieurs numéros possibles)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setEditPhones([...editPhones, ''])}
+                            className="text-blue-600 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" /> Ajouter un numéro
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {editPhones.map((ph, idx) => (
+                            <div key={idx} className="flex items-center gap-1">
+                              <input
+                                type="tel"
+                                value={ph}
+                                onChange={(e) => {
+                                  const next = [...editPhones];
+                                  next[idx] = e.target.value;
+                                  setEditPhones(next);
+                                }}
+                                placeholder="+261 34 XX XXX XX"
+                                className="flex-1 p-2 bg-white border border-slate-300 rounded-lg"
+                              />
+                              {editPhones.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditPhones(editPhones.filter((_, i) => i !== idx))}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Multiple Parent Contacts (ACC-057) */}
+                      {canDirectEditIdentity && (
+                        <div className="space-y-2 pt-2 border-t border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold uppercase text-slate-600">
+                              Parents / Tuteurs légaux & Contacts d'urgence
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditParentContacts([
+                                  ...editParentContacts,
+                                  {
+                                    id: `pc-${Date.now()}`,
+                                    relation: 'TUTEUR',
+                                    nom: editLastName,
+                                    prenoms: '',
+                                    phone: '+261 34 00 000 00',
+                                    email: '',
+                                    profession: '',
+                                    address: editAddress,
+                                  },
+                                ])
+                              }
+                              className="text-blue-600 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" /> Ajouter un parent / tuteur
+                            </button>
+                          </div>
+                          {editParentContacts.map((pc, idx) => (
+                            <div key={pc.id} className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-6 gap-2">
+                              <select
+                                value={pc.relation}
+                                onChange={(e) => {
+                                  const next = [...editParentContacts];
+                                  next[idx] = { ...pc, relation: e.target.value as any };
+                                  setEditParentContacts(next);
+                                }}
+                                className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg font-semibold"
+                              >
+                                <option value="PERE">Père</option>
+                                <option value="MERE">Mère</option>
+                                <option value="TUTEUR">Tuteur</option>
+                                <option value="AUTRE">Autre</option>
+                              </select>
+                              <input
+                                type="text"
+                                value={pc.nom}
+                                onChange={(e) => {
+                                  const next = [...editParentContacts];
+                                  next[idx] = { ...pc, nom: e.target.value };
+                                  setEditParentContacts(next);
+                                }}
+                                placeholder="Nom"
+                                className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg"
+                              />
+                              <input
+                                type="text"
+                                value={pc.prenoms}
+                                onChange={(e) => {
+                                  const next = [...editParentContacts];
+                                  next[idx] = { ...pc, prenoms: e.target.value };
+                                  setEditParentContacts(next);
+                                }}
+                                placeholder="Prénom"
+                                className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg"
+                              />
+                              <input
+                                type="tel"
+                                value={pc.phone}
+                                onChange={(e) => {
+                                  const next = [...editParentContacts];
+                                  next[idx] = { ...pc, phone: e.target.value };
+                                  setEditParentContacts(next);
+                                }}
+                                placeholder="Téléphone"
+                                className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg"
+                              />
+                              <input
+                                type="text"
+                                value={pc.profession || ''}
+                                onChange={(e) => {
+                                  const next = [...editParentContacts];
+                                  next[idx] = { ...pc, profession: e.target.value };
+                                  setEditParentContacts(next);
+                                }}
+                                placeholder="Profession"
+                                className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg"
+                              />
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="email"
+                                  value={pc.email || ''}
+                                  onChange={(e) => {
+                                    const next = [...editParentContacts];
+                                    next[idx] = { ...pc, email: e.target.value };
+                                    setEditParentContacts(next);
+                                  }}
+                                  placeholder="Email"
+                                  className="flex-1 p-1.5 bg-slate-50 border border-slate-300 rounded-lg"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setEditParentContacts(editParentContacts.filter((_, i) => i !== idx))}
+                                  className="p-1 text-rose-600 hover:bg-rose-50 rounded"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Adult Student Parent Consent (ACC-095) */}
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                        <span className="text-[10px] font-bold uppercase text-slate-600 block">
+                          Autorisations de partage avec l'Espace Parents / Tuteurs (Étudiant majeur)
+                        </span>
+                        <div className="flex flex-wrap gap-4">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editConsent.academic}
+                              onChange={(e) => setEditConsent({ ...editConsent, academic: e.target.checked })}
+                            />
+                            <span>Notes & Emploi du temps</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editConsent.attendance}
+                              onChange={(e) => setEditConsent({ ...editConsent, attendance: e.target.checked })}
+                            />
+                            <span>Présences & Absences</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editConsent.financial}
+                              onChange={(e) => setEditConsent({ ...editConsent, financial: e.target.checked })}
+                            />
+                            <span>Situation Financière & Reçus</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingSheet(false)}
+                          className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700 hover:bg-white cursor-pointer"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold cursor-pointer"
+                        >
+                          Enregistrer les modifications
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      {/* Read-only Complete Student Sheet */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase text-slate-400">
+                              1. État Civil & Origine Scolaire
+                            </span>
+                            {(selectedStudentDetail.photoUrl || selectedStudentDetail.avatar) && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPhoto(selectedStudentDetail)}
+                                className="text-[10px] text-blue-600 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                              >
+                                <Download className="w-3 h-3" /> Télécharger photo
+                              </button>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between py-1 border-b border-slate-200">
+                              <span className="text-slate-500">Civilité, Nom & Prénom :</span>
+                              <span className="font-bold text-slate-900">
+                                {selectedStudentDetail.civilite || 'M.'}{' '}
+                                {selectedStudentDetail.lastName || selectedStudentDetail.name}{' '}
+                                {selectedStudentDetail.firstName || ''}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-slate-200">
+                              <span className="text-slate-500">Date & Lieu de naissance :</span>
+                              <span className="font-semibold text-slate-800">
+                                {selectedStudentDetail.birthDate || '2005-05-14'} à{' '}
+                                {selectedStudentDetail.birthPlace || 'Antananarivo'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-slate-200">
+                              <span className="text-slate-500">Lycée / Établissement d'origine :</span>
+                              <span className="font-semibold text-slate-800">
+                                {selectedStudentDetail.originSchool || 'Lycée Jules Ferry Antananarivo'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Série du Baccalauréat :</span>
+                              <span className="font-bold text-blue-800">
+                                {selectedStudentDetail.bacSeries || 'Série C (Mention Bien)'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                          <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                            2. Coordonnées, Adresse & Réseaux
+                          </span>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between py-1 border-b border-slate-200">
+                              <span className="text-slate-500">Adresse complète :</span>
+                              <span className="font-semibold text-slate-800">
+                                {selectedStudentDetail.address || 'Lot II M 45 Analamahitsy'},{' '}
+                                {selectedStudentDetail.postalCode || '101'} {selectedStudentDetail.city || 'Antananarivo'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-slate-200">
+                              <span className="text-slate-500">Téléphones :</span>
+                              <span className="font-semibold text-slate-800">
+                                {(selectedStudentDetail.phones && selectedStudentDetail.phones.length > 0
+                                  ? selectedStudentDetail.phones.join(' / ')
+                                  : selectedStudentDetail.phone) || '+261 34 12 345 67'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-slate-200">
+                              <span className="text-slate-500">Adresse e-mail :</span>
+                              <span className="font-semibold text-slate-800">{selectedStudentDetail.email}</span>
+                            </div>
+                            <div className="flex justify-between py-1">
+                              <span className="text-slate-500">Profil LinkedIn :</span>
+                              {selectedStudentDetail.linkedInUrl ? (
+                                <a
+                                  href={selectedStudentDetail.linkedInUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue-600 font-bold hover:underline flex items-center gap-1"
+                                >
+                                  <Linkedin className="w-3 h-3" /> Voir le profil LinkedIn
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 italic">Non renseigné</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Parent Contacts Table */}
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                        <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                          3. Parents / Tuteurs Légaux & Contacts d'Urgence
+                        </span>
+                        {!selectedStudentDetail.parentContacts || selectedStudentDetail.parentContacts.length === 0 ? (
+                          <p className="text-slate-500 italic">
+                            Aucun parent renseigné. Cliquez sur « Modifier la fiche » pour ajouter les coordonnées des parents.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {selectedStudentDetail.parentContacts.map((pc) => (
+                              <div key={pc.id} className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded text-[10px]">
+                                    {pc.relation}
+                                  </span>
+                                  <span className="text-[11px] font-semibold text-slate-500">{pc.profession || ''}</span>
+                                </div>
+                                <div className="font-bold text-slate-900">
+                                  {pc.prenoms} {pc.nom}
+                                </div>
+                                <div className="text-[11px] text-slate-600">
+                                  Tél : <span className="font-mono font-bold">{pc.phone}</span> • {pc.email || 'Pas d’email'}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* If Student is viewing their own sheet: Official Rectification Request Form (ACC-059) */}
+                      {currentUser.role === 'STUDENT' && (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
+                          <span className="text-[10px] font-bold uppercase text-amber-800 block">
+                            Demander une rectification officielle d'état civil auprès de la Scolarité
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                            <input
+                              type="text"
+                              value={changeReqField}
+                              onChange={(e) => setChangeReqField(e.target.value)}
+                              placeholder="Champ (ex: Date de naissance)"
+                              className="p-2 bg-white border border-amber-300 rounded-lg"
+                            />
+                            <input
+                              type="text"
+                              value={changeReqNewVal}
+                              onChange={(e) => setChangeReqNewVal(e.target.value)}
+                              placeholder="Nouvelle valeur souhaitée"
+                              className="p-2 bg-white border border-amber-300 rounded-lg"
+                            />
+                            <input
+                              type="text"
+                              value={changeReqReason}
+                              onChange={(e) => setChangeReqReason(e.target.value)}
+                              placeholder="Justificatif (ex: Acte de naissance)"
+                              className="p-2 bg-white border border-amber-300 rounded-lg"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!changeReqNewVal.trim()) return;
+                                requestProfileChange(
+                                  selectedStudentDetail.id,
+                                  [
+                                    {
+                                      field: 'name',
+                                      label: changeReqField,
+                                      oldValue: selectedStudentDetail.name,
+                                      newValue: changeReqNewVal,
+                                    },
+                                  ],
+                                  changeReqReason || 'Rectification administrative'
+                                );
+                                setChangeReqNewVal('');
+                                setSheetSaveBanner({
+                                  type: 'success',
+                                  text: 'Demande transmise au service Scolarité pour validation.',
+                                });
+                              }}
+                              className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg cursor-pointer"
+                            >
+                              Soumettre demande
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modification History Log (ACC-061) */}
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
+                          <History className="w-3.5 h-3.5 text-blue-600" />
+                          <span>4. Journal d'Audit & Historique des Modifications de la Fiche</span>
+                        </div>
+                        {!selectedStudentDetail.modificationHistory ||
+                        selectedStudentDetail.modificationHistory.length === 0 ? (
+                          <p className="text-slate-400 italic text-[11px]">
+                            Aucune modification enregistrée depuis l'immatriculation initiale.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                            {selectedStudentDetail.modificationHistory.map((h) => (
+                              <div
+                                key={h.id}
+                                className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-[11px]"
+                              >
+                                <div>
+                                  <span className="font-bold text-slate-900">{h.authorName}</span>
+                                  <span className="text-slate-600">
+                                    {' '}
+                                    — {h.field} : "{h.oldValue}" → "{h.newValue}"
+                                  </span>
+                                </div>
+                                <span className="font-mono text-[10px] text-slate-400">
+                                  {new Date(h.timestamp).toLocaleString('fr-FR')}
                                 </span>
-                              </td>
-                              <td className="p-3 text-center font-medium">
-                                {studentGrade?.quizScore !== undefined ? `${studentGrade.quizScore} / 20` : '13.0 / 20'}
-                              </td>
-                              <td className="p-3 text-center font-medium">
-                                {studentGrade?.examScore !== undefined ? `${studentGrade.examScore} / 20` : '14.0 / 20'}
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className={`font-black text-xs ${isSuccess ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                  {finalG} / 20
-                                </span>
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                                  isSuccess ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                                }`}>
-                                  {isSuccess ? 'Validé' : 'Ajourné'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
-              {/* TAB 2: FINANCES & IMPAYÉS */}
+              {/* TAB 2: GRADES & PEDAGOGY (PAR SEMESTRE ET PAR ANNÉE ACADÉMIQUE + RATTRAPAGE EC) */}
+              {detailTab === 'GRADES' && (
+                <div className="space-y-4 text-xs">
+                  {(() => {
+                    const annualDelib = computeStudentDeliberationPreview(
+                      selectedStudentDetail.id,
+                      selectedAcademicYear,
+                      'ANNUEL'
+                    );
+                    const filteredModalEcs =
+                      studentGradeSemester === 'ANNUEL'
+                        ? ecs
+                        : ecs.filter((ec) => ec.semester === studentGradeSemester);
+
+                    return (
+                      <>
+                        {/* Filter by Academic Year & Semester / Annual */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                                Année Académique
+                              </span>
+                              <select
+                                value={selectedAcademicYear}
+                                onChange={(e) => setSelectedAcademicYear(e.target.value)}
+                                className="p-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800"
+                              >
+                                {academicYears.map((ay) => (
+                                  <option key={ay.id} value={ay.code}>
+                                    {ay.code}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                                Affichage des Notes & Résultats
+                              </span>
+                              <div className="flex bg-white p-1 rounded-xl border border-slate-200 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setStudentGradeSemester('ANNUEL')}
+                                  className={`px-3 py-1 rounded-lg font-bold cursor-pointer ${
+                                    studentGradeSemester === 'ANNUEL'
+                                      ? 'bg-blue-700 text-white'
+                                      : 'text-slate-600 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  Année Complète (S1 + S2 — 1 Page)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setStudentGradeSemester('S1')}
+                                  className={`px-3 py-1 rounded-lg font-bold cursor-pointer ${
+                                    studentGradeSemester === 'S1'
+                                      ? 'bg-blue-700 text-white'
+                                      : 'text-slate-600 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  Semestre 1 (S1)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setStudentGradeSemester('S2')}
+                                  className={`px-3 py-1 rounded-lg font-bold cursor-pointer ${
+                                    studentGradeSemester === 'S2'
+                                      ? 'bg-blue-700 text-white'
+                                      : 'text-slate-600 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  Semestre 2 (S2)
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                              Décision Annuelle ({selectedAcademicYear})
+                            </span>
+                            <span
+                              className={`inline-block mt-0.5 px-2.5 py-1 rounded-lg font-black text-[11px] ${
+                                annualDelib.proposedDecision === 'ADMIS' ||
+                                annualDelib.proposedDecision === 'ADMIS_COMPENSATION'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : annualDelib.proposedDecision === 'PASSAGE_CONDITIONNEL'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {annualDelib.proposedDecision === 'ADMIS'
+                                ? 'ADMIS(E) EN ANNÉE SUPÉRIEURE'
+                                : annualDelib.proposedDecision === 'ADMIS_COMPENSATION'
+                                ? 'ADMIS(E) PAR COMPENSATION ANNUELLE'
+                                : annualDelib.proposedDecision === 'PASSAGE_CONDITIONNEL'
+                                ? 'PASSAGE CONDITIONNEL (DETTE UE)'
+                                : 'REDOUBLEMENT / RATTRAPAGE'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-blue-600 block">
+                              Synthèse Pédagogique ({studentGradeSemester === 'ANNUEL' ? 'Bilan Annuel S1 + S2' : `Semestre ${studentGradeSemester}`})
+                            </span>
+                            <h4 className="text-base font-black text-blue-950">
+                              Moyenne Générale : {annualDelib.finalAverage.toFixed(2)} / 20 • Crédits :{' '}
+                              {annualDelib.validatedCredits} / {annualDelib.totalCreditsAttempted || 60} ECTS
+                            </h4>
+                            <p className="text-slate-600 text-xs mt-0.5">
+                              Système LMD avec prise en compte de la Session 1 et de la Session de Rattrapage par EC.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                          <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                              <tr>
+                                <th className="p-3">Sem.</th>
+                                <th className="p-3">UE / Élément Constitutif (EC)</th>
+                                <th className="p-3 text-center">CC (40%)</th>
+                                <th className="p-3 text-center">Exam (60%)</th>
+                                <th className="p-3 text-center">Session 1</th>
+                                <th className="p-3 text-center bg-amber-50 text-amber-800">Rattrapage</th>
+                                <th className="p-3 text-center">Note Retenue</th>
+                                <th className="p-3 text-center">Statut</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {filteredModalEcs.map((ec) => {
+                                const ue = ues.find((u) => u.id === ec.ueId);
+                                const studentGrade = getStudentEcGrade(selectedStudentDetail.id, ec.id);
+                                const s1G =
+                                  studentGrade?.session1Score ??
+                                  studentGrade?.finalScore ??
+                                  (ec.creditsEcts >= 3 ? 14 : 12.5);
+                                const rattrapageG = studentGrade?.rattrapageScore;
+                                const finalG =
+                                  rattrapageG !== undefined ? Math.max(s1G, rattrapageG) : s1G;
+                                const isSuccess = finalG >= 10;
+
+                                return (
+                                  <tr key={ec.id} className="hover:bg-slate-50">
+                                    <td className="p-3">
+                                      <span className="px-2 py-0.5 bg-slate-100 text-slate-800 font-mono font-bold rounded text-[10px]">
+                                        {ec.semester}
+                                      </span>
+                                    </td>
+                                    <td className="p-3">
+                                      <span className="font-bold text-slate-800 block">
+                                        {ec.code} — {ec.title} ({ec.creditsEcts} ECTS)
+                                      </span>
+                                      <span className="text-[10px] text-slate-400">{ue?.code} • {ue?.title || 'UE LMD'}</span>
+                                    </td>
+                                    <td className="p-3 text-center font-medium">
+                                      {studentGrade?.quizScore !== undefined ? `${studentGrade.quizScore}` : '13.0'}
+                                    </td>
+                                    <td className="p-3 text-center font-medium">
+                                      {studentGrade?.examScore !== undefined ? `${studentGrade.examScore}` : '14.0'}
+                                    </td>
+                                    <td className="p-3 text-center font-mono font-semibold text-slate-700">
+                                      {s1G.toFixed(2)} / 20
+                                    </td>
+                                    <td className="p-3 text-center font-mono bg-amber-50/40">
+                                      {rattrapageG !== undefined ? (
+                                        <span className="font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                                          {rattrapageG.toFixed(2)} / 20
+                                        </span>
+                                      ) : s1G < 10 ? (
+                                        <span className="text-[10px] font-bold text-rose-600">À rattraper</span>
+                                      ) : (
+                                        <span className="text-slate-300">—</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <span className={`font-black text-xs ${isSuccess ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                        {finalG.toFixed(2)} / 20
+                                      </span>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <span
+                                        className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                                          rattrapageG !== undefined && isSuccess
+                                            ? 'bg-amber-100 text-amber-900'
+                                            : isSuccess
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : 'bg-rose-100 text-rose-800'
+                                        }`}
+                                      >
+                                        {rattrapageG !== undefined && isSuccess
+                                          ? 'Validé (Rattrapage)'
+                                          : isSuccess
+                                          ? 'Validé'
+                                          : 'Rattrapage requis'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* TAB 3: FINANCES, ENCAISSEMENT DIRECT & ANNULATION DE TRANSACTION */}
               {detailTab === 'FINANCES' && (
                 <div className="space-y-4 text-xs">
                   {(() => {
                     const fin = getStudentFinancialSummary(selectedStudentDetail.id);
-                    const studentFees = fees.filter((f) => !f.groupId || f.groupId === selectedStudentDetail.groupId);
+                    // Ensure all student fees AND all catalogue fees are selectable in the direct payment form
+                    const selectableFees = fees.filter(
+                      (f) =>
+                        !f.studentId ||
+                        f.studentId === selectedStudentDetail.id
+                    );
                     const studentPayments = payments.filter((p) => p.studentId === selectedStudentDetail.id);
 
                     return (
                       <>
-                        {/* Financial Cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
@@ -1096,62 +2089,130 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                             </span>
                           </div>
 
-                          <div className={`p-3.5 rounded-2xl border ${
-                            fin.balanceDueAr > 0
-                              ? 'bg-rose-50 border-rose-300 text-rose-900'
-                              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                          }`}>
-                            <span className="text-[10px] font-bold uppercase block mb-1">
-                              Solde Impayé / Dû
-                            </span>
-                            <span className="text-lg font-black">
-                              {fin.balanceDueAr.toLocaleString()} Ar
-                            </span>
+                          <div
+                            className={`p-3.5 rounded-2xl border ${
+                              fin.balanceDueAr > 0
+                                ? 'bg-rose-50 border-rose-300 text-rose-900'
+                                : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                            }`}
+                          >
+                            <span className="text-[10px] font-bold uppercase block mb-1">Solde Impayé / Dû</span>
+                            <span className="text-lg font-black">{fin.balanceDueAr.toLocaleString()} Ar</span>
                           </div>
                         </div>
 
-                        {/* Quick Payment Trigger */}
                         <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-xl">
                           <div>
-                            <span className="font-bold text-blue-900 block">Encaisser un paiement pour cet étudiant</span>
-                            <span className="text-blue-700 text-[11px]">Émission immédiate d'un reçu officiel de règlement</span>
+                            <span className="font-bold text-blue-900 block">
+                              Encaisser un paiement pour cet étudiant
+                            </span>
+                            <span className="text-blue-700 text-[11px]">
+                              Choisissez le frais à régler — émission immédiate d'un reçu officiel
+                            </span>
                           </div>
                           <button
                             type="button"
-                            onClick={() => setIsQuickPayOpen(!isQuickPayOpen)}
+                            onClick={() => {
+                              setQuickPayError(null);
+                              setQuickPaySuccess(null);
+                              const firstUnpaid = fin.feeDetails.find((fd) => fd.remainingAr > 0);
+                              if (firstUnpaid) {
+                                setQuickPayFeeId(firstUnpaid.fee.id);
+                                setQuickPayAmount(firstUnpaid.remainingAr);
+                              } else if (selectableFees[0]) {
+                                setQuickPayFeeId(selectableFees[0].id);
+                                setQuickPayAmount(selectableFees[0].amountAr);
+                              }
+                              setIsQuickPayOpen(!isQuickPayOpen);
+                            }}
                             className="px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl transition-all cursor-pointer shadow-xs"
                           >
                             {isQuickPayOpen ? 'Fermer le formulaire' : '+ Encaisser maintenant'}
                           </button>
                         </div>
 
-                        {/* Quick Pay Mini Form */}
                         {isQuickPayOpen && (
-                          <form onSubmit={handleQuickPaymentSubmit} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              setQuickPayError(null);
+                              setQuickPaySuccess(null);
+                              if (!selectedStudentDetail || !quickPayFeeId || quickPayAmount <= 0) {
+                                setQuickPayError('Veuillez sélectionner un frais et saisir un montant valide.');
+                                return;
+                              }
+                              const res = recordPayment({
+                                studentId: selectedStudentDetail.id,
+                                feeId: quickPayFeeId,
+                                amountPaidAr: Number(quickPayAmount),
+                                paymentMethod: quickPayMethod,
+                                referenceNumber: quickPayRef,
+                                notes: 'Règlement enregistré depuis la fiche étudiant',
+                              });
+                              if (res.success) {
+                                setQuickPaySuccess(`Paiement enregistré avec succès ! Reçu ${res.receiptNumber} émis.`);
+                                setQuickPayRef('');
+                              } else {
+                                setQuickPayError(res.error || 'Erreur lors de l’encaissement.');
+                              }
+                            }}
+                            className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3"
+                          >
                             <h5 className="font-bold text-slate-900 text-xs">Formulaire d'encaissement direct</h5>
-                            {quickPaySuccess && (
-                              <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold">
-                                {quickPaySuccess}
+                            {quickPayError && (
+                              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                                <span>{quickPayError}</span>
                               </div>
                             )}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                              <div>
-                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Frais</label>
+                            {quickPaySuccess && (
+                              <div className="p-2.5 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-emerald-700 shrink-0" />
+                                <span>{quickPaySuccess}</span>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                              <div className="sm:col-span-2">
+                                <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                  Choisir le Frais à encaisser *
+                                </label>
                                 <select
                                   value={quickPayFeeId}
-                                  onChange={(e) => setQuickPayFeeId(e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold"
+                                  onChange={(e) => {
+                                    const nextFeeId = e.target.value;
+                                    setQuickPayFeeId(nextFeeId);
+                                    const detail = fin.feeDetails.find((fd) => fd.fee.id === nextFeeId);
+                                    const rawFee = selectableFees.find((f) => f.id === nextFeeId);
+                                    if (detail && detail.remainingAr > 0) {
+                                      setQuickPayAmount(detail.remainingAr);
+                                    } else if (rawFee) {
+                                      setQuickPayAmount(rawFee.amountAr);
+                                    }
+                                  }}
+                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
                                 >
-                                  {studentFees.map((f) => (
-                                    <option key={f.id} value={f.id}>{f.title} ({f.amountAr.toLocaleString()} Ar)</option>
-                                  ))}
+                                  <option value="" disabled>
+                                    -- Sélectionner un frais --
+                                  </option>
+                                  {selectableFees.map((f) => {
+                                    const fd = fin.feeDetails.find((d) => d.fee.id === f.id);
+                                    const rem = fd ? fd.remainingAr : f.amountAr;
+                                    return (
+                                      <option key={f.id} value={f.id}>
+                                        {f.title} — {rem > 0 ? `Reste à payer : ${rem.toLocaleString()} Ar` : `Soldé (${f.amountAr.toLocaleString()} Ar)`}
+                                      </option>
+                                    );
+                                  })}
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Montant en Ariary</label>
+                                <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                  Montant en Ariary *
+                                </label>
                                 <input
                                   type="number"
-                                  step="5000"
+                                  step="1000"
+                                  min="1000"
                                   value={quickPayAmount}
                                   onChange={(e) => setQuickPayAmount(Number(e.target.value))}
                                   className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-blue-900"
@@ -1159,7 +2220,9 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                                 />
                               </div>
                               <div>
-                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Mode de règlement</label>
+                                <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                                  Mode de règlement
+                                </label>
                                 <select
                                   value={quickPayMethod}
                                   onChange={(e) => setQuickPayMethod(e.target.value as any)}
@@ -1173,18 +2236,69 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                               </div>
                             </div>
 
-                            <button
-                              type="submit"
-                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs"
-                            >
-                              Valider l'encaissement et générer le reçu
-                            </button>
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                              <input
+                                type="text"
+                                value={quickPayRef}
+                                onChange={(e) => setQuickPayRef(e.target.value)}
+                                placeholder="Référence transaction (Optionnel : N° MVola, Bordereau...)"
+                                className="flex-1 min-w-[220px] p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                              />
+                              <button
+                                type="submit"
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs"
+                              >
+                                Valider l'encaissement et générer le reçu
+                              </button>
+                            </div>
                           </form>
                         )}
 
-                        {/* Payment History */}
+                        {/* Modal/Inline Confirmation for Transaction Cancellation */}
+                        {cancellingPaymentId && (
+                          <div className="p-4 bg-rose-50 border border-rose-300 rounded-2xl space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-black text-rose-900 text-xs">
+                                Annuler une transaction encaissée par erreur
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setCancellingPaymentId(null)}
+                                className="text-rose-600 hover:text-rose-900 font-bold"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-rose-700">
+                              Le montant sera automatiquement déduit de la caisse et le solde du frais de l'étudiant sera rétabli.
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                type="text"
+                                value={cancelReasonText}
+                                onChange={(e) => setCancelReasonText(e.target.value)}
+                                placeholder="Motif obligatoire d'annulation..."
+                                className="flex-1 p-2 bg-white border border-rose-300 rounded-lg text-xs font-medium"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!cancelReasonText.trim()) return;
+                                  cancelPayment(cancellingPaymentId, cancelReasonText.trim());
+                                  setCancellingPaymentId(null);
+                                }}
+                                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs cursor-pointer"
+                              >
+                                Confirmer l'annulation du reçu
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="space-y-2">
-                          <h5 className="font-bold text-slate-800 text-xs">Historique des reçus de paiement émis</h5>
+                          <h5 className="font-bold text-slate-800 text-xs">
+                            Historique des reçus de paiement émis (avec option d'annulation en cas d'erreur)
+                          </h5>
                           <div className="border border-slate-200 rounded-xl overflow-hidden">
                             <table className="w-full text-xs text-left">
                               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
@@ -1193,13 +2307,14 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                                   <th className="p-2.5">Date</th>
                                   <th className="p-2.5">Frais Réglé</th>
                                   <th className="p-2.5 text-right">Montant</th>
-                                  <th className="p-2.5">Mode</th>
+                                  <th className="p-2.5">Mode / Statut</th>
+                                  <th className="p-2.5 text-right">Action</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
                                 {studentPayments.length === 0 ? (
                                   <tr>
-                                    <td colSpan={5} className="p-4 text-center text-slate-400 italic">
+                                    <td colSpan={6} className="p-4 text-center text-slate-400 italic">
                                       Aucun paiement enregistré pour l'instant.
                                     </td>
                                   </tr>
@@ -1207,14 +2322,54 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                                   studentPayments.map((p) => {
                                     const feeObj = fees.find((f) => f.id === p.feeId);
                                     return (
-                                      <tr key={p.id} className="hover:bg-slate-50">
-                                        <td className="p-2.5 font-mono font-bold text-blue-700">{p.receiptNumber}</td>
+                                      <tr
+                                        key={p.id}
+                                        className={`hover:bg-slate-50 ${p.isCancelled ? 'bg-rose-50/40 opacity-65' : ''}`}
+                                      >
+                                        <td className="p-2.5 font-mono font-bold text-blue-700">
+                                          <span className={p.isCancelled ? 'line-through text-rose-700' : ''}>
+                                            {p.receiptNumber}
+                                          </span>
+                                        </td>
                                         <td className="p-2.5 text-slate-600">{p.paymentDate}</td>
-                                        <td className="p-2.5 text-slate-800">{feeObj?.title || 'Frais'}</td>
-                                        <td className="p-2.5 text-right font-black text-emerald-700">
+                                        <td className="p-2.5 text-slate-800">
+                                          {feeObj?.title || 'Frais'}
+                                          {p.isCancelled && (
+                                            <span className="block text-[10px] text-rose-600 font-semibold">
+                                              Motif : {p.cancelReason || p.notes}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td
+                                          className={`p-2.5 text-right font-black ${
+                                            p.isCancelled ? 'line-through text-rose-600' : 'text-emerald-700'
+                                          }`}
+                                        >
                                           {p.amountPaidAr.toLocaleString()} Ar
                                         </td>
-                                        <td className="p-2.5 font-medium text-slate-600">{p.paymentMethod}</td>
+                                        <td className="p-2.5 font-medium text-slate-600">
+                                          {p.isCancelled ? (
+                                            <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded font-bold text-[10px]">
+                                              ANNULÉ
+                                            </span>
+                                          ) : (
+                                            p.paymentMethod
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 text-right">
+                                          {!p.isCancelled && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setCancellingPaymentId(p.id);
+                                                setCancelReasonText('Erreur de saisie / Encaissement par erreur');
+                                              }}
+                                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 rounded-lg font-bold text-[10px] transition-colors cursor-pointer"
+                                            >
+                                              Annuler
+                                            </button>
+                                          )}
+                                        </td>
                                       </tr>
                                     );
                                   })
@@ -1228,74 +2383,13 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                   })()}
                 </div>
               )}
-
-              {/* TAB 3: PROFILE & IDENTITY */}
-              {detailTab === 'PROFILE' && (
-                <div className="space-y-4 text-xs">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                        Informations Académiques
-                      </span>
-                      <div className="space-y-1">
-                        <div className="flex justify-between py-1 border-b border-slate-200">
-                          <span className="text-slate-500">Matricule officiel :</span>
-                          <span className="font-mono font-bold text-blue-900">{selectedStudentDetail.matricule}</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-slate-200">
-                          <span className="text-slate-500">Groupe / Promotion :</span>
-                          <span className="font-semibold text-slate-800">
-                            {groups.find((g) => g.id === selectedStudentDetail.groupId)?.name}
-                          </span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-slate-200">
-                          <span className="text-slate-500">Mention :</span>
-                          <span className="font-semibold text-slate-800">
-                            {studentMetrics.get(selectedStudentDetail.id)?.filiereName}
-                          </span>
-                        </div>
-                        <div className="flex justify-between py-1">
-                          <span className="text-slate-500">Année Académique :</span>
-                          <span className="font-semibold text-slate-800">
-                            {studentMetrics.get(selectedStudentDetail.id)?.academicYear}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                      <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                        Coordonnées & Sécurité
-                      </span>
-                      <div className="space-y-1">
-                        <div className="flex justify-between py-1 border-b border-slate-200">
-                          <span className="text-slate-500">Adresse e-mail :</span>
-                          <span className="font-semibold text-slate-800">{selectedStudentDetail.email || 'Non renseignée'}</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-slate-200">
-                          <span className="text-slate-500">Téléphone :</span>
-                          <span className="font-semibold text-slate-800">{selectedStudentDetail.phone || 'Non renseigné'}</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-slate-200">
-                          <span className="text-slate-500">Statut Compte :</span>
-                          <span className="font-bold text-emerald-700">Actif (Accès Web & Mobile)</span>
-                        </div>
-                        <div className="flex justify-between py-1">
-                          <span className="text-slate-500">Premier mot de passe :</span>
-                          <span className="font-mono text-slate-600">Date de naissance (RG-03)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Modal Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
               <button
                 type="button"
-                onClick={() => setSelectedStudentDetail(null)}
+                onClick={() => setSelectedStudentId(null)}
                 className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
               >
                 Fermer la fiche
@@ -1303,6 +2397,11 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
             </div>
           </div>
         </div>
+      )}
+
+      {/* 6. MODAL: CARTE ÉTUDIANT OFFICIELLE (CODE-BARRES + QR CODE) */}
+      {cardModalStudent && (
+        <StudentCardModal student={cardModalStudent} onClose={() => setCardModalStudent(null)} />
       )}
     </div>
   );

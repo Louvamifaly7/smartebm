@@ -47,20 +47,45 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
   } = useApp();
 
   const isStudent = currentUser.role === 'STUDENT';
+  const isTeacher = currentUser.role === 'TEACHER';
+  const isParent = currentUser.role === 'PARENT';
 
-  // Compute student-specific teachers and groups
+  // For PARENT role, find all groupIds of linked children
+  const parentChildrenGroups = isParent
+    ? Array.from(
+        new Set(
+          users
+            .filter((u) => u.role === 'STUDENT' && currentUser.linkedStudentIds?.includes(u.id))
+            .map((u) => u.groupId)
+            .filter(Boolean) as string[]
+        )
+      )
+    : [];
+
+  // Compute student-specific or teacher-specific teachers and groups
   const studentTeachers = getTeachersForStudent(currentUser.groupId, courses, ecs, sessions, users);
-  const teachers = isStudent ? studentTeachers : users.filter((u) => u.role === 'TEACHER');
+  const teachers = isTeacher
+    ? users.filter((u) => u.id === currentUser.id)
+    : isStudent
+    ? studentTeachers
+    : users.filter((u) => u.role === 'TEACHER');
 
-  const visibleGroups = isStudent ? groups.filter((g) => g.id === currentUser.groupId) : groups;
+  const visibleGroups = isStudent
+    ? groups.filter((g) => g.id === currentUser.groupId)
+    : isParent
+    ? groups.filter((g) => parentChildrenGroups.includes(g.id))
+    : groups;
 
   // Filters state
-  const [selectedGroupId, setSelectedGroupId] = useState<string>(isStudent ? (currentUser.groupId || 'ALL') : 'ALL');
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('ALL');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(
+    isStudent ? currentUser.groupId || 'ALL' : isParent ? parentChildrenGroups[0] || 'ALL' : 'ALL'
+  );
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>(isTeacher ? currentUser.id : 'ALL');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [showWeekendForce, setShowWeekendForce] = useState<boolean>(false);
+  const [mobileDayFilter, setMobileDayFilter] = useState<string>('ALL');
 
   // Time grid slots (08:00 to 19:00)
   const timeSlots = [
@@ -87,21 +112,27 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     };
   };
 
-  // Filter sessions
+  // Filter sessions with strict RBAC isolation
   const filteredSessions = sessions.filter((s) => {
     // Role-based visibility
-    if (currentUser.role === 'STUDENT') {
+    if (isStudent) {
       if (currentUser.groupId && !s.groupIds.includes(currentUser.groupId)) {
         return false;
       }
-    } else if (currentUser.role === 'TEACHER') {
-      if (selectedTeacherId === 'ALL' && s.teacherId !== currentUser.id) {
-        // By default show teacher's own courses unless admin/filter changed
+    } else if (isTeacher) {
+      // Un enseignant ne peut voir QUE son propre emploi du temps, jamais celui des autres professeurs
+      if (s.teacherId !== currentUser.id) {
+        return false;
+      }
+    } else if (isParent) {
+      // Un parent ne voit que l'emploi du temps des groupes de ses enfants rattachés
+      if (!s.groupIds.some((gid) => parentChildrenGroups.includes(gid))) {
+        return false;
       }
     }
 
     if (selectedGroupId !== 'ALL' && !s.groupIds.includes(selectedGroupId)) return false;
-    if (selectedTeacherId !== 'ALL' && s.teacherId !== selectedTeacherId) return false;
+    if (!isTeacher && selectedTeacherId !== 'ALL' && s.teacherId !== selectedTeacherId) return false;
     if (selectedRoomId !== 'ALL' && s.roomId !== selectedRoomId) return false;
     if (selectedStatus !== 'ALL' && s.status !== selectedStatus) return false;
 
@@ -136,30 +167,31 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
   return (
     <div className="space-y-4">
       {/* Action and Filter Toolbar */}
-      <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200">
+      <div className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-xs border border-slate-200">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          
           {/* Week Navigator */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setWeekOffset((prev) => prev - 1)}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors text-slate-700"
-              title="Semaine précédente"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+          <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={() => setWeekOffset((prev) => prev - 1)}
+                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors text-slate-700 cursor-pointer"
+                title="Semaine précédente"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-            <span className="text-sm font-bold text-slate-900 px-2 min-w-[210px] text-center">
-              Semaine du {weekDays[0]?.displayDate} au {weekDays[weekDays.length - 1]?.displayDate}
-            </span>
+              <span className="text-xs sm:text-sm font-bold text-slate-900 px-1 sm:px-2 text-center">
+                Semaine du {weekDays[0]?.displayDate} au {weekDays[weekDays.length - 1]?.displayDate}
+              </span>
 
-            <button
-              onClick={() => setWeekOffset((prev) => prev + 1)}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors text-slate-700"
-              title="Semaine suivante"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <button
+                onClick={() => setWeekOffset((prev) => prev + 1)}
+                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors text-slate-700 cursor-pointer"
+                title="Semaine suivante"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
 
             {weekOffset !== 0 && (
               <button
@@ -195,7 +227,7 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleExportICS}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl transition-colors border border-slate-200"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl transition-colors border border-slate-200 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-slate-600" />
               Exporter iCal (.ics)
@@ -204,17 +236,17 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
             {canManage && (
               <button
                 onClick={onOpenCreateModal}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all hover:shadow-md"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all hover:shadow-md cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                Planifier une séance
+                Planifier Cours / Conférence / Événement
               </button>
             )}
           </div>
         </div>
 
         {/* Filters bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-3">
           <div>
             <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
               Groupe / Promotion
@@ -238,19 +270,26 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
 
           <div>
             <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-              {isStudent ? "Vos Enseignants" : "Enseignant"}
+              {isStudent ? 'Vos Enseignants' : isTeacher ? 'Votre Emploi du Temps Personnel' : 'Enseignant'}
             </label>
             <select
-              value={selectedTeacherId}
-              onChange={(e) => setSelectedTeacherId(e.target.value)}
-              className="w-full text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium"
+              value={isTeacher ? currentUser.id : selectedTeacherId}
+              onChange={(e) => !isTeacher && setSelectedTeacherId(e.target.value)}
+              disabled={isTeacher}
+              className={`w-full text-xs p-1.5 border border-slate-200 rounded-lg text-slate-800 font-medium ${
+                isTeacher ? 'bg-indigo-50 text-indigo-900 font-bold cursor-not-allowed' : 'bg-slate-50'
+              }`}
             >
-              <option value="ALL">
-                {isStudent ? `Tous vos enseignants (${teachers.length})` : `Tous les enseignants (${teachers.length})`}
-              </option>
+              {!isTeacher && (
+                <option value="ALL">
+                  {isStudent
+                    ? `Tous vos enseignants (${teachers.length})`
+                    : `Tous les enseignants (${teachers.length})`}
+                </option>
+              )}
               {teachers.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name}
+                  {t.name} {isTeacher ? '(Mon planning exclusif)' : ''}
                 </option>
               ))}
             </select>
@@ -294,8 +333,165 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
         </div>
       </div>
 
-      {/* Week Grid (Lundi à Vendredi, et Samedi/Dimanche si activités) */}
-      <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
+      {/* MOBILE VIEW (< md): Day Selector Pills + Vertical Day-by-Day Cards */}
+      <div className="md:hidden space-y-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          <button
+            type="button"
+            onClick={() => setMobileDayFilter('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-colors cursor-pointer ${
+              mobileDayFilter === 'ALL'
+                ? 'bg-blue-700 text-white shadow-xs'
+                : 'bg-white text-slate-700 border border-slate-200'
+            }`}
+          >
+            Toute la semaine
+          </button>
+          {weekDays.map((day) => {
+            const count = filteredSessions.filter((s) => s.date === day.dateStr).length;
+            return (
+              <button
+                key={day.dateStr}
+                type="button"
+                onClick={() => setMobileDayFilter(day.dateStr)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  mobileDayFilter === day.dateStr
+                    ? 'bg-blue-700 text-white shadow-xs'
+                    : 'bg-white text-slate-700 border border-slate-200'
+                }`}
+              >
+                <span>{day.name.slice(0, 3)}. {day.displayDate}</span>
+                {count > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                      mobileDayFilter === day.dateStr ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {weekDays
+          .filter((day) => mobileDayFilter === 'ALL' || day.dateStr === mobileDayFilter)
+          .map((day) => {
+            const daySessions = filteredSessions
+              .filter((s) => s.date === day.dateStr)
+              .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+            return (
+              <div key={day.dateStr} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                  <div className="font-bold text-xs text-slate-900 uppercase tracking-wide">
+                    {day.name} · {day.displayDate}
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {daySessions.length} séance(s)
+                  </span>
+                </div>
+
+                {daySessions.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-400 italic">
+                    Aucune séance programmée ce jour.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {daySessions.map((session) => {
+                      const course = courses.find((c) => c.id === session.courseId);
+                      const room = rooms.find((r) => r.id === session.roomId);
+                      const teacher = users.find((u) => u.id === session.teacherId);
+                      const isCustomEvent = session.sessionType && session.sessionType !== 'COURSE';
+                      const activityBadgeLabel =
+                        session.sessionType === 'CONFERENCE'
+                          ? '🎤 Conférence'
+                          : session.sessionType === 'SEMINAIRE'
+                          ? '🏛️ Séminaire'
+                          : session.sessionType === 'SOUTENANCE'
+                          ? '🎓 Soutenance'
+                          : session.sessionType === 'EXAMEN'
+                          ? '📝 Examen'
+                          : session.sessionType === 'AUTRE_EVENEMENT'
+                          ? `📌 ${session.eventCategoryLabel || 'Événement'}`
+                          : null;
+                      const isCancelled = session.status === 'CANCELLED';
+                      const isRescheduled = session.status === 'RESCHEDULED';
+                      const isValidated = session.status === 'COMPLETED_VALIDATED';
+
+                      return (
+                        <div key={session.id} className={`p-3.5 space-y-2 text-xs ${isCustomEvent ? 'bg-purple-50/40' : ''}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-blue-900 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-blue-600" />
+                              {session.startTime} - {session.endTime} ({session.durationHours}h)
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {activityBadgeLabel && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                  {activityBadgeLabel}
+                                </span>
+                              )}
+                              <span className="text-[11px] font-semibold text-slate-600">
+                                {isCancelled
+                                  ? 'Annulé'
+                                  : isRescheduled
+                                  ? 'Reporté'
+                                  : isValidated
+                                  ? 'Validé'
+                                  : 'Publié'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className={`font-bold text-sm text-slate-900 ${isCancelled ? 'line-through text-slate-400' : ''}`}>
+                            {session.eventTitle || course?.title || 'Cours'} {course?.code ? `(${course.code})` : ''}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                              {room?.name || session.roomId}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <UserIcon className="w-3.5 h-3.5 text-purple-600" />
+                              {session.eventSpeaker || teacher?.name || 'Intervenant'}
+                            </span>
+                          </div>
+
+                          {canManage && (
+                            <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                              {!isValidated && !isCancelled && (
+                                <>
+                                  <button
+                                    onClick={() => onOpenRescheduleModal(session)}
+                                    className="px-2.5 py-1 bg-amber-50 text-amber-800 rounded-lg font-semibold text-[11px]"
+                                  >
+                                    Reporter
+                                  </button>
+                                  <button
+                                    onClick={() => onOpenEditModal(session)}
+                                    className="px-2.5 py-1 bg-blue-50 text-blue-800 rounded-lg font-semibold text-[11px]"
+                                  >
+                                    Modifier
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+      </div>
+
+      {/* DESKTOP & TABLET WEEK GRID (md+) */}
+      <div className="hidden md:block bg-white rounded-2xl shadow-xs border border-slate-200 overflow-x-auto">
         <div style={{ minWidth: weekDays.length <= 5 ? '880px' : '1100px' }}>
           {/* Day Headers */}
           <div
@@ -357,6 +553,19 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
                       const course = courses.find((c) => c.id === session.courseId);
                       const room = rooms.find((r) => r.id === session.roomId);
                       const teacher = users.find((u) => u.id === session.teacherId);
+                      const isCustomEvent = session.sessionType && session.sessionType !== 'COURSE';
+                      const activityBadgeLabel =
+                        session.sessionType === 'CONFERENCE'
+                          ? '🎤 Conférence'
+                          : session.sessionType === 'SEMINAIRE'
+                          ? '🏛️ Séminaire'
+                          : session.sessionType === 'SOUTENANCE'
+                          ? '🎓 Soutenance'
+                          : session.sessionType === 'EXAMEN'
+                          ? '📝 Examen'
+                          : session.sessionType === 'AUTRE_EVENEMENT'
+                          ? `📌 ${session.eventCategoryLabel || 'Événement'}`
+                          : null;
 
                       const isCancelled = session.status === 'CANCELLED';
                       const isRescheduled = session.status === 'RESCHEDULED';
@@ -373,6 +582,8 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
                               ? 'bg-amber-50/70 border-amber-300 text-slate-800'
                               : isValidated
                               ? 'bg-emerald-50/60 border-emerald-300 text-slate-900'
+                              : isCustomEvent
+                              ? 'bg-purple-50/70 border-purple-300 text-slate-900'
                               : 'bg-white border-slate-200 text-slate-900'
                           }`}
                         >
@@ -387,26 +598,36 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
                             </span>
                           </div>
 
-                          {/* Course title & code */}
+                          {activityBadgeLabel && (
+                            <div className="mb-1">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                {activityBadgeLabel}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Course or Event title & code */}
                           <div className="font-bold text-slate-900 text-xs leading-snug">
                             <span className={`inline-block ${isCancelled ? 'line-through text-slate-400' : ''}`}>
-                              {course?.title || 'Cours'}
+                              {session.eventTitle || course?.title || 'Cours'}
                             </span>
                           </div>
 
                           <div className="text-[11px] text-slate-500 mt-1 font-medium">
-                            Code : {course?.code}
+                            {isCustomEvent
+                              ? session.notes || 'Événement institutionnel'
+                              : `Code : ${course?.code}`}
                           </div>
 
-                          {/* Room & Teacher info */}
+                          {/* Room & Teacher/Speaker info */}
                           <div className="space-y-1 mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
                             <div className="flex items-center gap-1 truncate" title={room?.name}>
                               <MapPin className="w-3 h-3 text-emerald-600 flex-shrink-0" />
                               <span className="truncate">{room?.name || session.roomId}</span>
                             </div>
-                            <div className="flex items-center gap-1 truncate" title={teacher?.name}>
+                            <div className="flex items-center gap-1 truncate" title={session.eventSpeaker || teacher?.name}>
                               <UserIcon className="w-3 h-3 text-purple-600 flex-shrink-0" />
-                              <span className="truncate">{teacher?.name || 'Enseignant'}</span>
+                              <span className="truncate">{session.eventSpeaker || teacher?.name || 'Intervenant'}</span>
                             </div>
                           </div>
 

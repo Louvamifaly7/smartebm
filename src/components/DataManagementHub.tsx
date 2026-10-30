@@ -46,6 +46,9 @@ export const DataManagementHub: React.FC = () => {
     addFiliere,
     updateFiliere,
     deleteFiliere,
+    domaines,
+    addDomaine,
+    deleteDomaine,
     seedBatchDemoData,
     resetToDefaultData,
   } = useApp();
@@ -251,20 +254,23 @@ export const DataManagementHub: React.FC = () => {
     }
   };
 
-  // --- STATE FOR FILIERE CREATION ---
+  // --- STATE FOR FILIERE & DOMAINE CREATION ---
   const [filiereCode, setFiliereCode] = useState('');
   const [filiereName, setFiliereName] = useState('');
+  const [filiereDomaine, setFiliereDomaine] = useState(domaines[0] || 'Sciences et Technologies');
   const [filiereDept, setFiliereDept] = useState('Pôle Technologies Numériques');
+  const [newDomaineName, setNewDomaineName] = useState('');
 
   const handleCreateFiliere = (e: React.FormEvent) => {
     e.preventDefault();
     const res = addFiliere({
       code: filiereCode.trim().toUpperCase(),
       name: filiereName.trim(),
+      domaine: filiereDomaine,
       department: filiereDept.trim(),
     });
     if (res.success) {
-      showNotification(`Filière "${filiereCode.toUpperCase()}" créée avec succès !`);
+      showNotification(`Mention / Filière "${filiereCode.toUpperCase()}" créée avec succès !`);
       setFiliereCode('');
       setFiliereName('');
     } else {
@@ -371,7 +377,7 @@ export const DataManagementHub: React.FC = () => {
             }`}
           >
             <GraduationCap className="w-4 h-4" />
-            Filières & Pôles ({filieres.length})
+            Domaines & Mentions ({filieres.length})
           </button>
 
           <button
@@ -1151,101 +1157,194 @@ export const DataManagementHub: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 5: FILIERES CREATION --- */}
+      {/* --- TAB 5: DOMAINES & MENTIONS (FILIERES) CREATION --- */}
       {activeTab === 'FILIERES' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
-              <PlusCircle className="w-4 h-4 text-blue-600" />
-              <h3 className="font-bold text-sm text-slate-900">
-                Formulaire : Nouvelle Filière
-              </h3>
-            </div>
-            <form onSubmit={handleCreateFiliere} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Code Filière * (ex: CYBER, IA, FIN)
-                </label>
-                <input
-                  type="text"
-                  value={filiereCode}
-                  onChange={(e) => setFiliereCode(e.target.value)}
-                  placeholder="CYBER"
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-bold font-mono text-xs focus:ring-1 focus:ring-blue-600"
-                  required
-                />
+          <div className="space-y-4">
+            {/* Formulaire Domaine LMD */}
+            <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200">
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
+                <PlusCircle className="w-4 h-4 text-emerald-600" />
+                <h3 className="font-bold text-sm text-slate-900">
+                  1. Nouveau Domaine LMD
+                </h3>
               </div>
-
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Nom Complet de la Filière *
-                </label>
-                <input
-                  type="text"
-                  value={filiereName}
-                  onChange={(e) => setFiliereName(e.target.value)}
-                  placeholder="Cybersécurité & Défense des SI"
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-blue-600"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Département / Pôle académique *
-                </label>
-                <input
-                  type="text"
-                  value={filiereDept}
-                  onChange={(e) => setFiliereDept(e.target.value)}
-                  placeholder="Pôle Technologies Numériques"
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const res = addDomaine(newDomaineName);
+                  if (res.success) {
+                    showNotification(`Domaine LMD "${newDomaineName}" ajouté !`);
+                    setFiliereDomaine(newDomaineName.trim());
+                    setNewDomaineName('');
+                  } else {
+                    showNotification(res.error || 'Erreur domaine', true);
+                  }
+                }}
+                className="space-y-2.5 text-xs"
               >
-                <Plus className="w-4 h-4" />
-                Créer la filière
-              </button>
-            </form>
+                <div>
+                  <label className="block font-bold uppercase text-slate-700 mb-1">
+                    Intitulé du Domaine *
+                  </label>
+                  <input
+                    type="text"
+                    value={newDomaineName}
+                    onChange={(e) => setNewDomaineName(e.target.value)}
+                    placeholder="Ex: Sciences Agronomiques & Environnement"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Ajouter ce Domaine LMD
+                </button>
+              </form>
+            </div>
+
+            {/* Formulaire Mention / Filière */}
+            <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200">
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
+                <PlusCircle className="w-4 h-4 text-blue-600" />
+                <h3 className="font-bold text-sm text-slate-900">
+                  2. Nouvelle Mention (Filière)
+                </h3>
+              </div>
+              <form onSubmit={handleCreateFiliere} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold uppercase text-slate-700 mb-1">
+                    Domaine LMD de rattachement *
+                  </label>
+                  <select
+                    value={filiereDomaine}
+                    onChange={(e) => setFiliereDomaine(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-xs"
+                  >
+                    {domaines.map((dom) => (
+                      <option key={dom} value={dom}>
+                        {dom}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold uppercase text-slate-700 mb-1">
+                    Code Mention / Filière * (ex: CYBER, IA, FIN)
+                  </label>
+                  <input
+                    type="text"
+                    value={filiereCode}
+                    onChange={(e) => setFiliereCode(e.target.value)}
+                    placeholder="CYBER"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-bold font-mono text-xs focus:ring-1 focus:ring-blue-600"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold uppercase text-slate-700 mb-1">
+                    Nom Complet de la Mention *
+                  </label>
+                  <input
+                    type="text"
+                    value={filiereName}
+                    onChange={(e) => setFiliereName(e.target.value)}
+                    placeholder="Cybersécurité & Défense des SI"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-blue-600"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold uppercase text-slate-700 mb-1">
+                    Département / Pôle académique *
+                  </label>
+                  <input
+                    type="text"
+                    value={filiereDept}
+                    onChange={(e) => setFiliereDept(e.target.value)}
+                    placeholder="Pôle Technologies Numériques"
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Créer la Mention / Filière
+                </button>
+              </form>
+            </div>
           </div>
 
-          <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-xs border border-slate-200">
-            <h3 className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100 mb-3">
-              Filières et Départements ({filieres.length})
-            </h3>
-            <div className="space-y-2.5 overflow-y-auto max-h-[560px] pr-1">
-              {filieres.map((f) => (
-                <div
-                  key={f.id}
-                  className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded text-[10px]">
-                        {f.code}
-                      </span>
-                      <h4 className="font-bold text-slate-900 text-sm">{f.name}</h4>
-                    </div>
-                    <p className="text-slate-500 text-[11px] mt-0.5">{f.department}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Supprimer la filière "${f.name}" ?`)) {
-                        deleteFiliere(f.id);
-                        showNotification(`Filière "${f.name}" supprimée.`);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+          <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-xs border border-slate-200 space-y-5">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100 mb-3">
+                Domaines LMD configurés ({domaines.length})
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {domaines.map((dom) => (
+                  <span
+                    key={dom}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                    <span>{dom}</span>
+                    {domaines.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => deleteDomaine(dom)}
+                        className="text-emerald-600 hover:text-rose-600 cursor-pointer"
+                        title="Supprimer ce domaine"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100 mb-3">
+                Mentions (Filières) et Départements ({filieres.length})
+              </h3>
+              <div className="space-y-2.5 overflow-y-auto max-h-[420px] pr-1">
+                {filieres.map((f) => (
+                  <div
+                    key={f.id}
+                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded text-[10px]">
+                          {f.code}
+                        </span>
+                        <h4 className="font-bold text-slate-900 text-sm">{f.name}</h4>
+                      </div>
+                      <p className="text-slate-500 text-[11px] mt-0.5">
+                        Domaine : <strong>{f.domaine || 'Sciences et Technologies'}</strong> • {f.department}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        deleteFiliere(f.id);
+                        showNotification(`Mention "${f.name}" supprimée.`);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

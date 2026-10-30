@@ -1789,37 +1789,44 @@ export const AndroidSimulator: React.FC = () => {
                         <span className="text-[9px] text-slate-500">Dépôts & Sujets</span>
                       </div>
                     </button>
-                  </div>
-                </div>
-
-                {/* Pole 2: Campus, Finances & Présences */}
-                <div className="space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Campus, Finances & Présences
-                  </span>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <button
                       onClick={() => { setActiveTab('QR_SCAN'); setIsServicesDrawerOpen(false); }}
-                      className="p-2.5 bg-emerald-50/60 hover:bg-emerald-100/60 border border-emerald-200 rounded-xl text-left flex items-center gap-2 text-emerald-900 cursor-pointer"
+                      className="p-2.5 bg-emerald-50/60 hover:bg-emerald-100/60 border border-emerald-200 rounded-xl text-left flex items-center gap-2 text-emerald-900 cursor-pointer col-span-2"
                     >
                       <QrCode className="w-4 h-4 text-emerald-600 shrink-0" />
                       <div className="min-w-0">
-                        <span className="font-bold text-[11px] block">Pointage QR</span>
-                        <span className="text-[9px] text-slate-500">Scan & OTP</span>
+                        <span className="font-bold text-[11px] block">Pointage QR & Présences</span>
+                        <span className="text-[9px] text-slate-500">Scan QR Code dynamique & code OTP</span>
                       </div>
                     </button>
+                  </div>
+                </div>
 
+                {/* Pole 2: Pôle Finances & Caisse (Séparé de Communication) */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                    Pôle Finances & Caisse
+                  </span>
+                  <div className="grid grid-cols-1 gap-2 text-xs">
                     <button
                       onClick={() => { setActiveTab('FINANCES'); setIsServicesDrawerOpen(false); }}
                       className="p-2.5 bg-emerald-50/60 hover:bg-emerald-100/60 border border-emerald-200 rounded-xl text-left flex items-center gap-2 text-emerald-900 cursor-pointer"
                     >
                       <Banknote className="w-4 h-4 text-emerald-600 shrink-0" />
                       <div className="min-w-0">
-                        <span className="font-bold text-[11px] block">Finances (Ar)</span>
-                        <span className="text-[9px] text-slate-500">Frais & Reçus</span>
+                        <span className="font-bold text-[11px] block">Finances & Caisse (Ar)</span>
+                        <span className="text-[9px] text-slate-500">Frais d'études, échéancier, solde & reçus officiels</span>
                       </div>
                     </button>
+                  </div>
+                </div>
 
+                {/* Pole 3: Pôle Communication (Séparé de Finances & Caisse) */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
+                    Pôle Communication
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <button
                       onClick={() => { setActiveTab('COMMUNICATION'); setIsServicesDrawerOpen(false); }}
                       className="p-2.5 bg-purple-50/60 hover:bg-purple-100/60 border border-purple-200 rounded-xl text-left flex items-center gap-2 text-purple-900 cursor-pointer"

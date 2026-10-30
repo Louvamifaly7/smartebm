@@ -1,9 +1,88 @@
 export type UserRole = 
   | 'ADMIN'             // Administrateur général
-  | 'SCHEDULER'         // Responsable des emplois du temps
-  | 'ACADEMIC_HEAD'     // Responsable pédagogique ou administratif
+  | 'ADMIN_STAFF'       // Personnel administratif
+  | 'SCOLARITE'         // Service Scolarité & Planification
+  | 'SCHEDULER'         // Responsable des emplois du temps (alias Scolarité)
+  | 'FINANCE'           // Service Financier, Comptabilité & Caisse
+  | 'ACADEMIC_HEAD'     // Responsable pédagogique / Chef de mention
   | 'TEACHER'           // Enseignant
-  | 'STUDENT';          // Étudiant
+  | 'STUDENT'           // Étudiant
+  | 'PARENT';           // Parent / Tuteur légal
+
+export type RbacOperation =
+  | 'CONSULTATION'
+  | 'CREATION'
+  | 'MODIFICATION'
+  | 'SUPPRESSION'
+  | 'VALIDATION'
+  | 'TELECHARGEMENT'
+  | 'EXPORTATION';
+
+export interface UserCustomPermissions {
+  allowedTabs?: string[];
+  deniedTabs?: string[];
+  allowedOperations?: RbacOperation[];
+  deniedOperations?: RbacOperation[];
+  canAccessSensitiveData?: boolean;
+  restrictedFiliereIds?: string[];
+  restrictedParcoursIds?: string[];
+  restrictedDepartments?: string[];
+}
+
+export interface CustomRoleDefinition {
+  id: string;
+  code: string;
+  label: string;
+  name?: string;
+  baseRole: UserRole;
+  description: string;
+  allowedTabs: string[];
+  allowedOperations: RbacOperation[];
+  canAccessSensitiveData: boolean;
+  createdAt: string;
+}
+
+export interface ParentContact {
+  id: string;
+  nom: string;
+  prenoms: string;
+  phone: string;
+  email: string;
+  relation: 'PERE' | 'MERE' | 'TUTEUR' | 'AUTRE';
+  profession?: string;
+  address?: string;
+}
+
+export type ParentContactEntry = ParentContact;
+
+export interface UserModificationLog {
+  id: string;
+  timestamp: string;
+  authorId: string;
+  authorName: string;
+  field: string;
+  oldValue: string;
+  newValue: string;
+}
+
+export interface ProfileChangeRequest {
+  id: string;
+  studentId: string;
+  studentName: string;
+  matricule: string;
+  requestedAt: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  changes: {
+    field: 'name' | 'lastName' | 'firstName' | 'birthDate' | 'birthPlace';
+    label: string;
+    oldValue: string;
+    newValue: string;
+  }[];
+  reason: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewComment?: string;
+}
 
 export type SessionStatus = 
   | 'DRAFT'             // Brouillon
@@ -14,25 +93,108 @@ export type SessionStatus =
   | 'RESCHEDULED'       // Reporté
   | 'COMPLETED_VALIDATED'; // Réalisé et validé
 
+export interface TeacherAvailabilitySlot {
+  day:
+    | 'Lundi'
+    | 'Mardi'
+    | 'Mercredi'
+    | 'Jeudi'
+    | 'Vendredi'
+    | 'Samedi'
+    | 'LUNDI'
+    | 'MARDI'
+    | 'MERCREDI'
+    | 'JEUDI'
+    | 'VENDREDI'
+    | 'SAMEDI';
+  slot:
+    | 'MATIN'
+    | 'APRES_MIDI'
+    | '07H_09H'
+    | '09H_11H'
+    | '11H_13H'
+    | '13H_15H'
+    | '15H_17H'
+    | string;
+  startTime?: string;
+  endTime?: string;
+  available: boolean;
+  note?: string;
+}
+
 export interface User {
   id: string;
+  uid?: string;            // Firebase Auth UID when linked
   matricule?: string;      // RG-02: login for students (e.g. EBM-2026-0042)
   username: string;
   name: string;
+  civilite?: 'M.' | 'Mme' | 'Mlle' | 'Dr.' | 'Prof.';
+  lastName?: string;
+  firstName?: string;
   email: string;
   phone?: string;
+  phones?: string[];       // Plusieurs numéros de téléphone (Section 9)
   role: UserRole;
+  customRoleId?: string;   // Rôle personnalisé dynamique (Section 6)
   groupId?: string;        // For students
   subGroupId?: string;     // For students (sub-group)
+  parcoursId?: string;     // Spécialisation / Parcours LMD
   birthDate?: string;      // For students: temporary password default (YYYY-MM-DD)
+  birthPlace?: string;     // Lieu de naissance
+  address?: string;        // Adresse complète
+  postalCode?: string;     // Code postal
+  city?: string;           // Ville
+  originSchool?: string;   // Établissement d'origine
+  bacSeries?: string;      // Série du baccalauréat (ex: Série C, D, S, OSE, Technique)
+  linkedInUrl?: string;    // Lien profil LinkedIn
+  parentContacts?: ParentContact[]; // Plusieurs parents ou tuteurs (Section 9)
+  isAdult?: boolean;       // Étudiant majeur (Section 12.6)
+  parentAccessConsent?: {
+    academic: boolean;
+    attendance: boolean;
+    financial: boolean;
+    administrative?: boolean;
+  };
+  // Identification transversale Code-Barres / QR Code (Section 11)
+  cardToken?: string;      // Identifiant unique sécurisé encodé dans le QR/Code-barres (ex: EBM-CARD-0042-V1)
+  cardIssueNumber?: number; // Numéro d'édition de la carte (1, 2...)
+  cardIssuedAt?: string;
+  revokedCardTokens?: string[]; // Anciens tokens désactivés en cas de perte
+  // Champs Annuaire élargi (Section 7)
+  department?: string;
+  service?: string;
+  jobTitle?: string;
+  officeLocation?: string;
+  // Champs Parent / Tuteur (Section 12)
+  linkedStudentIds?: string[]; // Plusieurs enfants rattachés au même parent
+  parentRelation?: string;
+  parentVerificationStatus?: 'VERIFIED' | 'PENDING' | 'SUSPENDED' | 'REVOKED';
+  // Autorisations RBAC individuelles & Historique (Section 6 & 9 & 10)
+  customPermissions?: UserCustomPermissions;
+  modificationHistory?: UserModificationLog[];
   passwordHash?: string;
   mustChangePassword?: boolean; // RG-03: Mandatory first login password change
   isActive: boolean;       // RG-22: deactivated account is blocked on web & android
   avatarUrl?: string;
+  photoUrl?: string;
+  avatar?: string;
   googleCalendarLinked?: boolean; // RG-17: Optional Google Calendar link
   googleEmail?: string;
   subjects?: string[];     // For teachers: taught subjects
   weeklyMaxHours?: number; // For teachers: contract quota
+  hourlyRateAr?: number;   // For teachers: taux horaire en Ariary (Ar/h) pour la paie et comptabilité
+  contractType?: 'PERMANENT' | 'VACATAIRE' | 'MISSIONNAIRE';
+  availabilities?: TeacherAvailabilitySlot[]; // Disponibilités hebdomadaires pour l'emploi du temps (07h-17h)
+  specialty?: string;
+  academicRank?: string;   // Grade universitaire (Professeur Titulaire, Maître de Conférences, Docteur / HDR, Chargé de cours, Assistant)
+  highestDiploma?: string; // Diplôme le plus élevé (Doctorat / PhD, Master Recherche, Ingénieur...)
+  almaMater?: string;      // Université / Établissement d'origine du diplôme
+  secondaryPhone?: string; // Téléphone secondaire / WhatsApp
+  orcidUrl?: string;       // Lien ORCID / Google Scholar / ResearchGate
+  hireDate?: string;       // Date de prise de fonction à EBM Institute
+  emergencyContact?: string; // Contact d'urgence (Nom & Téléphone)
+  cin?: string;
+  bankRib?: string;
 }
 
 export interface Filiere {
@@ -40,6 +202,74 @@ export interface Filiere {
   code: string;
   name: string;
   department: string;
+  domaine?: string;        // Domaine LMD (ex: Sciences et Technologies, Sciences de Gestion)
+  etablissement?: string;  // Établissement (ex: EBM Institute)
+}
+
+export interface Parcours {
+  id: string;
+  code: string;           // e.g. PARC-GL, PARC-FIN, PARC-MKT
+  name: string;           // e.g. Génie Logiciel & Cloud, Finance d'Entreprise & Audit
+  filiereId: string;
+  level: string;          // L1, L2, L3, M1, M2
+  description?: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+}
+
+export interface AcademicValidationRules {
+  id: string;
+  academicYear: string;   // e.g. "2026-2027"
+  ecPassingScore: number; // default 10.0 / 20
+  uePassingScore: number; // default 10.0 / 20
+  eliminatoryScore: number; // default 6.0 / 20
+  allowIntraUeCompensation: boolean; // Compensation entre EC d'une même UE
+  allowInterUeCompensation: boolean; // Compensation générale entre UE d'un semestre
+  creditsForDirectPass: number; // ex: 60 ECTS pour Admis direct
+  minCreditsForConditionalPass: number; // ex: 45 ECTS pour Passage conditionnel (dette d'UE)
+  defaultQuizWeight: number; // ex: 0.40
+  defaultExamWeight: number; // ex: 0.60
+  blockTranscriptIfUnpaid: boolean; // Contrôle du quitus financier
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export type DeliberationDecision =
+  | 'ADMIS'
+  | 'ADMIS_COMPENSATION'
+  | 'PASSAGE_CONDITIONNEL'
+  | 'AJOURNE'
+  | 'EN_ATTENTE';
+
+export interface DeliberationRecord {
+  id: string;
+  academicYear: string;
+  semester: SemesterCode | 'ANNUEL';
+  groupId: string;
+  studentId: string;
+  rawAverage: number;
+  juryBonusPoints: number;
+  finalAverage: number;
+  totalCreditsAttempted: number;
+  validatedCredits: number;
+  hasEliminatoryGrade: boolean;
+  attendanceRate: number;
+  financialClearance: boolean;
+  decision: DeliberationDecision;
+  juryObservation?: string;
+  isLocked: boolean;
+  deliberatedBy?: string;
+  deliberatedAt?: string;
+}
+
+export interface SystemBackupSnapshot {
+  id: string;
+  version: string;
+  createdAt: string;
+  createdBy: string;
+  label: string;
+  checksum: string;
+  recordCount: number;
+  payload: Record<string, unknown>;
 }
 
 export interface StudentGroup {
@@ -47,6 +277,7 @@ export interface StudentGroup {
   code: string;           // e.g. L1-INFO-A
   name: string;
   filiereId: string;
+  parcoursId?: string;
   level: string;          // L1, L2, L3, M1, M2
   academicYear: string;   // e.g. 2026-2027
   studentCount: number;
@@ -80,10 +311,16 @@ export interface Course {
   description?: string;
 }
 
+export type SessionActivityType = 'COURSE' | 'CONFERENCE' | 'SEMINAIRE' | 'SOUTENANCE' | 'EXAMEN' | 'AUTRE_EVENEMENT';
+
 export interface TimetableSession {
   id: string;
   courseId: string;
   teacherId: string;
+  sessionType?: SessionActivityType; // 'COURSE' par défaut, ou conférence / événement personnalisé
+  eventTitle?: string;               // Titre personnalisé (Conférence, Séminaire, Soutenance, etc.)
+  eventSpeaker?: string;             // Conférencier / Intervenant externe / Responsable
+  eventCategoryLabel?: string;       // Libellé personnalisé si 'AUTRE_EVENEMENT'
   groupIds: string[];     // Groups assigned to this session
   subGroupId?: string;    // Optional specific subgroup (TP/TD)
   roomId: string;
@@ -180,7 +417,7 @@ export interface AuditLog {
 // CAHIER DES CHARGES COMPLÉMENTAIRE v3.0 LMD
 // ==========================================
 
-export type SemesterCode = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
+export type SemesterCode = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8' | 'S9' | 'S10' | string;
 
 export interface AcademicYear {
   id: string;
@@ -206,9 +443,11 @@ export interface UniteEnseignement {
   code: string;            // e.g. "UE-INFO-101"
   title: string;           // e.g. "Algorithmique & Fondements Numériques"
   filiereId: string;
+  parcoursId?: string;
   level: string;           // L1, L2, L3, M1, M2
   semester: SemesterCode;  // S1 ou S2
   creditsEcts: number;     // e.g. 6 crédits
+  coefficient?: number;    // Coefficient pondérateur de l'UE
   academicYear: string;    // e.g. "2026-2027"
   ecIds: string[];         // Éléments Constitutifs rattachés
   validationThreshold: number; // e.g. 10.0 / 20
@@ -222,6 +461,7 @@ export interface ElementConstitutif {
   title: string;           // e.g. "Algorithmique Avancée & C++"
   semester: SemesterCode;
   creditsEcts: number;     // e.g. 3 crédits
+  coefficient?: number;    // Coefficient de l'EC dans l'UE
   hourlyVolume: number;    // e.g. 30h
   teacherIds: string[];    // Enseignants responsables
   groupIds: string[];      // Groupes concernés
@@ -235,8 +475,19 @@ export interface StudentInscription {
   studentId: string;
   academicYear: string;    // e.g. "2026-2027"
   filiereId: string;
+  parcoursId?: string;
   level: string;
   groupId: string;
+  inscriptionType?: 'INSCRIPTION' | 'REINSCRIPTION';
+  academicStatus?: 'NOUVEAU' | 'PASSANT' | 'PASSAGE_CONDITIONNEL' | 'REDOUBLANT' | 'DIPLOME';
+  dossierComplete?: boolean;
+  documents?: {
+    cinOrBirthCert: boolean;
+    baccOriginal: boolean;
+    photosId: boolean;
+    medicalCert: boolean;
+    financialClearance: boolean;
+  };
   inscriptionDate: string;
   status: 'CONFIRMED' | 'PENDING' | 'SUSPENDED';
 }
@@ -249,7 +500,9 @@ export interface EcGrade {
   semester: SemesterCode;
   quizScore?: number;      // Note sur 20 (40%)
   examScore?: number;      // Note sur 20 (60%)
-  finalScore?: number;     // (quiz * 0.4) + (exam * 0.6)
+  session1Score?: number;  // Note de 1ère session avant rattrapage
+  rattrapageScore?: number; // Note de 2ème session (Rattrapage) sur 20
+  finalScore?: number;     // Note finale retenue (max(session1, rattrapage) ou (quiz * 0.4) + (exam * 0.6))
   isPublished: boolean;
   isDraft: boolean;
   lastModifiedBy?: string;
@@ -267,6 +520,7 @@ export interface QrAttendanceSession {
   groupId: string;
   codeToken: string;       // Code secret ou OTP dynamique
   generatedAt: string;
+  createdAt?: string;
   expiresAt: string;       // Expiration automatique
   isActive: boolean;
   records: AttendanceRecord[];
@@ -338,7 +592,11 @@ export interface PaymentTransaction {
   paymentDate: string;
   recordedBy: string;      // Utilisateur ayant encaissé
   notes?: string;
+  status?: 'COMPLETED' | 'CANCELLED';
   isCancelled?: boolean;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
 }
 
 export interface CashRegisterDay {
@@ -382,10 +640,14 @@ export interface HomeworkSubmission {
   isLate: boolean;
   fileName: string;
   fileSize: string;
+  fileSizeBytes?: number;
+  fileUrl?: string;
   studentComment?: string;
   grade?: number;          // Note attribuée
   teacherFeedback?: string;
   isGraded: boolean;
+  academicYear?: string;
+  isArchived?: boolean;
 }
 
 export interface LearningResource {
@@ -399,7 +661,26 @@ export interface LearningResource {
   fileUrl: string;
   fileName: string;
   fileSize?: string;
+  fileSizeBytes?: number;
   publishedAt: string;
+  academicYear?: string;
+  isArchived?: boolean;
+}
+
+export interface StorageSettings {
+  maxFileSizeMb: number;             // ex: 15 Mo par défaut
+  allowedExtensions: string[];       // ex: ['PDF', 'DOCX', 'XLSX', 'PPTX', 'JPG', 'PNG', 'ZIP']
+  globalQuotaMb: number;             // ex: 5000 Mo (5 Go)
+  studentQuotaMb?: number;           // ex: 100 Mo par étudiant
+  teacherQuotaMb?: number;           // ex: 500 Mo par enseignant
+  autoArchiveClosedYears?: boolean;
+  autoArchivePreviousYears?: boolean;
+}
+
+export interface ScheduleSettings {
+  dayStartTime: string;        // ex: "07:00" par défaut
+  dayEndTime: string;          // ex: "18:00" par défaut
+  slotIntervalMinutes: number; // ex: 30 (toutes les 30 mn)
 }
 
 export interface AppSettings {
@@ -409,6 +690,9 @@ export interface AppSettings {
   showLiveChat: boolean;
   theme: 'light' | 'dark' | 'system';
   primaryColor: string;
+  storageSettings?: StorageSettings;
+  scheduleSettings?: ScheduleSettings;
+  systemRolePermissions?: Partial<Record<UserRole, string[]>>; // Modules autorisés personnalisés par rôle système
 }
 
 export interface ChatMessage {

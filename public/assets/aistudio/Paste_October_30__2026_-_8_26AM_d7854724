@@ -1,0 +1,552 @@
+CAHIER DES AMÉLIORATIONS FONCTIONNELLES ET ERGONOMIQUES
+SIS – EBM INSTITUTE
+Version 1.2 – Document consolidé
+Objet : Amélioration, optimisation et extension des fonctionnalités du système d'information universitaire (SIS) de l'EBM Institute.
+
+1. ORGANISATION DU MENU PRINCIPAL ET GESTION DE L'ANNÉE UNIVERSITAIRE
+Le menu principal comporte actuellement plusieurs répétitions relatives à l'année universitaire, ce qui entraîne une surcharge visuelle et une redondance des informations.
+Améliorations demandées
+* Regrouper la gestion de l'année universitaire dans un menu dédié, idéalement intitulé « Administration » ou « Paramètres académiques ».
+* Centraliser dans ce menu la création, la modification, l'activation et l'archivage des années universitaires.
+* Supprimer les affichages redondants de l'année universitaire sur les différents éléments de l'écran d'accueil.
+* Conserver uniquement les informations essentielles sur le tableau de bord afin de rendre l'interface plus claire et plus épurée.
+* Faire en sorte que l'année universitaire active soit automatiquement prise en compte dans les différents modules concernés, sans qu'il soit nécessaire de la sélectionner plusieurs fois.
+2. AMÉLIORATION DU MODULE ENCAISSEMENT
+Le module d'encaissement doit être simplifié afin de faciliter et d'accélérer les opérations quotidiennes de la caisse.
+2.1. Recherche et sélection du bénéficiaire
+* Permettre la saisie directe du matricule étudiant dans un champ de recherche.
+* Ajouter une fonction de recherche automatique et prédictive pendant la saisie.
+* Permettre également de sélectionner un étudiant à partir d'une liste avec recherche intégrée.
+* Afficher les informations essentielles de l'étudiant après sa sélection : matricule, nom, prénoms et formation.
+* Prévoir la compatibilité avec un lecteur de codes-barres ou un scanner QR Code permettant de retrouver automatiquement le dossier de l'étudiant.
+2.2. Affichage des frais à régler
+* Afficher exclusivement les frais et échéances qui ne sont pas encore intégralement réglés par l'étudiant.
+* Ne plus afficher les frais intégralement payés dans la liste des frais à régler.
+* Pour les paiements partiels, afficher uniquement le solde restant dû.
+* Actualiser automatiquement la situation financière après validation d'un encaissement.
+* Distinguer clairement les frais payés, partiellement payés, impayés et éventuellement annulés.
+* Éviter tout risque de double encaissement pour une même échéance.
+3. AMÉLIORATION DE L'INSCRIPTION ET DE LA RÉINSCRIPTION OFFICIELLE
+Les interfaces de sélection des étudiants dans les modules d'inscription et de réinscription officielle sont actuellement difficiles à utiliser.
+Améliorations demandées
+* Ajouter un champ de recherche permettant de saisir directement le matricule, le nom ou le prénom de l'étudiant.
+* Permettre la recherche dynamique au fur et à mesure de la saisie.
+* Autoriser simultanément la saisie au clavier et la sélection dans une liste de résultats.
+* Permettre l'identification de l'étudiant par lecture de son code-barres ou de son QR Code.
+* Afficher clairement les informations de l'étudiant sélectionné afin d'éviter toute erreur d'identification.
+* Prévoir une sélection rapide même lorsque la base de données contient un grand nombre d'étudiants.
+4. AMÉLIORATION DU MODULE DEVOIRS, RENDUS ET SUPPORTS PÉDAGOGIQUES
+Ce module doit permettre une véritable gestion numérique des ressources pédagogiques et des travaux universitaires.
+4.1. Téléversement et téléchargement des fichiers
+* Permettre aux enseignants de téléverser des cours, supports pédagogiques, documents complémentaires, exercices, consignes et autres ressources.
+* Permettre aux étudiants de téléverser leurs devoirs, travaux pratiques, rapports et autres travaux demandés par les enseignants.
+* Autoriser le téléchargement des fichiers mis à disposition par les enseignants.
+* Autoriser le téléchargement des fichiers déposés par les étudiants selon les droits d'accès.
+* Organiser les fichiers par matière, UE, EC, enseignant, étudiant et année universitaire.
+* Afficher la date de dépôt, le nom du fichier et l'identité de son auteur.
+* Permettre la définition de dates limites de remise des devoirs.
+* Prévoir la possibilité de remplacer un fichier déposé avant la date limite, selon les règles définies par l'enseignant.
+4.2. Paramétrage du stockage
+Dans les paramètres système, ajouter une section de gestion des fichiers permettant de définir :
+* La taille maximale autorisée par fichier.
+* Les formats de fichiers autorisés (PDF, DOCX, XLSX, PPTX, JPG, PNG, ZIP, etc.).
+* Un quota de stockage global.
+* Des quotas de stockage par catégorie d'utilisateur, si nécessaire.
+Ajouter également un tableau de bord permettant de suivre :
+* L'espace total disponible.
+* L'espace déjà utilisé.
+* L'espace restant.
+* Le volume de fichiers déposés par les étudiants et les enseignants.
+Prévoir des mécanismes d'archivage des anciennes ressources pédagogiques afin de maîtriser l'évolution du stockage et d'éviter la saturation de la plateforme.
+5. AMÉLIORATION DU MODULE GESTION DES PRÉSENCES ET QR CODE
+Le module de gestion des présences doit être entièrement revu afin de devenir pleinement opérationnel et fiable.
+Améliorations demandées
+* Permettre aux enseignants de créer et de gérer les séances de cours.
+* Enregistrer les présences, les absences et les retards.
+* Permettre la saisie manuelle des présences par l'enseignant.
+* Rendre le système de pointage par QR Code pleinement fonctionnel.
+* Permettre à l'étudiant de scanner un QR Code pour confirmer sa présence à une séance.
+* Associer automatiquement chaque pointage à l'étudiant, à la matière, à la séance, à la date et à l'heure.
+* Prévoir une durée de validité limitée du QR Code.
+* Empêcher les pointages multiples pour une même séance.
+* Permettre aux enseignants et à l'administration de consulter les historiques.
+* Générer des statistiques d'assiduité par étudiant, matière, classe, semestre et année universitaire.
+Sécurisation du pointage
+Prévoir un QR Code dynamique, renouvelable à intervalles définis, afin de limiter le partage de codes entre étudiants.
+Prévoir également des contrôles permettant de détecter les pointages effectués en dehors des horaires autorisés.
+6. GESTION AVANCÉE DES RÔLES, ACCÈS ET AUTORISATIONS
+Le module Paramètres système doit intégrer une gestion complète et personnalisable des utilisateurs et de leurs autorisations.
+6.1. Catégories d'utilisateurs
+Prévoir notamment les catégories suivantes :
+* Administrateur général.
+* Administrateurs et personnel administratif.
+* Personnel de la scolarité.
+* Personnel de la comptabilité et de la caisse.
+* Enseignants.
+* Étudiants.
+* Parents et tuteurs.
+* Responsables pédagogiques.
+* Autres catégories d'utilisateurs pouvant être créées ultérieurement.
+6.2. Personnalisation des permissions
+Mettre en place un système de gestion des rôles et permissions (RBAC – Role-Based Access Control).
+Pour chaque rôle, l'administration doit pouvoir paramétrer :
+* Les menus accessibles.
+* Les modules consultables.
+* Les informations visibles.
+* Les opérations autorisées : consultation, création, modification, suppression, validation, téléchargement et exportation.
+* Les accès aux données sensibles.
+* Les restrictions selon le département, la mention, le parcours ou la classe.
+Permettre la création de nouveaux rôles et la modification des permissions sans intervention dans le code de l'application.
+6.3. Permissions individuelles et sécurité
+Prévoir également la possibilité d'attribuer des permissions particulières à un utilisateur, en complément de son rôle général, lorsque cela est nécessaire.
+Les permissions doivent être vérifiées au niveau de la base de données et des traitements, et pas uniquement en masquant les menus dans l'interface.
+Exemples de fonctionnement :
+* Un caissier peut consulter les dossiers financiers et effectuer des encaissements, mais ne peut pas modifier les notes.
+* Un enseignant peut consulter ses classes, gérer ses cours, saisir les notes et les présences de ses étudiants, mais ne peut pas modifier les données financières.
+* Un étudiant peut consulter ses résultats, ses paiements, son emploi du temps et modifier certaines informations personnelles, mais ne peut pas accéder aux dossiers des autres étudiants.
+* Un responsable pédagogique peut disposer de droits de consultation et de validation sur les formations dont il a la responsabilité.
+* Un parent peut consulter les informations de son enfant uniquement dans les limites des autorisations accordées.
+L'objectif est que chaque utilisateur dispose uniquement des accès nécessaires à ses fonctions.
+7. ÉLARGISSEMENT DU MODULE ANNUAIRE ET SUIVI
+Le module Annuaire et suivi comporte actuellement uniquement un répertoire des étudiants et du corps enseignant.
+Améliorations demandées
+Élargir l'annuaire afin de pouvoir consulter et rechercher l'ensemble des catégories d'utilisateurs enregistrés dans le système.
+Prévoir notamment :
+* Annuaire des étudiants.
+* Annuaire des enseignants.
+* Annuaire du personnel administratif.
+* Annuaire du personnel de la comptabilité et de la caisse.
+* Annuaire des responsables pédagogiques.
+* Annuaire des parents et tuteurs, selon les autorisations.
+* Annuaire des autres collaborateurs et utilisateurs autorisés.
+Ajouter des filtres de recherche par nom, prénom, matricule ou identifiant, fonction, département, service, mention et parcours, selon la catégorie d'utilisateur.
+L'affichage des informations doit respecter les permissions définies dans le module de gestion des accès.
+8. ÉVOLUTION DE LA MAQUETTE PÉDAGOGIQUE LMD
+Le module de maquette pédagogique LMD semble actuellement limité à deux semestres (S1 et S2).
+Or, les formations universitaires sont organisées sur plusieurs semestres et doivent pouvoir être configurées en fonction du niveau d'études et du cycle.
+8.1. Gestion des semestres
+* Permettre l'ajout et la configuration d'un nombre variable de semestres.
+* Prendre en charge S1 à S6 pour le cycle Licence.
+* Prendre en charge les semestres supplémentaires nécessaires au cycle Master, notamment S7 à S10 selon l'organisation de la formation.
+* Ne pas limiter le nombre de semestres à une structure prédéfinie et fixe.
+* Permettre la création, la modification et l'organisation des UE et EC pour chaque semestre.
+8.2. Organisation des formations
+Il est important de prendre en compte la structure pédagogique suivante :
+Établissement → Domaine → Mention → Parcours → Niveau → Semestre → UE → EC.
+Chaque mention peut être subdivisée en plusieurs parcours.
+Le système doit donc permettre :
+* La création de plusieurs domaines.
+* La création de plusieurs mentions au sein d'un même domaine.
+* La création de plusieurs parcours au sein d'une même mention.
+* L'affectation des niveaux et des semestres à chaque parcours.
+* La définition des UE et EC propres à chaque parcours et à chaque semestre.
+* La modification de la maquette pédagogique d'une année universitaire à l'autre.
+8.3. Évolution des maquettes pédagogiques
+Les UE, EC, crédits ECTS et leur organisation doivent rester entièrement configurables.
+Il ne faut pas imposer une maquette fixe à toutes les formations.
+Une maquette pédagogique doit pouvoir évoluer d'une année universitaire à l'autre sans modifier rétroactivement les maquettes et les résultats des promotions précédentes.
+Les étudiants doivent rester rattachés à la maquette correspondant à leur année d'inscription et à leur parcours.
+9. AMÉLIORATION DE LA FICHE INDIVIDUELLE DE L'ÉTUDIANT
+La fiche individuelle de l'étudiant doit devenir un véritable espace de gestion des informations personnelles et administratives.
+Il faut permettre à l'étudiant de consulter et de modifier lui-même les informations personnelles autorisées, tout en permettant à l'administration de consulter et de modifier les informations selon ses droits.
+9.1. Informations personnelles
+Prévoir les champs suivants :
+* Civilité.
+* Nom.
+* Prénoms.
+* Date de naissance.
+* Lieu de naissance.
+* Adresse complète.
+* Code postal.
+* Ville.
+* Établissement d'origine.
+* Série du baccalauréat.
+* Photo d'identité avec possibilité de téléversement et de téléchargement.
+* Adresse e-mail.
+* Contacts téléphoniques avec possibilité d'enregistrer plusieurs numéros.
+* Lien vers le profil LinkedIn.
+9.2. Informations sur les parents ou le tuteur
+Prévoir les champs suivants :
+* Nom.
+* Prénoms.
+* Contact téléphonique.
+* Adresse e-mail.
+Prévoir la possibilité d'ajouter plusieurs contacts, notamment les coordonnées des deux parents ou d'un parent et d'un tuteur.
+9.3. Gestion des modifications
+* L'étudiant doit pouvoir modifier directement les informations personnelles qui lui sont accessibles.
+* L'administration doit pouvoir modifier les informations administratives et personnelles selon ses permissions.
+* Les informations sensibles ou officielles, notamment le matricule, les résultats académiques et les inscriptions validées, doivent rester protégées.
+* Prévoir une validation administrative pour les modifications nécessitant une vérification documentaire, notamment le nom et la date de naissance.
+* Prévoir un historique des modifications importantes avec l'identité de l'auteur, la date et la nature de la modification.
+Important : distinguer les informations librement modifiables par l'étudiant de celles qui nécessitent une validation de la scolarité.
+10. ACCÈS DIRECT À LA FICHE UTILISATEUR ET MODIFICATION DES INFORMATIONS
+Dans les différents répertoires et listes d'utilisateurs de l'application, chaque utilisateur doit être directement accessible par un clic.
+Fonctionnement attendu
+* Lorsqu'on clique sur un étudiant, un enseignant ou un autre utilisateur, sa fiche individuelle doit s'ouvrir.
+* La fiche doit présenter les informations détaillées de l'utilisateur.
+* Ajouter un bouton « Modifier » permettant aux utilisateurs autorisés de modifier les informations correspondantes.
+* Les champs modifiables doivent dépendre du rôle et des permissions de l'utilisateur connecté.
+* Prévoir un bouton d'enregistrement et une confirmation après chaque modification.
+* Les modifications importantes doivent être enregistrées dans un historique.
+Cette fonctionnalité doit être accessible depuis les annuaires, les résultats de recherche et les différentes listes d'utilisateurs de l'application.
+11. IDENTIFICATION DES ÉTUDIANTS PAR CODE-BARRES ET QR CODE DANS TOUS LES MODULES
+Afin d'accélérer les opérations administratives et pédagogiques, prévoir un système d'identification des étudiants par lecture de code-barres ou de QR Code.
+Cette fonctionnalité ne doit pas être limitée au module Encaissement. Elle doit être intégrée de manière transversale dans tous les modules nécessitant la recherche, la saisie ou la sélection d'un étudiant.
+11.1. Identification sur la base du matricule
+* Générer automatiquement un code-barres et/ou un QR Code unique pour chaque étudiant à partir de son matricule ou d'un identifiant unique associé à son dossier.
+* Intégrer ce code sur la carte d'étudiant.
+* Permettre la lecture du code à l'aide d'un lecteur de codes-barres USB, Bluetooth ou de la caméra d'un smartphone.
+* Après lecture, retrouver automatiquement le dossier correspondant et afficher les informations essentielles de l'étudiant.
+* Éviter toute duplication ou confusion entre les étudiants.
+11.2. Intégration dans les différents modules
+Prévoir la possibilité d'utiliser le lecteur dans tous les modules concernés, notamment :
+* Encaissement : retrouver immédiatement l'étudiant pour enregistrer un paiement.
+* Inscription et réinscription : identifier rapidement l'étudiant concerné.
+* Gestion des présences : enregistrer la présence à une séance par lecture du QR Code ou du code-barres.
+* Gestion des examens : identifier l'étudiant lors des examens et des évaluations.
+* Gestion des notes et résultats : retrouver rapidement le dossier de l'étudiant.
+* Annuaire et suivi : accéder directement à sa fiche individuelle.
+* Gestion des dossiers administratifs : retrouver un étudiant lors du traitement de son dossier.
+* Tout autre module comportant un champ de recherche ou de sélection d'étudiant.
+11.3. Fonctionnement attendu
+Dans chaque champ de recherche ou de sélection d'un étudiant, prévoir :
+* La saisie manuelle du matricule.
+* La recherche par nom et prénom.
+* La sélection dans une liste avec recherche intégrée.
+* La lecture automatique d'un code-barres.
+* La lecture d'un QR Code lorsque le matériel utilisé le permet.
+Le système doit reconnaître automatiquement le code lu, retrouver l'étudiant correspondant et renseigner le champ de sélection sans nécessiter une nouvelle recherche manuelle.
+Exigence technique : privilégier une solution compatible avec les lecteurs USB fonctionnant en mode clavier (Keyboard Wedge), afin de permettre une utilisation simple sans installation de logiciel supplémentaire. Prévoir également la possibilité d'utiliser la caméra des appareils compatibles.
+La lecture d'un code doit toujours être suivie d'une vérification de l'identité de l'étudiant avant toute opération sensible.
+11.4. Gestion des cartes étudiantes
+Prévoir une fonctionnalité permettant :
+* La génération du QR Code et du code-barres.
+* Leur intégration sur la carte étudiante.
+* La génération et le téléchargement de la carte au format PDF.
+* La réédition d'une carte en cas de perte ou de détérioration.
+* La désactivation d'un ancien identifiant en cas de remplacement de carte, sans modifier le matricule universitaire.
+Le QR Code ne doit pas contenir directement des informations personnelles sensibles. Il doit renvoyer à un identifiant sécurisé permettant au système de retrouver le dossier.
+12. CRÉATION D'UN ESPACE PARENTS / TUTEURS
+Ajouter une fonctionnalité permettant aux parents ou tuteurs légaux d'accéder à un espace dédié, associé au compte de leur étudiant.
+L'objectif est de permettre aux parents de suivre le parcours universitaire de leur enfant, notamment sa situation académique, financière et administrative, sans leur donner directement accès au compte personnel de l'étudiant.
+12.1. Création et association du compte parent
+* Permettre l'enregistrement d'un ou de plusieurs parents ou tuteurs dans la fiche individuelle de l'étudiant.
+* Prévoir la création d'un compte parent ou tuteur distinct du compte étudiant.
+* Associer chaque compte parent à un ou plusieurs étudiants, notamment lorsqu'un parent a plusieurs enfants inscrits à l'EBM Institute.
+* Prévoir une procédure de vérification de l'identité et du lien avec l'étudiant avant l'activation de l'accès.
+* Utiliser une adresse e-mail ou un numéro de téléphone pour l'identification et la récupération du compte.
+* Permettre à l'administration d'activer, de suspendre ou de révoquer un accès parent.
+12.2. Informations accessibles aux parents
+Prévoir un tableau de bord dédié permettant aux parents de consulter, selon les autorisations accordées :
+A. Informations académiques
+* Formation suivie : domaine, mention et parcours.
+* Niveau et semestre en cours.
+* Emploi du temps.
+* Résultats académiques et relevés de notes publiés.
+* Moyennes et crédits ECTS.
+* Situation de validation des UE et semestres.
+* Progression académique.
+B. Suivi des présences
+* Historique des présences et absences.
+* Retards enregistrés.
+* Taux d'assiduité.
+* Alertes en cas d'absences répétées.
+C. Situation financière
+* Frais de scolarité à régler.
+* Échéances de paiement.
+* Montants déjà payés.
+* Soldes restant dus.
+* Historique des paiements.
+* Reçus de paiement téléchargeables, lorsque les droits le permettent.
+D. Informations administratives
+* Situation de l'inscription ou de la réinscription.
+* Documents administratifs disponibles.
+* Notifications de la scolarité.
+* Informations importantes concernant la vie universitaire.
+12.3. Notifications destinées aux parents
+Prévoir un système de notifications permettant d'informer les parents des événements importants :
+* Absences répétées ou injustifiées.
+* Publication de nouveaux résultats.
+* Échéances de paiement à venir.
+* Retards de paiement.
+* Ouverture et clôture des inscriptions et réinscriptions.
+* Communications importantes de l'administration.
+* Informations concernant les examens et les évaluations.
+Prévoir la possibilité d'envoyer ces notifications par e-mail et, ultérieurement, par SMS ou d'autres canaux disponibles.
+12.4. Gestion des autorisations et confidentialité
+Le compte parent doit être totalement distinct du compte étudiant.
+Prévoir les règles suivantes :
+* Le parent dispose uniquement des droits de consultation autorisés.
+* Il ne peut pas modifier les notes, les résultats, les présences ou les informations administratives officielles.
+* Il ne peut pas effectuer d'opérations au nom de l'étudiant sans autorisation spécifique.
+* L'étudiant majeur doit pouvoir gérer les autorisations d'accès de ses parents, conformément aux règles de confidentialité de l'établissement.
+* L'administration doit pouvoir gérer les associations entre parents et étudiants et intervenir en cas de problème.
+* Prévoir la possibilité de suspendre ou de révoquer les accès.
+La gestion des autorisations doit tenir compte de l'âge de l'étudiant, de son statut juridique et des règles applicables en matière de protection des données personnelles.
+12.5. Interface du portail Parents / Tuteurs
+Créer un espace distinct intitulé « Espace Parents / Tuteurs », avec une interface simple et adaptée aux smartphones.
+Le tableau de bord devra présenter :
+* L'identité de l'étudiant suivi.
+* Sa formation et son niveau.
+* Sa situation académique.
+* Son assiduité.
+* Sa situation financière.
+* Les dernières notifications.
+* Les éventuelles actions ou échéances importantes.
+Lorsqu'un parent est associé à plusieurs étudiants, il doit pouvoir passer facilement d'un dossier à l'autre.
+12.6. Traçabilité et sécurité
+* Enregistrer les connexions des parents.
+* Conserver l'historique des consultations et des opérations sensibles.
+* Sécuriser l'authentification.
+* Prévoir une procédure de récupération du mot de passe.
+* Empêcher l'accès aux dossiers d'autres étudiants.
+* Permettre à l'administration de consulter et de contrôler les associations entre comptes parents et étudiants.
+13. EXIGENCES GÉNÉRALES DE QUALITÉ, SÉCURITÉ ET ÉVOLUTIVITÉ
+13.1. Cohérence et ergonomie de l'interface
+* Conserver une présentation homogène entre les différents modules.
+* Privilégier les champs de recherche dynamiques, l'autocomplétion et la sélection rapide.
+* Éviter les menus redondants et les écrans inutilement chargés.
+* Faciliter les opérations répétitives grâce à des interfaces simples et rapides.
+* Prévoir une interface responsive adaptée aux ordinateurs, tablettes et smartphones.
+13.2. Intégrité et sécurité des données
+* Protéger les données personnelles, financières et académiques.
+* Appliquer les autorisations au niveau de la base de données et des traitements.
+* Éviter les modifications non autorisées des informations officielles.
+* Prévoir des confirmations avant les opérations sensibles ou irréversibles.
+* Éviter les doublons d'étudiants, d'encaissements, d'inscriptions et de résultats.
+* Mettre en place des sauvegardes régulières de la base de données et des fichiers téléversés.
+13.3. Traçabilité des opérations
+Mettre en place un journal d'activité (Audit Log) permettant de retrouver :
+* L'utilisateur ayant effectué l'opération.
+* La date et l'heure.
+* Le type d'opération.
+* Le module concerné.
+* Les données modifiées lorsque cela est pertinent.
+Cette traçabilité est particulièrement importante pour les encaissements, les modifications des dossiers étudiants, les validations académiques, les résultats et les permissions.
+13.4. Évolutivité du système
+Éviter les structures fixes lorsqu'elles doivent évoluer selon :
+* Les formations.
+* Les domaines et mentions.
+* Les parcours.
+* Les niveaux et semestres.
+* Les années universitaires.
+* Les catégories d'utilisateurs.
+* Les règles pédagogiques et administratives.
+L'application doit permettre l'ajout de nouvelles formations, de nouveaux utilisateurs, de nouveaux modules et de nouvelles règles de gestion sans nécessiter une refonte générale.
+13.5. Gestion des erreurs et fiabilité
+* Afficher des messages clairs en cas d'erreur.
+* Prévenir les pertes de données lors de la saisie.
+* Éviter les doubles soumissions de formulaires.
+* Vérifier la cohérence des informations avant leur enregistrement.
+* Prévoir des mécanismes de restauration en cas d'erreur ou d'incident.
+* S'assurer que les opérations validées sont correctement enregistrées dans la base de données.
+14. CONSIGNES DE MISE EN ŒUVRE AU DÉVELOPPEUR
+Ces demandes constituent des évolutions fonctionnelles de l'application existante.
+Avant toute modification, il est impératif de :
+1. Examiner les fonctionnalités déjà développées et identifier celles qui nécessitent une correction ou une amélioration.
+2. Vérifier les dépendances entre les différents modules.
+3. Préserver intégralement les données existantes.
+4. Éviter de créer des fonctionnalités parallèles ou redondantes lorsqu'un module existant peut être amélioré.
+5. Vérifier que les nouvelles fonctionnalités sont connectées à la base de données et réellement opérationnelles.
+6. S'assurer que les permissions sont effectives et sécurisées.
+7. Tester les nouvelles fonctionnalités avec les différents profils d'utilisateurs.
+8. Vérifier que les modifications apportées à un module ne provoquent pas de dysfonctionnement dans les autres modules.
+14.1. Vérification du fonctionnement réel
+Ne pas se limiter à ajouter des boutons, des menus ou des champs dans l'interface.
+Chaque fonctionnalité demandée doit être effectivement :
+* Développée.
+* Reliée à la base de données.
+* Fonctionnelle.
+* Sécurisée.
+* Testée.
+* Compatible avec les autres modules concernés.
+14.2. Organisation des espaces utilisateurs
+Le SIS doit permettre de disposer de quatre espaces fonctionnels distincts :
+1. Espace Administration
+Gestion complète de l'établissement : scolarité, inscriptions, finances, formations, enseignants, étudiants, ressources humaines, paramètres et permissions.
+2. Espace Enseignant
+Gestion des cours, emplois du temps, supports pédagogiques, devoirs, rendus, présences, évaluations et notes, selon les autorisations attribuées.
+3. Espace Étudiant
+Consultation des cours, emplois du temps, devoirs, résultats, paiements, présences et gestion des informations personnelles.
+4. Espace Parents / Tuteurs
+Suivi académique, financier et administratif de l'étudiant, avec des droits de consultation configurables.
+Ces espaces doivent être intégrés dans une même application et utiliser une base de données centralisée, tout en garantissant la séparation des accès et la confidentialité des données.
+
+OBJECTIF FINAL
+L'objectif est de faire évoluer le SIS de l'EBM Institute vers un véritable système intégré de gestion universitaire, complet, sécurisé, moderne et évolutif.
+La plateforme doit permettre de gérer efficacement l'ensemble du cycle de vie universitaire : de la candidature et de l'inscription jusqu'à l'obtention du diplôme, en passant par la gestion pédagogique, administrative, financière et le suivi des étudiants.
+Toutes les améliorations demandées doivent être intégrées à l'application existante, sans perte de données ni régression des fonctionnalités déjà opérationnelles.
+
+15. CRITÈRES D'ACCEPTATION ET PLAN DE TESTS FONCTIONNELS
+SIS – EBM INSTITUTE
+Exigence obligatoire avant validation de chaque fonctionnalité
+Les critères ci-dessous définissent les conditions objectives permettant de vérifier que chaque amélioration demandée a été correctement développée.
+Une fonctionnalité ne doit pas être considérée comme terminée simplement parce que son interface graphique est visible. Elle doit être opérationnelle, enregistrer correctement les données, respecter les permissions et fonctionner avec les autres modules concernés.
+15.1. Organisation du menu principal et gestion de l'année universitaire
+ID	Test à effectuer	Résultat attendu
+ACC-001	Ouvrir le tableau de bord principal.	L'année universitaire n'apparaît pas de manière répétitive ou redondante.
+ACC-002	Accéder au menu Administration.	La gestion des années universitaires est centralisée dans un menu dédié.
+ACC-003	Créer une nouvelle année universitaire.	L'année est enregistrée et disponible dans les paramètres académiques.
+ACC-004	Modifier ou activer une année universitaire.	Les modules concernés prennent automatiquement en compte l'année active.
+ACC-005	Consulter les données d'une année précédente.	Les anciennes données restent accessibles et ne sont pas modifiées par le changement d'année active.
+15.2. Module Encaissement
+ID	Test à effectuer	Résultat attendu
+ACC-006	Rechercher un étudiant par matricule.	Le bon étudiant est retrouvé automatiquement.
+ACC-007	Rechercher un étudiant par nom ou prénom.	Une liste de résultats pertinente apparaît pendant la saisie.
+ACC-008	Sélectionner un étudiant dans la liste.	Sa fiche et ses informations financières s'affichent correctement.
+ACC-009	Consulter les frais à régler d'un étudiant ayant déjà payé.	Les frais intégralement réglés ne sont plus affichés parmi les sommes à payer.
+ACC-010	Consulter les frais d'un étudiant ayant effectué un paiement partiel.	Seul le solde restant dû est présenté comme montant à régler.
+ACC-011	Effectuer et valider un encaissement.	Le paiement est enregistré dans la base de données et la situation financière est actualisée automatiquement.
+ACC-012	Essayer de payer une échéance déjà réglée.	Le système empêche un double encaissement.
+ACC-013	Consulter l'historique des paiements.	Les opérations sont correctement enregistrées avec date, montant, référence et utilisateur ayant effectué l'encaissement.
+15.3. Inscription et réinscription officielle
+ID	Test à effectuer	Résultat attendu
+ACC-014	Rechercher un étudiant par matricule.	L'étudiant correspondant apparaît immédiatement.
+ACC-015	Rechercher par nom ou prénom.	Les résultats sont filtrés dynamiquement.
+ACC-016	Sélectionner un étudiant au clavier ou dans la liste.	Les deux méthodes fonctionnent correctement.
+ACC-017	Sélectionner un étudiant déjà inscrit pour la même année et le même parcours.	Le système détecte l'inscription existante et empêche une inscription en doublon.
+ACC-018	Valider une inscription.	L'inscription est enregistrée et apparaît dans le dossier de l'étudiant.
+15.4. Devoirs, rendus et supports pédagogiques
+ID	Test à effectuer	Résultat attendu
+ACC-019	Un enseignant téléverse un support PDF.	Le fichier est enregistré et accessible aux étudiants concernés.
+ACC-020	Un étudiant téléverse un devoir.	Le fichier est enregistré et accessible à l'enseignant concerné.
+ACC-021	Télécharger un fichier pédagogique.	Le fichier téléchargé est identique au fichier original.
+ACC-022	Téléverser un fichier dépassant la taille maximale autorisée.	Le système refuse le fichier et affiche un message explicatif.
+ACC-023	Téléverser un format non autorisé.	Le système bloque le dépôt.
+ACC-024	Modifier la taille maximale dans les paramètres.	La nouvelle limite est effectivement appliquée lors des prochains téléversements.
+ACC-025	Consulter le tableau de bord de stockage.	L'espace utilisé et l'espace restant correspondent aux fichiers réellement stockés.
+ACC-026	Un étudiant tente d'accéder au devoir d'une autre classe.	L'accès est refusé.
+15.5. Gestion des présences et QR Code
+ID	Test à effectuer	Résultat attendu
+ACC-027	Un enseignant crée une séance de cours.	La séance est enregistrée avec matière, date, horaire et classe.
+ACC-028	L'enseignant saisit manuellement une présence.	La présence est enregistrée dans le dossier de l'étudiant.
+ACC-029	Un étudiant scanne le QR Code valide de la séance.	Sa présence est enregistrée automatiquement avec date et heure.
+ACC-030	Un étudiant essaie de scanner un QR Code expiré.	Le pointage est refusé.
+ACC-031	Un étudiant tente de pointer deux fois pour la même séance.	Le système empêche le doublon.
+ACC-032	Un étudiant essaie de pointer pour une séance à laquelle il n'est pas inscrit.	Le système refuse le pointage.
+ACC-033	Un enseignant consulte les présences.	Les données affichées correspondent aux pointages et aux saisies manuelles.
+ACC-034	Consulter les statistiques d'assiduité.	Les taux de présence et d'absence sont calculés correctement.
+15.6. Gestion des rôles et permissions
+ID	Test à effectuer	Résultat attendu
+ACC-035	Créer un nouveau rôle utilisateur.	Le rôle est enregistré et disponible pour attribution.
+ACC-036	Modifier les permissions d'un rôle.	Les nouveaux droits sont appliqués aux utilisateurs concernés.
+ACC-037	Donner uniquement le droit de consultation à un utilisateur.	Celui-ci peut consulter les données, mais ne peut ni les modifier ni les supprimer.
+ACC-038	Connecter un enseignant.	Il accède uniquement aux modules et données autorisés.
+ACC-039	Connecter un étudiant.	Il accède uniquement à son propre dossier et aux informations autorisées.
+ACC-040	Connecter un caissier.	Il peut effectuer les opérations financières autorisées, sans pouvoir modifier les résultats académiques.
+ACC-041	Tenter d'accéder directement à une page ou une donnée interdite par URL ou requête.	L'accès est refusé même si l'utilisateur contourne l'interface graphique.
+ACC-042	Modifier les permissions d'un utilisateur.	Les nouveaux droits sont appliqués et enregistrés correctement.
+15.7. Annuaire et suivi
+ID	Test à effectuer	Résultat attendu
+ACC-043	Ouvrir l'annuaire.	Les différentes catégories d'utilisateurs autorisées sont accessibles.
+ACC-044	Rechercher un enseignant ou un membre du personnel administratif.	Le résultat correspondant apparaît.
+ACC-045	Filtrer par fonction, service ou département.	Les résultats respectent les critères sélectionnés.
+ACC-046	Consulter un annuaire avec un profil étudiant.	Seules les informations autorisées sont visibles.
+15.8. Maquette pédagogique LMD
+ID	Test à effectuer	Résultat attendu
+ACC-047	Créer une formation Licence.	Le système permet de configurer les six semestres S1 à S6.
+ACC-048	Créer une formation Master.	Le système permet de configurer les semestres nécessaires, notamment S7 à S10.
+ACC-049	Créer plusieurs mentions dans un domaine.	Toutes les mentions sont enregistrées et consultables.
+ACC-050	Créer plusieurs parcours dans une même mention.	Chaque parcours est correctement rattaché à sa mention.
+ACC-051	Ajouter des UE et EC à un semestre.	Les éléments sont enregistrés et correctement rattachés à la maquette concernée.
+ACC-052	Modifier une maquette pour une nouvelle année universitaire.	La nouvelle version est créée sans altérer les anciennes maquettes.
+ACC-053	Consulter les résultats d'une ancienne promotion.	Les résultats restent associés à la maquette pédagogique d'origine.
+ACC-054	Modifier les crédits ECTS ou les UE d'un parcours.	La modification est appliquée uniquement à la version de maquette concernée.
+15.9. Fiche individuelle de l'étudiant
+ID	Test à effectuer	Résultat attendu
+ACC-055	Consulter sa fiche en tant qu'étudiant.	Toutes les informations personnelles autorisées sont affichées.
+ACC-056	Modifier son adresse ou son numéro de téléphone.	Les modifications sont enregistrées correctement.
+ACC-057	Ajouter plusieurs numéros de téléphone.	Tous les numéros sont enregistrés et affichés.
+ACC-058	Ajouter une photo d'identité.	La photo est téléversée et affichée dans la fiche.
+ACC-059	Modifier son nom ou sa date de naissance.	Une demande de validation administrative est déclenchée.
+ACC-060	Essayer de modifier son matricule ou ses résultats.	L'étudiant ne peut pas effectuer cette modification.
+ACC-061	L'administration modifie une information autorisée.	La modification est enregistrée et l'historique est actualisé.
+ACC-062	Ajouter les informations de plusieurs parents ou tuteurs.	Tous les contacts sont enregistrés correctement.
+15.10. Accès direct aux fiches utilisateurs
+ID	Test à effectuer	Résultat attendu
+ACC-063	Cliquer sur un étudiant dans l'annuaire.	Sa fiche individuelle s'ouvre.
+ACC-064	Cliquer sur un enseignant.	Sa fiche individuelle s'ouvre.
+ACC-065	Cliquer sur un autre membre du personnel.	Sa fiche individuelle s'ouvre.
+ACC-066	Cliquer sur le bouton Modifier avec un utilisateur autorisé.	Les champs autorisés deviennent modifiables.
+ACC-067	Cliquer sur Modifier avec un utilisateur non autorisé.	La modification est impossible.
+ACC-068	Enregistrer une modification.	Les données sont actualisées et une confirmation apparaît.
+15.11. Identification par code-barres et QR Code dans tous les modules
+ID	Test à effectuer	Résultat attendu
+ACC-069	Créer un dossier étudiant.	Un identifiant unique permettant la génération du code est disponible.
+ACC-070	Générer une carte étudiante.	Le QR Code et/ou le code-barres sont intégrés correctement à la carte PDF.
+ACC-071	Scanner une carte avec un lecteur USB.	L'étudiant correspondant est automatiquement retrouvé.
+ACC-072	Scanner une carte avec un lecteur Bluetooth.	L'identification fonctionne correctement.
+ACC-073	Scanner un QR Code avec un smartphone compatible.	Le dossier correspondant est retrouvé.
+ACC-074	Scanner une carte dans le module Encaissement.	Le bénéficiaire est automatiquement sélectionné.
+ACC-075	Scanner une carte dans le module Inscription.	Le dossier de l'étudiant est automatiquement retrouvé.
+ACC-076	Scanner une carte dans un autre module comportant une recherche d'étudiant.	L'identification fonctionne également.
+ACC-077	Scanner un code inconnu ou invalide.	Le système affiche un message d'erreur sans sélectionner un autre étudiant.
+ACC-078	Rééditer une carte après sa perte.	Une nouvelle carte peut être générée et l'ancien identifiant peut être désactivé si nécessaire.
+ACC-079	Vérifier le contenu du QR Code.	Aucune donnée personnelle sensible n'est directement exposée.
+Critère transversal obligatoire : la fonctionnalité d'identification doit être disponible dans tous les champs de recherche ou de sélection d'un étudiant, et pas uniquement dans les modules expressément cités ci-dessus.
+15.12. Espace Parents / Tuteurs
+ID	Test à effectuer	Résultat attendu
+ACC-080	Enregistrer un parent dans la fiche d'un étudiant.	Le parent est associé correctement à l'étudiant.
+ACC-081	Créer un compte parent.	Le parent dispose d'un compte distinct du compte étudiant.
+ACC-082	Associer un parent à plusieurs étudiants.	Le parent peut passer d'un dossier à l'autre.
+ACC-083	Connecter un parent.	Il accède uniquement à son espace Parents / Tuteurs.
+ACC-084	Consulter les résultats d'un étudiant autorisé.	Les résultats publiés sont visibles.
+ACC-085	Consulter les présences.	L'historique et les statistiques de présence sont affichés correctement.
+ACC-086	Consulter la situation financière.	Les montants payés, les échéances et les soldes restants sont exacts.
+ACC-087	Télécharger un reçu autorisé.	Le reçu correspondant est accessible.
+ACC-088	Tenter d'accéder au dossier d'un étudiant non associé.	L'accès est refusé.
+ACC-089	Tenter de modifier une note ou une présence.	La modification est interdite.
+ACC-090	Publier de nouveaux résultats.	Une notification est envoyée aux parents autorisés selon leurs préférences.
+ACC-091	Enregistrer une absence répétée.	Une alerte peut être envoyée aux parents concernés.
+ACC-092	Suspendre un compte parent.	Le parent ne peut plus accéder à l'espace concerné.
+ACC-093	Révoquer une association parent-étudiant.	L'accès au dossier concerné est immédiatement supprimé.
+ACC-094	Connecter un parent associé à plusieurs étudiants.	Chaque dossier reste strictement séparé et les données ne sont pas mélangées.
+ACC-095	Modifier les autorisations d'accès parentales.	Seules les informations autorisées restent accessibles.
+15.13. Sécurité, traçabilité et sauvegardes
+ID	Test à effectuer	Résultat attendu
+ACC-096	Effectuer une opération importante.	L'opération est enregistrée dans le journal d'activité.
+ACC-097	Consulter le journal d'activité.	L'identité de l'auteur, la date, l'heure et la nature de l'opération sont disponibles.
+ACC-098	Tenter une opération interdite.	Le système refuse l'opération et conserve une trace de sécurité lorsque cela est pertinent.
+ACC-099	Effectuer une sauvegarde.	La sauvegarde de la base de données et des fichiers concernés est créée.
+ACC-100	Restaurer une sauvegarde de test.	Les données restaurées sont cohérentes et accessibles.
+ACC-101	Déconnecter puis reconnecter un utilisateur.	Les données enregistrées précédemment sont toujours présentes.
+ACC-102	Effectuer deux opérations simultanées sur une même donnée financière.	Le système évite les doubles enregistrements et conserve la cohérence des données.
+16. CONDITIONS GÉNÉRALES DE VALIDATION
+Une fonctionnalité sera considérée comme acceptée uniquement si toutes les conditions suivantes sont remplies :
+1. L'interface est présente et accessible aux utilisateurs autorisés.
+2. Les opérations fonctionnent réellement et produisent le résultat attendu.
+3. Les données sont correctement enregistrées dans la base de données.
+4. Les données restent disponibles après déconnexion et reconnexion.
+5. Les permissions sont effectivement respectées.
+6. Les erreurs sont correctement gérées et des messages explicites sont affichés.
+7. La fonctionnalité fonctionne sur les appareils et navigateurs compatibles avec la plateforme.
+8. Aucun dysfonctionnement n'est introduit dans les autres modules.
+9. Les critères d'acceptation associés sont tous validés.
+16.1. Gestion des anomalies
+Chaque test doit recevoir l'un des statuts suivants :
+* Réussi : le résultat attendu est obtenu.
+* Échoué : le résultat attendu n'est pas obtenu.
+* Bloqué : le test ne peut pas être réalisé en raison d'une dépendance ou d'un problème technique.
+* Non applicable : le test ne concerne pas la fonctionnalité développée.
+Tout test échoué doit donner lieu à une correction et à un nouveau test avant validation définitive.
+16.2. Preuves de validation
+Le développeur devra fournir, pour chaque module livré :
+* Les résultats des tests effectués.
+* Des captures d'écran des fonctionnalités opérationnelles.
+* Les éventuels problèmes identifiés et leur état de résolution.
+* La confirmation de l'enregistrement effectif des données dans la base de données.
+* La confirmation du respect des permissions selon les profils d'utilisateurs.
+16.3. Validation finale par module
+Un module ne pourra être déclaré terminé que lorsque tous ses critères d'acceptation applicables auront été validés.
+Il est recommandé de procéder à une validation progressive, module par module, avant de passer à la mise en production générale.
+Aucun module ne doit être déclaré opérationnel sur la seule base de son apparence visuelle ou de la présence de ses menus et boutons.
+17. EXIGENCE FINALE AU DÉVELOPPEUR
+Le présent cahier des charges et ses critères d'acceptation constituent la référence pour le développement et la validation des améliorations du SIS de l'EBM Institute.
+Le développeur doit respecter les exigences suivantes :
+* Ne pas supprimer ou détériorer les fonctionnalités déjà opérationnelles.
+* Ne pas modifier les données existantes sans nécessité et sans protection préalable.
+* Ne pas remplacer une fonctionnalité fonctionnelle par une interface non opérationnelle.
+* Ne pas déclarer une fonctionnalité terminée avant la réussite des tests correspondants.
+* Vérifier systématiquement les interactions entre les différents modules.
+* Garantir la cohérence des données entre les espaces Administration, Enseignant, Étudiant et Parents / Tuteurs.
+Livrable attendu : une application réellement fonctionnelle, testée, sécurisée et prête à être utilisée dans les activités quotidiennes de l'EBM Institute.

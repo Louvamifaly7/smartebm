@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, isAndroidView, toggleAndroidView, users } = useApp();
+  const { login, loginWithGoogleFirebase, isAndroidView, toggleAndroidView } = useApp();
 
   const [activeTab, setActiveTab] = useState<'STUDENT' | 'STAFF'>('STUDENT');
   const [identifier, setIdentifier] = useState('EBM-2026-0042');
@@ -47,6 +47,16 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setErrorMessage(null);
+    setIsLoading(true);
+    const res = await loginWithGoogleFirebase();
+    setIsLoading(false);
+    if (!res.success && res.message) {
+      setErrorMessage(res.message);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col justify-between p-4 sm:p-6 text-slate-100 font-sans">
       
@@ -65,7 +75,7 @@ export const LoginPage: React.FC = () => {
               EBM Institute
             </h1>
             <p className="text-[11px] text-blue-300">
-              Business School • Portail Numérique Officiel
+              Business School Madagascar • SIS Universitaire Officiel
             </p>
           </div>
         </div>
@@ -89,7 +99,7 @@ export const LoginPage: React.FC = () => {
           <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-red-600 via-blue-900 to-amber-500"></div>
 
           {/* Heading with Logo */}
-          <div className="text-center mb-6">
+          <div className="text-center mb-5">
             <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-slate-50 border border-slate-100 mb-3 shadow-xs">
               <img
                 src="/assets/aistudio/logo_540e8d94.png"
@@ -98,15 +108,15 @@ export const LoginPage: React.FC = () => {
               />
             </div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Connexion au Portail
+              Connexion au Portail SIS
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Accès unifié Web & Android • EBM Institute Business School
+              Accès sécurisé Cloud Firestore & Authentification par Rôle
             </p>
           </div>
 
           {/* Tab Selector: Student vs Staff */}
-          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl mb-5 text-xs font-bold">
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl mb-4 text-xs font-bold">
             <button
               type="button"
               onClick={() => {
@@ -128,7 +138,7 @@ export const LoginPage: React.FC = () => {
               type="button"
               onClick={() => {
                 setActiveTab('STAFF');
-                setIdentifier('alexandre.morel@ebm-institute.edu');
+                setIdentifier('andry.rakotomalala@ebm-institute.edu');
                 setPassword('••••••••');
                 setErrorMessage(null);
               }}
@@ -139,11 +149,11 @@ export const LoginPage: React.FC = () => {
               }`}
             >
               <Briefcase className="w-4 h-4" />
-              Personnel & Enseignants
+              Administration & Corps
             </button>
           </div>
 
-          {/* Error Message Box (e.g. RG-22 account deactivation) */}
+          {/* Error Message Box */}
           {errorMessage && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-start gap-2 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
@@ -155,7 +165,7 @@ export const LoginPage: React.FC = () => {
           )}
 
           {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 {activeTab === 'STUDENT' ? 'Matricule Étudiant *' : 'Adresse e-mail ou Identifiant *'}
@@ -171,11 +181,6 @@ export const LoginPage: React.FC = () => {
                 />
                 <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               </div>
-              {activeTab === 'STUDENT' && (
-                <span className="text-[10px] text-slate-400 block mt-1">
-                  Format officiel : EBM-2026-XXXX (fourni lors de votre inscription)
-                </span>
-              )}
             </div>
 
             <div>
@@ -193,92 +198,115 @@ export const LoginPage: React.FC = () => {
                 />
                 <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               </div>
-              {activeTab === 'STUDENT' && (
-                <span className="text-[10px] text-slate-400 block mt-1">
-                  Mot de passe initial = votre date de naissance (changement obligatoire à la 1ère connexion)
-                </span>
-              )}
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-4 bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.99] disabled:opacity-50"
+              className="w-full py-2.5 px-4 bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.99] disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  Se connecter à mon espace
+                  Se connecter à mon espace SIS
                 </>
               )}
             </button>
+
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isLoading}
+              className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5 text-emerald-400" />
+              Connexion SSO Google (Firebase Auth Officiel)
+            </button>
           </form>
 
-          {/* Quick 1-Click Fast Login / Demonstration Selector */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
+          {/* Quick 1-Click Fast Login for all 6 SIS Roles */}
+          <div className="mt-5 pt-4 border-t border-slate-100">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-2.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              Comptes de test prédéfinis (Connexion en 1-clic) :
+              Accès Direct aux 6 Rôles SIS Officiels (1-clic) :
             </span>
 
             <div className="grid grid-cols-2 gap-1.5 text-xs">
               <button
                 type="button"
-                onClick={() => handleQuickLogin('alexandre.morel@ebm-institute.edu')}
-                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all"
+                onClick={() => handleQuickLogin('andry.rakotomalala@ebm-institute.edu')}
+                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all cursor-pointer"
               >
-                <span className="font-bold block text-slate-900 truncate">Alexandre Morel</span>
-                <span className="text-[10px] text-blue-700 font-semibold block">Administrateur</span>
+                <span className="font-bold block text-slate-900 truncate">Andry Rakotomalala</span>
+                <span className="text-[10px] text-blue-700 font-semibold block">1. Administrateur</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('sandrine.girard@ebm-institute.edu')}
-                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all"
+                onClick={() => handleQuickLogin('scolarite@ebm-institute.edu')}
+                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 transition-all cursor-pointer"
               >
-                <span className="font-bold block text-slate-900 truncate">Sandrine Girard</span>
-                <span className="text-[10px] text-purple-700 font-semibold block">Resp. Planning</span>
+                <span className="font-bold block text-slate-900 truncate">Fanja Rakotoarisoa</span>
+                <span className="text-[10px] text-purple-700 font-semibold block">2. Scolarité & Planning</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('marc.vasseur@ebm-institute.edu')}
-                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all"
+                onClick={() => handleQuickLogin('ravaka.finance@ebm-institute.edu')}
+                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer"
               >
-                <span className="font-bold block text-slate-900 truncate">Dr. Marc Vasseur</span>
-                <span className="text-[10px] text-emerald-700 font-semibold block">Enseignant</span>
+                <span className="font-bold block text-slate-900 truncate">Ravaka Andrianaivo</span>
+                <span className="text-[10px] text-emerald-700 font-semibold block">3. Finances & Caisse</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('tiana.rabemananjara@ebm-institute.edu')}
+                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer"
+              >
+                <span className="font-bold block text-slate-900 truncate">Dr. Tiana Rabemananjara</span>
+                <span className="text-[10px] text-indigo-700 font-semibold block">4. Resp. Pédagogique</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('hery.andriamalala@ebm-institute.edu')}
+                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-teal-50 border border-slate-200 hover:border-teal-300 transition-all cursor-pointer"
+              >
+                <span className="font-bold block text-slate-900 truncate">Dr. Hery Andriamalala</span>
+                <span className="text-[10px] text-teal-700 font-semibold block">5. Enseignant</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickLogin('EBM-2026-0042', '2005-04-14')}
-                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all"
+                className="p-2 rounded-xl text-left bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 transition-all cursor-pointer"
               >
-                <span className="font-bold block text-slate-900 truncate">Thomas Laurent</span>
-                <span className="text-[10px] text-amber-700 font-semibold block">Étudiant L1 (0042)</span>
+                <span className="font-bold block text-slate-900 truncate">Toky Andriantsoa</span>
+                <span className="text-[10px] text-amber-700 font-semibold block">6. Étudiant (0042)</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickLogin('EBM-2026-0089', '2005-08-22')}
-                className="p-2 rounded-xl text-left bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all"
+                className="p-2 rounded-xl text-left bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-all cursor-pointer"
                 title="Déclenche le changement obligatoire de mot de passe"
               >
-                <span className="font-bold block text-slate-900 truncate">Sarah Kaboré</span>
-                <span className="text-[10px] text-amber-800 font-semibold block">1ère Connexion</span>
+                <span className="font-bold block text-slate-900 truncate">Miora Rasoanaivo</span>
+                <span className="text-[10px] text-amber-800 font-semibold block">Étudiant (1ère Connexion)</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickLogin('EBM-2026-0999', '2005-01-01')}
-                className="p-2 rounded-xl text-left bg-red-50 hover:bg-red-100 border border-red-300 transition-all"
+                className="p-2 rounded-xl text-left bg-red-50 hover:bg-red-100 border border-red-300 transition-all cursor-pointer"
                 title="Teste le blocage d'accès sur compte désactivé"
               >
                 <span className="font-bold block text-red-900 truncate flex items-center gap-1">
                   <ShieldAlert className="w-3 h-3 text-red-600" />
-                  Maxime Suspendu
+                  Mahery Randria
                 </span>
                 <span className="text-[10px] text-red-700 font-semibold block">Compte Désactivé</span>
               </button>
@@ -289,7 +317,7 @@ export const LoginPage: React.FC = () => {
 
       {/* Footer Disclaimer */}
       <footer className="text-center text-xs text-slate-400 py-3">
-        <span>© 2026 EBM Institute • Système Unique Centralisé Web & Mobile Android</span>
+        <span>© 2026 EBM Institute Madagascar • SIS Cloud Firestore & Sécurité RBAC</span>
       </footer>
     </div>
   );

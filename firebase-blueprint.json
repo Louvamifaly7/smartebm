@@ -1,0 +1,170 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "University user account (Admin, Scolarité, Finance, Academic Head, Teacher, Student)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "matricule": { "type": "string" },
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "SCOLARITE", "SCHEDULER", "FINANCE", "ACADEMIC_HEAD", "TEACHER", "STUDENT"] },
+        "groupId": { "type": "string" },
+        "parcoursId": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name", "email", "role", "isActive"]
+    },
+    "AcademicYear": {
+      "title": "AcademicYear",
+      "description": "Configurable university academic year and semesters",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "isCurrent": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["OPEN", "CLOSED", "ARCHIVED"] }
+      },
+      "required": ["id", "code", "name", "status"]
+    },
+    "Parcours": {
+      "title": "Parcours",
+      "description": "Academic specialization track within a Filiere/Mention and Level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "filiereId": { "type": "string" },
+        "level": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED"] }
+      },
+      "required": ["id", "code", "name", "filiereId", "level"]
+    },
+    "AcademicValidationRules": {
+      "title": "AcademicValidationRules",
+      "description": "Configurable LMD validation, compensation and progression rules per academic year",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "ecPassingScore": { "type": "number" },
+        "uePassingScore": { "type": "number" },
+        "eliminatoryScore": { "type": "number" },
+        "allowIntraUeCompensation": { "type": "boolean" },
+        "allowInterUeCompensation": { "type": "boolean" },
+        "creditsForDirectPass": { "type": "number" },
+        "minCreditsForConditionalPass": { "type": "number" }
+      },
+      "required": ["id", "academicYear", "uePassingScore", "creditsForDirectPass"]
+    },
+    "EcGrade": {
+      "title": "EcGrade",
+      "description": "Student evaluation scores for a constituent element (EC)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "ecId": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "semester": { "type": "string" },
+        "quizScore": { "type": "number" },
+        "examScore": { "type": "number" },
+        "finalScore": { "type": "number" },
+        "isPublished": { "type": "boolean" }
+      },
+      "required": ["id", "studentId", "ecId", "academicYear"]
+    },
+    "DeliberationRecord": {
+      "title": "DeliberationRecord",
+      "description": "Official Jury deliberation record and decision per student and semester/year",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "semester": { "type": "string" },
+        "groupId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "average": { "type": "number" },
+        "juryBonusPoints": { "type": "number" },
+        "finalAverage": { "type": "number" },
+        "validatedCredits": { "type": "number" },
+        "decision": { "type": "string", "enum": ["ADMIS", "ADMIS_COMPENSATION", "PASSAGE_CONDITIONNEL", "AJOURNE", "EN_ATTENTE"] },
+        "isLocked": { "type": "boolean" }
+      },
+      "required": ["id", "academicYear", "groupId", "studentId", "decision"]
+    },
+    "PaymentTransaction": {
+      "title": "PaymentTransaction",
+      "description": "Tuition payment transaction in Malagasy Ariary (Ar)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "receiptNumber": { "type": "string" },
+        "studentId": { "type": "string" },
+        "feeId": { "type": "string" },
+        "amountPaidAr": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "recordedBy": { "type": "string" }
+      },
+      "required": ["id", "receiptNumber", "studentId", "feeId", "amountPaidAr", "paymentDate"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable operation audit log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "platform": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "userId", "action", "details"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "University user accounts and RBAC profiles"
+    },
+    "/academicYears/{yearId}": {
+      "schema": { "$ref": "#/entities/AcademicYear" },
+      "description": "Academic years and semester configurations"
+    },
+    "/parcours/{parcoursId}": {
+      "schema": { "$ref": "#/entities/Parcours" },
+      "description": "Academic specialization tracks"
+    },
+    "/academicRules/{ruleId}": {
+      "schema": { "$ref": "#/entities/AcademicValidationRules" },
+      "description": "Dynamic validation and compensation rules"
+    },
+    "/grades/{gradeId}": {
+      "schema": { "$ref": "#/entities/EcGrade" },
+      "description": "Student grades per EC"
+    },
+    "/deliberations/{delibId}": {
+      "schema": { "$ref": "#/entities/DeliberationRecord" },
+      "description": "Jury deliberation records and official decisions"
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentTransaction" },
+      "description": "Tuition payment transactions and receipts"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable system audit log"
+    }
+  }
+}
