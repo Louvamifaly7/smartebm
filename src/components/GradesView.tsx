@@ -668,14 +668,80 @@ export const GradesView: React.FC = () => {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
-          >
-            <Printer className="w-4 h-4" />
-            Imprimer Relevé {transcriptMode === 'ANNUEL_1_PAGE' ? `Annuel (${semA}+${semB})` : `Semestre ${transcriptSemester}`}
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const targetUes =
+                  transcriptMode === 'ANNUEL_1_PAGE'
+                    ? [...s1Ues, ...s2Ues]
+                    : activeSemUes;
+                const headers = [
+                  'Matricule',
+                  'Étudiant',
+                  'Promotion',
+                  'Semestre',
+                  'Code UE',
+                  'Intitulé UE',
+                  'Code EC',
+                  'Intitulé EC (Matière)',
+                  'Crédits ECTS',
+                  'Contrôle Continu (/20)',
+                  'Examen (/20)',
+                  'Session 1 (/20)',
+                  'Rattrapage (/20)',
+                  'Note Finale Retenue (/20)',
+                  'Statut EC',
+                ];
+                const rows: (string | number)[][] = [];
+                targetUes.forEach((ue) => {
+                  const summary = getStudentUeSummary(targetStudent.id, ue.id);
+                  summary.ecDetails.forEach(({ ec, grade }) => {
+                    const s1 =
+                      grade?.session1Score ??
+                      calculateEcFinalScore(grade?.quizScore, grade?.examScore, ec.id);
+                    const ratt = grade?.rattrapageScore;
+                    const ret = grade?.finalScore;
+                    rows.push([
+                      targetStudent.matricule || '',
+                      targetStudent.name,
+                      studentGroup?.code || '',
+                      ec.semester,
+                      ue.code,
+                      ue.title,
+                      ec.code,
+                      ec.title,
+                      ec.creditsEcts,
+                      grade?.quizScore !== undefined ? grade.quizScore.toFixed(2) : '',
+                      grade?.examScore !== undefined ? grade.examScore.toFixed(2) : '',
+                      s1 !== undefined ? s1.toFixed(2) : '',
+                      ratt !== undefined ? ratt.toFixed(2) : '',
+                      ret !== undefined ? ret.toFixed(2) : '',
+                      ret === undefined ? 'En cours' : ret >= 10 ? 'Validé' : 'Ajourné',
+                    ]);
+                  });
+                });
+                exportToCsv(
+                  `Releve_Notes_${targetStudent.matricule || targetStudent.name}_${selectedAcademicYear}`,
+                  headers,
+                  rows
+                );
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Exporter Relevé (CSV)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimer Relevé {transcriptMode === 'ANNUEL_1_PAGE' ? `Annuel (${semA}+${semB})` : `Semestre ${transcriptSemester}`}
+            </button>
+          </div>
         </div>
 
         {/* Printable Official Document */}
@@ -1008,7 +1074,54 @@ export const GradesView: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedEc) return;
+                  const headers = [
+                    'Matricule',
+                    'Étudiant',
+                    'Semestre',
+                    'Code EC',
+                    'Matière (EC)',
+                    'Contrôle Continu (/20)',
+                    'Examen Session 1 (/20)',
+                    'Moyenne Session 1 (/20)',
+                    'Note Rattrapage (/20)',
+                    'Note Finale Retenue (/20)',
+                    'Statut',
+                    'Appréciation',
+                  ];
+                  const rows = studentsInEcGroups.map((st) => {
+                    const g = getStudentEcGrade(st.id, selectedEc.id);
+                    const s1 =
+                      g?.session1Score ??
+                      calculateEcFinalScore(g?.quizScore, g?.examScore, selectedEc.id);
+                    const finalScore = g?.finalScore;
+                    return [
+                      st.matricule || '',
+                      st.name,
+                      selectedEc.semester,
+                      selectedEc.code,
+                      selectedEc.title,
+                      g?.quizScore !== undefined ? g.quizScore : '',
+                      g?.examScore !== undefined ? g.examScore : '',
+                      s1 !== undefined ? s1 : '',
+                      g?.rattrapageScore !== undefined ? g.rattrapageScore : '',
+                      finalScore !== undefined ? finalScore : '',
+                      g?.isPublished ? 'Publié' : g?.isDraft ? 'Brouillon' : 'Non saisi',
+                      g?.comment || '',
+                    ];
+                  });
+                  exportToCsv(`Notes_${selectedEc.code}_${selectedEc.semester}_${selectedAcademicYear}`, headers, rows);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                Exporter CSV (Notes)
+              </button>
+
               <button
                 onClick={handleSaveAllDrafts}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"

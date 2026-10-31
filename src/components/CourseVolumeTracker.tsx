@@ -12,7 +12,10 @@ import {
   CheckSquare,
   Sparkles,
   MapPin,
+  Download,
+  Layers,
 } from 'lucide-react';
+import { downloadCsvFile } from '../utils/csvExport';
 
 interface CourseVolumeTrackerProps {
   onNavigateToCreate?: () => void;
@@ -24,6 +27,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     users,
     sessions,
     groups,
+    filieres,
     rooms,
     getCourseHourlyStats,
     getTeacherHourlyStats,
@@ -38,7 +42,8 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Filters State
+  // Filters State (Mention/Filière, Groupe/Promotion, Enseignant, Date, Statut)
+  const [selectedFiliereFilter, setSelectedFiliereFilter] = useState<string>('ALL');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('ALL');
   const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<string>(
     isTeacher ? currentUser.id : 'ALL'
@@ -47,6 +52,22 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
   const [customDate, setCustomDate] = useState<string>(todayStr);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'TO_VALIDATE' | 'VALIDATED'>('ALL');
   const [validationBanner, setValidationBanner] = useState<string | null>(null);
+
+  // Groups available according to selected Mention (Filière)
+  const availableGroups = useMemo(() => {
+    if (selectedFiliereFilter === 'ALL') return groups;
+    return groups.filter((g) => g.filiereId === selectedFiliereFilter);
+  }, [groups, selectedFiliereFilter]);
+
+  const handleFiliereChange = (newFiliereId: string) => {
+    setSelectedFiliereFilter(newFiliereId);
+    if (newFiliereId !== 'ALL' && selectedGroupFilter !== 'ALL') {
+      const grp = groups.find((g) => g.id === selectedGroupFilter);
+      if (grp && grp.filiereId !== newFiliereId) {
+        setSelectedGroupFilter('ALL');
+      }
+    }
+  };
 
   const teachers = useMemo(
     () =>
@@ -71,7 +92,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     };
   }, []);
 
-  // Filtered Sessions for Daily / Group Quick Validation
+  // Filtered Sessions for Daily / Mention / Group Quick Validation
   const filteredSessions = useMemo(() => {
     return sessions
       .filter((s) => {
@@ -79,6 +100,16 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
         if (isTeacher && s.teacherId !== currentUser?.id) return false;
         if (!isTeacher && selectedTeacherFilter !== 'ALL' && s.teacherId !== selectedTeacherFilter) {
           return false;
+        }
+        if (selectedFiliereFilter !== 'ALL') {
+          const course = courses.find((c) => c.id === s.courseId);
+          const sessionGroupsInFiliere = s.groupIds.some((gid) => {
+            const g = groups.find((gr) => gr.id === gid);
+            return g?.filiereId === selectedFiliereFilter;
+          });
+          if (course?.filiereId !== selectedFiliereFilter && !sessionGroupsInFiliere) {
+            return false;
+          }
         }
         if (selectedGroupFilter !== 'ALL' && !s.groupIds.includes(selectedGroupFilter)) {
           return false;
@@ -107,7 +138,10 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     isTeacher,
     currentUser,
     selectedTeacherFilter,
+    selectedFiliereFilter,
     selectedGroupFilter,
+    courses,
+    groups,
     dateFilterMode,
     todayStr,
     currentWeekBounds,
@@ -131,6 +165,63 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filteredSessions]);
 
+  // Filtered Courses for Course Volume Progress (by Mention & by Group)
+  const visibleCourses = useMemo(() => {
+    return courses.filter((c) => {
+      if (isTeacher && !c.teacherIds.includes(currentUser?.id || '')) return false;
+      if (!isTeacher && selectedTeacherFilter !== 'ALL' && !c.teacherIds.includes(selectedTeacherFilter)) {
+        return false;
+      }
+      if (selectedFiliereFilter !== 'ALL') {
+        const hasGroupInFiliere = c.groupIds.some((gid) => {
+          const g = groups.find((gr) => gr.id === gid);
+          return g?.filiereId === selectedFiliereFilter;
+        });
+        if (c.filiereId !== selectedFiliereFilter && !hasGroupInFiliere) {
+          return false;
+        }
+      }
+      if (selectedGroupFilter !== 'ALL' && !c.groupIds.includes(selectedGroupFilter)) {
+        return false;
+      }
+      return true;
+    });
+  }, [courses, isTeacher, currentUser, selectedTeacherFilter, selectedFiliereFilter, selectedGroupFilter, groups]);
+
+  // Filtered Teachers based on Mention & Group
+  const visibleTeachers = useMemo(() => {
+    if (selectedFiliereFilter === 'ALL' && selectedGroupFilter === 'ALL' && selectedTeacherFilter === 'ALL') {
+      return teachers;
+    }
+    const activeTeacherIds = new Set<string>();
+    visibleCourses.forEach((c) => c.teacherIds.forEach((tid) => activeTeacherIds.add(tid)));
+    filteredSessions.forEach((s) => activeTeacherIds.add(s.teacherId));
+    return teachers.filter((t) => {
+      if (selectedTeacherFilter !== 'ALL' && t.id !== selectedTeacherFilter) return false;
+      return activeTeacherIds.has(t.id);
+    });
+  }, [teachers, selectedFiliereFilter, selectedGroupFilter, selectedTeacherFilter, visibleCourses, filteredSessions]);
+
+  // Dynamic Summary KPIs for selected Mention / Groupe
+  const summaryStats = useMemo(() => {
+    let totalPlannedCatalogue = 0;
+    let totalScheduled = 0;
+    let totalCompleted = 0;
+    visibleCourses.forEach((c) => {
+      const st = getCourseHourlyStats(c.id);
+      totalPlannedCatalogue += st.totalHours;
+      totalScheduled += st.scheduledHours;
+      totalCompleted += st.completedHours;
+    });
+    const completionRate = totalPlannedCatalogue > 0 ? Math.round((totalCompleted / totalPlannedCatalogue) * 100) : 0;
+    return {
+      totalPlannedCatalogue,
+      totalScheduled,
+      totalCompleted,
+      completionRate,
+    };
+  }, [visibleCourses, getCourseHourlyStats]);
+
   const handleBatchValidateAllFiltered = () => {
     if (unvalidatedFilteredSessions.length === 0) return;
     const count = unvalidatedFilteredSessions.length;
@@ -151,19 +242,110 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     setTimeout(() => setValidationBanner(null), 4000);
   };
 
-  // Filtered Courses for Course Volume Progress
-  const visibleCourses = useMemo(() => {
-    return courses.filter((c) => {
-      if (isTeacher && !c.teacherIds.includes(currentUser?.id || '')) return false;
-      if (!isTeacher && selectedTeacherFilter !== 'ALL' && !c.teacherIds.includes(selectedTeacherFilter)) {
-        return false;
-      }
-      if (selectedGroupFilter !== 'ALL' && !c.groupIds.includes(selectedGroupFilter)) {
-        return false;
-      }
-      return true;
+  // CSV Exports for each state in Suivi Volumes Horaires
+  const handleExportSessionsCsv = () => {
+    const headers = [
+      'Date',
+      'Horaire',
+      'Durée (h)',
+      'Code Cours',
+      'Matière / Événement',
+      'Mention (Filière)',
+      'Groupes / Promotions',
+      'Enseignant',
+      'Salle',
+      'Statut Validation',
+    ];
+    const rows = filteredSessions.map((s) => {
+      const course = courses.find((c) => c.id === s.courseId);
+      const filiere = filieres.find((f) => f.id === course?.filiereId);
+      const teacher = users.find((u) => u.id === s.teacherId);
+      const room = rooms.find((r) => r.id === s.roomId);
+      const grpNames = s.groupIds.map((gid) => groups.find((g) => g.id === gid)?.code || gid).join(', ');
+      return [
+        s.date,
+        `${s.startTime} - ${s.endTime}`,
+        s.durationHours,
+        course?.code || s.sessionType || 'COURS',
+        s.eventTitle || course?.title || 'Séance',
+        filiere ? `${filiere.code} - ${filiere.name}` : 'Tronc commun',
+        grpNames,
+        s.eventSpeaker || teacher?.name || 'N/A',
+        room?.name || s.roomId,
+        s.status === 'COMPLETED_VALIDATED' ? 'Réalisé & Validé' : 'En attente de validation',
+      ];
     });
-  }, [courses, isTeacher, currentUser, selectedTeacherFilter, selectedGroupFilter]);
+    downloadCsvFile(`Suivi_Seances_Horaires_${todayStr}.csv`, headers, rows);
+  };
+
+  const handleExportCoursesProgressCsv = () => {
+    const headers = [
+      'Code Matière',
+      'Intitulé du Cours (EC)',
+      'Mention (Filière)',
+      'Groupes / Promotions',
+      'Enseignants',
+      'Volume Total Prévu (h)',
+      'Heures Planifiées (h)',
+      'Heures Réalisées Validées (h)',
+      'Reste à Planifier (h)',
+      'Taux de Réalisation (%)',
+    ];
+    const rows = visibleCourses.map((c) => {
+      const st = getCourseHourlyStats(c.id);
+      const filiere = filieres.find((f) => f.id === c.filiereId);
+      const grpCodes = c.groupIds.map((gid) => groups.find((g) => g.id === gid)?.code || gid).join(', ');
+      const teacherNames = c.teacherIds
+        .map((tid) => users.find((u) => u.id === tid)?.name)
+        .filter(Boolean)
+        .join(', ');
+      const pct = st.totalHours > 0 ? Math.round((st.completedHours / st.totalHours) * 100) : 0;
+      return [
+        c.code,
+        c.title,
+        filiere ? `${filiere.code} - ${filiere.name}` : '',
+        grpCodes,
+        teacherNames,
+        st.totalHours,
+        st.scheduledHours,
+        st.completedHours,
+        st.remainingToSchedule,
+        `${pct}%`,
+      ];
+    });
+    downloadCsvFile(`Etat_Avancement_Volumes_Horaires_Cours_${todayStr}.csv`, headers, rows);
+  };
+
+  const handleExportTeacherLoadCsv = () => {
+    const headers = [
+      'Enseignant',
+      'Grade Universitaire',
+      'Spécialité',
+      'Heures Planifiées (h)',
+      'Heures Validées Effectuées (h)',
+      'Quota Max Hebdo (h)',
+      'Taux Horaire (Ar/h)',
+      'Montant Validé Estimé (Ar)',
+      'Statut Quota',
+    ];
+    const rows = visibleTeachers.map((t) => {
+      const tStats = getTeacherHourlyStats(t.id);
+      const rate = t.hourlyRateAr || 0;
+      const estimatedPay = tStats.totalCompleted * rate;
+      return [
+        t.name,
+        t.academicRank || 'Enseignant',
+        t.specialty || '',
+        tStats.totalScheduled,
+        tStats.totalCompleted,
+        tStats.maxWeekly,
+        rate,
+        estimatedPay,
+        tStats.totalScheduled > tStats.maxWeekly ? 'Dépassement' : 'Quota OK',
+      ];
+    });
+    downloadCsvFile(`Etat_Charges_Horaires_Enseignants_${todayStr}.csv`, headers, rows);
+  };
 
   return (
     <div className="space-y-6">
@@ -181,20 +363,85 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
             Suivi des Volumes Horaires & Validation Quotidienne
           </h1>
           <p className="text-xs sm:text-sm text-purple-200 mt-1">
-            Filtrez par groupe, par jour ou par enseignant et validez en 1 clic les séances réalisées chaque jour.
+            Filtrez par Mention (Filière), par Groupe/Promotion, par Jour ou par Enseignant, validez les séances et exportez vos états en CSV.
           </p>
         </div>
 
-        {canValidate && unvalidatedFilteredSessions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={handleBatchValidateAllFiltered}
-            className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer shrink-0"
+            onClick={handleExportCoursesProgressCsv}
+            className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Exporter l'état d'avancement des volumes horaires au format CSV"
           >
-            <CheckSquare className="w-4 h-4" />
-            Tout valider ({unvalidatedFilteredSessions.length} séance{unvalidatedFilteredSessions.length > 1 ? 's' : ''})
+            <Download className="w-4 h-4 text-emerald-300" />
+            Exporter État CSV
           </button>
-        )}
+
+          {canValidate && unvalidatedFilteredSessions.length > 0 && (
+            <button
+              type="button"
+              onClick={handleBatchValidateAllFiltered}
+              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <CheckSquare className="w-4 h-4" />
+              Tout valider ({unvalidatedFilteredSessions.length} séance{unvalidatedFilteredSessions.length > 1 ? 's' : ''})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Dynamic KPI Summary Bar for selected Mention / Groupe */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+          <span className="text-[10px] font-bold uppercase text-slate-400 block">
+            Volume Total Prévu ({visibleCourses.length} EC)
+          </span>
+          <span className="text-2xl font-black text-slate-900 mt-1 block">
+            {summaryStats.totalPlannedCatalogue}h
+          </span>
+          <span className="text-[11px] text-slate-500">
+            {selectedFiliereFilter === 'ALL'
+              ? 'Toutes les mentions'
+              : filieres.find((f) => f.id === selectedFiliereFilter)?.name}
+          </span>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+          <span className="text-[10px] font-bold uppercase text-slate-400 block">
+            Heures Planifiées
+          </span>
+          <span className="text-2xl font-black text-blue-700 mt-1 block">
+            {summaryStats.totalScheduled}h
+          </span>
+          <span className="text-[11px] text-slate-500">
+            Reste à planifier : {Math.max(0, summaryStats.totalPlannedCatalogue - summaryStats.totalScheduled)}h
+          </span>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+          <span className="text-[10px] font-bold uppercase text-slate-400 block">
+            Heures Réalisées & Validées
+          </span>
+          <span className="text-2xl font-black text-emerald-700 mt-1 block">
+            {summaryStats.totalCompleted}h ({summaryStats.completionRate}%)
+          </span>
+          <span className="text-[11px] text-slate-500">
+            Séances validées officiellement
+          </span>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+          <span className="text-[10px] font-bold uppercase text-slate-400 block">
+            Séances à Valider (Filtre actif)
+          </span>
+          <span className="text-2xl font-black text-amber-600 mt-1 block">
+            {unvalidatedFilteredSessions.length}
+          </span>
+          <span className="text-[11px] text-slate-500">
+            Sur {filteredSessions.length} séance(s) filtrée(s)
+          </span>
+        </div>
       </div>
 
       {validationBanner && (
@@ -213,12 +460,12 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
         </div>
       )}
 
-      {/* Interactive Filter Bar (Par Groupe, Par Jour, Par Enseignant, Par Statut) */}
+      {/* Interactive Filter Bar (Par Mention/Filière, Par Groupe, Par Jour, Par Enseignant, Par Statut) */}
       <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-100">
           <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
             <Filter className="w-4 h-4 text-purple-600" />
-            Filtres Rapides & Sélection par Jour / Groupe
+            Filtres par Mention (Filière), Groupe / Promotion, Jour & Enseignant
           </span>
 
           {/* Quick Day Mode Buttons */}
@@ -270,7 +517,27 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+          {/* Mention / Filière Filter */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1 flex items-center gap-1">
+              <Layers className="w-3 h-3 text-indigo-600" />
+              Mention / Filière
+            </label>
+            <select
+              value={selectedFiliereFilter}
+              onChange={(e) => handleFiliereChange(e.target.value)}
+              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+            >
+              <option value="ALL">Toutes les mentions ({filieres.length})</option>
+              {filieres.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.code} — {f.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Groupe Filter */}
           <div>
             <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
@@ -281,8 +548,8 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
               onChange={(e) => setSelectedGroupFilter(e.target.value)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
             >
-              <option value="ALL">Tous les groupes ({groups.length})</option>
-              {groups.map((g) => (
+              <option value="ALL">Tous les groupes ({availableGroups.length})</option>
+              {availableGroups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.code} — {g.name}
                 </option>
@@ -344,26 +611,37 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
         </div>
       </div>
 
-      {/* SECTION 1: VALIDATION QUOTIDIENNE PAR JOUR & PAR GROUPE */}
+      {/* SECTION 1: VALIDATION QUOTIDIENNE PAR JOUR, MENTION & GROUPE */}
       <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-purple-600" />
-              Validation Rapide des Séances par Jour & par Groupe
+              Validation Rapide des Séances par Jour, par Mention & par Groupe
             </h3>
             <p className="text-xs text-slate-500">
               Validez individuellement chaque cours ou validez toute une journée en un seul clic pour incrémenter les heures réalisées.
             </p>
           </div>
-          <span className="text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
-            {filteredSessions.length} séance(s) affichée(s) • {unvalidatedFilteredSessions.length} en attente de validation
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-full border border-purple-200">
+              {filteredSessions.length} séance(s) • {unvalidatedFilteredSessions.length} en attente
+            </span>
+            <button
+              type="button"
+              onClick={handleExportSessionsCsv}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Exporter la liste des séances filtrées au format CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              Exporter CSV (Séances)
+            </button>
+          </div>
         </div>
 
         {sessionsGroupedByDate.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-            Aucune séance ne correspond aux filtres sélectionnés (Groupe / Jour / Statut).
+            Aucune séance ne correspond aux filtres sélectionnés (Mention / Groupe / Jour / Statut).
           </div>
         ) : (
           <div className="space-y-4">
@@ -421,6 +699,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
                   <div className="divide-y divide-slate-100">
                     {daySessions.map((session) => {
                       const course = courses.find((c) => c.id === session.courseId);
+                      const filiere = filieres.find((f) => f.id === course?.filiereId);
                       const teacher = users.find((u) => u.id === session.teacherId);
                       const room = rooms.find((r) => r.id === session.roomId);
                       const groupBadges = session.groupIds
@@ -440,6 +719,11 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
                               <span className="font-mono font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                                 {session.startTime} - {session.endTime} ({session.durationHours}h)
                               </span>
+                              {filiere && (
+                                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                                  {filiere.code}
+                                </span>
+                              )}
                               <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-800 font-bold border border-purple-200 flex items-center gap-1">
                                 <Users className="w-3 h-3" />
                                 {groupBadges}
@@ -503,7 +787,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
 
       {/* SECTION 2: Course Volume Progress */}
       <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
               <BookOpen className="w-5 h-5" />
@@ -513,15 +797,25 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
                 Suivi des Volumes Horaires par Matière (EC)
               </h3>
               <p className="text-xs text-slate-500">
-                Comparaison temps réel : Heures totales prévues vs Planifiées vs Réalisées & Validées
+                Comparaison temps réel par Mention & Groupe : Heures totales prévues vs Planifiées vs Réalisées & Validées
               </p>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={handleExportCoursesProgressCsv}
+            className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <Download className="w-4 h-4" />
+            Exporter CSV (Volumes par Cours)
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {visibleCourses.map((course) => {
             const stats = getCourseHourlyStats(course.id);
+            const filiere = filieres.find((f) => f.id === course.filiereId);
             const teacherNames = course.teacherIds
               .map((tid) => users.find((u) => u.id === tid)?.name)
               .filter(Boolean)
@@ -546,10 +840,15 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-[11px] font-mono font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md">
                         {course.code}
                       </span>
+                      {filiere && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md">
+                          {filiere.code}
+                        </span>
+                      )}
                       <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md">
                         {groupCodes}
                       </span>
@@ -559,7 +858,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
                     </h4>
                     <p className="text-xs text-slate-500">{teacherNames}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <span className="text-xs font-extrabold text-slate-900">
                       {stats.completedHours}h / {stats.totalHours}h
                     </span>
@@ -597,27 +896,43 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
               </div>
             );
           })}
+          {visibleCourses.length === 0 && (
+            <div className="col-span-full p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+              Aucun cours ne correspond à la Mention ou au Groupe sélectionné.
+            </div>
+          )}
         </div>
       </div>
 
       {/* SECTION 3: Teacher Hourly Load & Quota */}
       <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200">
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
-            <UserIcon className="w-5 h-5" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-purple-100 text-purple-700 rounded-xl">
+              <UserIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Charge Horaire des Enseignants
+              </h3>
+              <p className="text-xs text-slate-500">
+                Suivi des heures planifiées et validées par enseignant par rapport à leur quota hebdomadaire
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-base font-bold text-slate-900">
-              Charge Horaire des Enseignants
-            </h3>
-            <p className="text-xs text-slate-500">
-              Suivi des heures planifiées et validées par enseignant par rapport à leur quota hebdomadaire
-            </p>
-          </div>
+
+          <button
+            type="button"
+            onClick={handleExportTeacherLoadCsv}
+            className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <Download className="w-4 h-4" />
+            Exporter CSV (Charges Enseignants)
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {teachers.map((teacher) => {
+          {visibleTeachers.map((teacher) => {
             const tStats = getTeacherHourlyStats(teacher.id);
             const isOverloaded = tStats.totalScheduled > tStats.maxWeekly;
 

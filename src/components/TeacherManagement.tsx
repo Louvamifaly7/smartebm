@@ -27,6 +27,7 @@ import { getTeachersForStudent } from '../utils/studentVisibility';
 import { TeacherAvailabilitySlot, User } from '../types';
 import { WIDE_TEACHER_SLOTS, buildWideAvailabilities } from './UserProfileModal';
 import { exportTeacherScheduleToPDF } from '../utils/pdfExport';
+import { downloadCsvFile } from '../utils/csvExport';
 
 interface TeacherManagementProps {
   onNavigateToCreate?: () => void;
@@ -251,10 +252,56 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-800 rounded-xl border border-blue-200">
               {teachers.length} enseignants actifs
             </span>
+            {!isStudent && (
+              <button
+                type="button"
+                onClick={() => {
+                  const headers = [
+                    'Civilité',
+                    'Nom Complet',
+                    'Grade Universitaire',
+                    'Diplôme le plus élevé',
+                    'Spécialité',
+                    'Type Contrat',
+                    'Email',
+                    'Téléphone',
+                    'Heures Planifiées (h)',
+                    'Heures Validées (h)',
+                    'Quota Max Hebdo (h)',
+                    'Taux Horaire (Ar/h)',
+                    'Paie Validée (Ar)',
+                  ];
+                  const rows = teachers.map((t) => {
+                    const st = getTeacherHourlyStats(t.id);
+                    const rate = t.hourlyRateAr || 40000;
+                    return [
+                      t.civilite || 'Dr.',
+                      t.name,
+                      t.academicRank || 'Enseignant-Chercheur',
+                      t.highestDiploma || 'Doctorat / Master',
+                      t.specialty || (t.subjects || []).join(', '),
+                      t.contractType || 'VACATAIRE',
+                      t.email,
+                      t.phone || '',
+                      st.totalScheduled,
+                      st.totalCompleted,
+                      st.maxWeekly,
+                      rate,
+                      st.totalCompleted * rate,
+                    ];
+                  });
+                  downloadCsvFile('Etat_Corps_Enseignant_et_Paie.csv', headers, rows);
+                }}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exporter CSV (Enseignants & Paie)
+              </button>
+            )}
             {onNavigateToCreate && !isStudent && (
               <button
                 onClick={onNavigateToCreate}

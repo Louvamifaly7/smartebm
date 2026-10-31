@@ -19,8 +19,10 @@ import {
   Check,
   Sparkles,
   Settings2,
+  Download,
 } from 'lucide-react';
 import { Room } from '../types';
+import { downloadCsvFile } from '../utils/csvExport';
 
 interface RoomCalendarViewProps {
   onNavigateToCreate?: () => void;
@@ -828,6 +830,53 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                     {showWeekendForce ? 'Masquer Week-end' : '+ Week-end'}
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const headers = [
+                      'Salle',
+                      'Date',
+                      'Heure Début',
+                      'Heure Fin',
+                      'Durée (h)',
+                      'Matière / Événement',
+                      'Code',
+                      'Enseignant',
+                      'Promotions / Groupes',
+                      'Statut',
+                    ];
+                    const sortedRoomSessions = [...roomSessions].sort((a, b) => {
+                      const d = a.date.localeCompare(b.date);
+                      return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
+                    });
+                    const rows = sortedRoomSessions.map((s) => {
+                      const c = courses.find((cr) => cr.id === s.courseId);
+                      const t = users.find((u) => u.id === s.teacherId);
+                      const grps = s.groupIds
+                        .map((gid) => groups.find((g) => g.id === gid)?.code || gid)
+                        .join(', ');
+                      return [
+                        activeRoom.name,
+                        s.date,
+                        s.startTime,
+                        s.endTime,
+                        s.durationHours,
+                        s.eventTitle || c?.title || 'Séance',
+                        c?.code || s.sessionType || '',
+                        s.eventSpeaker || t?.name || 'N/A',
+                        grps,
+                        s.status,
+                      ];
+                    });
+                    downloadCsvFile(`Occupation_Salle_${activeRoom.code}.csv`, headers, rows);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl text-xs border border-emerald-200 flex items-center gap-1.5 cursor-pointer"
+                  title="Exporter le planning d'occupation de la salle au format CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-700" />
+                  Exporter CSV
+                </button>
               </div>
             </div>
 

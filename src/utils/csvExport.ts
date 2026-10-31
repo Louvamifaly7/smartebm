@@ -1,32 +1,39 @@
 /**
- * Utility to export tabular data to a UTF-8 CSV file compatible with Excel.
+ * Utilitaire centralisé d'exportation au format CSV (compatible Excel Français avec BOM UTF-8 et séparateur point-virgule).
+ * Ne déclenche ni window.open ni window.alert.
  */
-export const exportToCsv = (
+
+export function downloadCsvFile(
   filename: string,
   headers: string[],
-  rows: (string | number)[][]
-) => {
-  const escapeCsvCell = (cell: string | number): string => {
-    const str = String(cell ?? '');
-    if (str.includes(';') || str.includes('"') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
+  rows: (string | number | boolean | null | undefined)[][]
+): void {
+  const escapeCsvCell = (cell: string | number | boolean | null | undefined): string => {
+    if (cell === null || cell === undefined) return '""';
+    const str = String(cell).replace(/\r?\n|\r/g, ' ').trim();
+    const escaped = str.replace(/"/g, '""');
+    return `"${escaped}"`;
   };
 
-  const csvContent = [
+  const csvLines = [
     headers.map(escapeCsvCell).join(';'),
     ...rows.map((row) => row.map(escapeCsvCell).join(';')),
-  ].join('\n');
+  ];
 
-  // Add BOM for UTF-8 Excel compatibility
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Add UTF-8 BOM (\uFEFF) so Excel on Windows/Mac recognizes French accents and semicolon delimiter automatically
+  const csvContent = '\uFEFF' + csvLines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
+
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', `${filename.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`);
+  const cleanName = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+  link.setAttribute('download', cleanName);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Alias for backward compatibility across components
+export const exportToCsv = downloadCsvFile;

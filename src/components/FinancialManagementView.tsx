@@ -45,6 +45,7 @@ import {
 } from 'recharts';
 import { UniversalStudentSelector } from './UniversalStudentSelector';
 import { exportFinancialStateToPDF } from '../utils/pdfExport';
+import { downloadCsvFile } from '../utils/csvExport';
 
 export const FinancialManagementView: React.FC = () => {
   const {
@@ -488,6 +489,109 @@ export const FinancialManagementView: React.FC = () => {
     });
   };
 
+  const handleExportPivotCSV = () => {
+    const feeHeaders: string[] = [];
+    pivotTableData.activeFees.forEach((f) => {
+      feeHeaders.push(`${f.title} - Payé (Ar)`);
+      feeHeaders.push(`${f.title} - Non Payé (Ar)`);
+    });
+    const headers = [
+      'Matricule',
+      'Étudiant',
+      'Groupe / Promotion',
+      ...feeHeaders,
+      'Total Facturé (Ar)',
+      'Total Déjà Payé (Ar)',
+      'Reste Non Payé (Ar)',
+      'Statut',
+    ];
+    const rows = pivotTableData.rows.map((r) => {
+      const feeCellsFlat: (number | string)[] = [];
+      pivotTableData.activeFees.forEach((f) => {
+        const cell = r.feeCells[f.id] || { paidAr: 0, remainingAr: f.amountAr, totalAr: f.amountAr };
+        feeCellsFlat.push(cell.paidAr);
+        feeCellsFlat.push(cell.remainingAr);
+      });
+      return [
+        r.matricule,
+        r.studentName,
+        r.groupCode,
+        ...feeCellsFlat,
+        r.totalFeesAr,
+        r.totalPaidAr,
+        r.balanceDueAr,
+        r.status,
+      ];
+    });
+    downloadCsvFile(`Etat_Paiements_Tableau_Croise_${selectedAcademicYear}.csv`, headers, rows);
+  };
+
+  const handleExportCashRegisterCSV = () => {
+    const headers = [
+      'Date',
+      'Solde Ouverture (Ar)',
+      'Espèces (Ar)',
+      'Mobile Money (Ar)',
+      'Banque & Virements (Ar)',
+      'Total Encaissé (Ar)',
+      'Solde Théorique Clôture (Ar)',
+      'Réel Compté (Ar)',
+      'Écart (Ar)',
+      'Statut',
+      'Notes de Clôture',
+    ];
+    const rows = cashRegisterDays.map((crd) => [
+      crd.date,
+      crd.openingBalanceAr,
+      crd.cashCollectedAr,
+      crd.mobileMoneyCollectedAr,
+      crd.bankCollectedAr,
+      crd.totalCollectedAr,
+      crd.theoreticalClosingAr,
+      crd.actualClosingAr !== undefined ? crd.actualClosingAr : '',
+      crd.discrepancyAr !== undefined ? crd.discrepancyAr : '',
+      crd.isClosed ? 'Clôturée' : 'Ouverte',
+      crd.closureNotes || '',
+    ]);
+    downloadCsvFile(`Journal_Clotures_Caisse_${selectedAcademicYear}.csv`, headers, rows);
+  };
+
+  const handleExportTransactionsCSV = () => {
+    const headers = [
+      'N° Reçu',
+      'Date Paiement',
+      'Matricule',
+      'Étudiant',
+      'Frais Concerné',
+      'Montant Encaissé (Ar)',
+      'Solde Restant (Ar)',
+      'Mode de Paiement',
+      'Référence',
+      'Opérateur / Caissier',
+      'Statut',
+      'Motif Annulation',
+    ];
+    const rows = payments.map((p) => {
+      const student = users.find((u) => u.id === p.studentId);
+      const fee = fees.find((f) => f.id === p.feeId);
+      return [
+        p.receiptNumber,
+        p.paymentDate,
+        student?.matricule || '',
+        student?.name || '',
+        fee?.title || 'Frais de scolarité',
+        p.amountPaidAr,
+        p.remainingBalanceAr,
+        p.paymentMethod,
+        p.referenceNumber || '',
+        p.recordedBy,
+        p.status === 'CANCELLED' ? 'ANNULÉ' : 'VALIDÉ',
+        p.cancelReason || '',
+      ];
+    });
+    downloadCsvFile(`Registre_Transactions_Encaissements_${selectedAcademicYear}.csv`, headers, rows);
+  };
+
   // Helper to get exclusively unpaid/partially paid fees for a student (ACC-009, ACC-010)
   const getUnpaidFeesForStudent = (stId: string) => {
     const summary = getStudentFinancialSummary(stId);
@@ -869,14 +973,24 @@ export const FinancialManagementView: React.FC = () => {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleExportFinancialPDF}
-                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 cursor-pointer shrink-0"
-              >
-                <Printer className="w-4 h-4" />
-                Exporter cet État de Paiement en PDF ({pivotTableData.rows.length} étud.)
-              </button>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleExportPivotCSV}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <ArrowDownCircle className="w-4 h-4 text-emerald-400" />
+                  Exporter CSV ({pivotTableData.rows.length} étud.)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportFinancialPDF}
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  Exporter PDF ({pivotTableData.rows.length} étud.)
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -1959,7 +2073,17 @@ export const FinancialManagementView: React.FC = () => {
 
           {/* Past Registers Log */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <h3 className="font-bold text-slate-800 text-sm">Historique des Clôtures de Caisse</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="font-bold text-slate-800 text-sm">Historique des Clôtures de Caisse</h3>
+              <button
+                type="button"
+                onClick={handleExportCashRegisterCSV}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+              >
+                <ArrowDownCircle className="w-4 h-4 text-emerald-600" />
+                Exporter CSV (Journal de Caisse)
+              </button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -2025,7 +2149,17 @@ export const FinancialManagementView: React.FC = () => {
       {/* TAB 3: ALL TRANSACTIONS */}
       {activeTab === 'TRANSACTIONS' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <h3 className="font-bold text-slate-800 text-sm">Registre Général des Encaissements</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h3 className="font-bold text-slate-800 text-sm">Registre Général des Encaissements</h3>
+            <button
+              type="button"
+              onClick={handleExportTransactionsCSV}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <ArrowDownCircle className="w-4 h-4 text-emerald-600" />
+              Exporter CSV (Transactions & Reçus)
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>

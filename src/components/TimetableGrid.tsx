@@ -22,6 +22,7 @@ import { TimetableSession } from '../types';
 import { createGoogleCalendarUrl, downloadICSFile } from '../utils/calendarExport';
 import { getTeachersForStudent } from '../utils/studentVisibility';
 import { exportTimetableToPDF, exportTeacherScheduleToPDF } from '../utils/pdfExport';
+import { downloadCsvFile } from '../utils/csvExport';
 
 interface TimetableGridProps {
   onOpenCreateModal: () => void;
@@ -197,6 +198,51 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     });
   };
 
+  const handleExportTimetableCSV = () => {
+    const startStr = weekDays[0]?.dateStr || '';
+    const endStr = weekDays[weekDays.length - 1]?.dateStr || '';
+    const weekSessions = filteredSessions.filter(
+      (s) => (!startStr || s.date >= startStr) && (!endStr || s.date <= endStr)
+    );
+    const listToExport = (weekSessions.length > 0 ? weekSessions : filteredSessions).sort((a, b) => {
+      const d = a.date.localeCompare(b.date);
+      return d !== 0 ? d : a.startTime.localeCompare(b.startTime);
+    });
+    const headers = [
+      'Date',
+      'Heure Début',
+      'Heure Fin',
+      'Durée (h)',
+      'Type',
+      'Code Cours',
+      'Matière / Événement',
+      'Enseignant / Intervenant',
+      'Groupes / Promotions',
+      'Salle',
+      'Statut',
+    ];
+    const rows = listToExport.map((s) => {
+      const course = courses.find((c) => c.id === s.courseId);
+      const teacher = users.find((u) => u.id === s.teacherId);
+      const room = rooms.find((r) => r.id === s.roomId);
+      const grpCodes = s.groupIds.map((gid) => groups.find((g) => g.id === gid)?.code || gid).join(', ');
+      return [
+        s.date,
+        s.startTime,
+        s.endTime,
+        s.durationHours,
+        s.sessionType || 'COURSE',
+        course?.code || s.sessionType || '',
+        s.eventTitle || course?.title || 'Séance',
+        s.eventSpeaker || teacher?.name || 'N/A',
+        grpCodes,
+        room?.name || s.roomId,
+        s.status,
+      ];
+    });
+    downloadCsvFile(`Emploi_du_Temps_${startStr || 'Complet'}.csv`, headers, rows);
+  };
+
   const handleExportTeacherPeriodPDF = (period: 'WEEK' | 'MONTH' | 'SEMESTER') => {
     const targetTeacherId = isTeacher
       ? currentUser.id
@@ -298,6 +344,16 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleExportTimetableCSV}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold rounded-xl transition-colors border border-emerald-200 cursor-pointer"
+              title="Exporter l'emploi du temps au format CSV (Excel)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-700" />
+              Exporter CSV
+            </button>
+
             <button
               type="button"
               onClick={handleExportTimetablePDF}

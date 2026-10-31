@@ -607,7 +607,7 @@ export const Header: React.FC<HeaderProps> = ({
                     }
                   }}
                   className={`px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer border ${
-                    ['USERS_MANAGEMENT', 'DATA_MANAGEMENT', 'VOLUMES', 'AUDIT', 'EXPORT_STUDENTS', 'TEACHERS', 'STUDENTS', 'BACKUP_SECURITY', 'ACADEMIC_YEARS'].includes(currentTab)
+                    ['USERS_MANAGEMENT', 'DATA_MANAGEMENT', 'AUDIT', 'EXPORT_STUDENTS', 'TEACHERS', 'STUDENTS', 'BACKUP_SECURITY', 'ACADEMIC_YEARS'].includes(currentTab)
                       ? 'bg-indigo-600 text-white border-indigo-400 shadow-md ring-1 ring-indigo-300'
                       : 'text-indigo-300 hover:text-white hover:bg-slate-800 border-indigo-900/60'
                   }`}
@@ -622,10 +622,11 @@ export const Header: React.FC<HeaderProps> = ({
         </>
       )}
 
-      {/* Sub-bar for Administration tools whenever an admin tab is active (both horizontal & vertical layout) */}
+      {/* Sub-bar for Administration tools only when menuLayout is 'horizontal' and an admin tab is active */}
       {!isAndroidView &&
+        appSettings.menuLayout === 'horizontal' &&
         isStaffOrAdmin &&
-        ['USERS_MANAGEMENT', 'DATA_MANAGEMENT', 'VOLUMES', 'AUDIT', 'EXPORT_STUDENTS', 'TEACHERS', 'STUDENTS', 'BACKUP_SECURITY', 'ACADEMIC_YEARS'].includes(currentTab) && (
+        ['USERS_MANAGEMENT', 'DATA_MANAGEMENT', 'AUDIT', 'EXPORT_STUDENTS', 'TEACHERS', 'STUDENTS', 'BACKUP_SECURITY', 'ACADEMIC_YEARS'].includes(currentTab) && (
           <div className="bg-slate-950 border-t border-b border-indigo-900/40 px-3 sm:px-6 py-1.5 flex items-center gap-2 overflow-x-auto no-scrollbar text-xs whitespace-nowrap">
             <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1 mr-1 shrink-0">
               <Shield className="w-3.5 h-3.5" /> Administration :
@@ -693,19 +694,6 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Database className="w-3.5 h-3.5 text-teal-300" />
                 <span>Création des Données & Salles</span>
-              </button>
-            )}
-
-            {canRoleAccessTab(currentUser?.role, 'VOLUMES') && (
-              <button
-                type="button"
-                onClick={() => handleNavigate('VOLUMES')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
-                  currentTab === 'VOLUMES' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5 text-purple-300" />
-                <span>Suivi des Volumes Horaires</span>
               </button>
             )}
 
