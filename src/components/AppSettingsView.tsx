@@ -140,6 +140,7 @@ export const AppSettingsView: React.FC<AppSettingsViewProps> = ({ onOpenReceptio
     { id: 'TIMETABLE', label: 'Emploi du Temps', icon: Calendar, desc: 'Planning hebdomadaire sur 7 jours' },
     { id: 'ROOMS', label: 'Salles & Équipements', icon: Layers, desc: 'Occupation des salles et personnalisation du matériel' },
     { id: 'LMD_MAQUETTES', label: 'Maquettes LMD', icon: GraduationCap, desc: 'Gestion des UEs, ECs et crédits ECTS' },
+    { id: 'VOLUMES', label: 'Suivi des Volumes Horaires & Réalisations', icon: Clock, desc: 'Validation quotidienne des séances et suivi des heures réalisées' },
     { id: 'GRADES', label: 'Notes & Évaluations', icon: Award, desc: 'Contrôle continu, examen final, rattrapages et relevés' },
     { id: 'QR_ATTENDANCE', label: 'Présence & Pointage QR', icon: QrCode, desc: 'QR code éphémère et compte à rebours' },
     { id: 'FINANCIAL', label: 'Finances & Caisse (Ar)', icon: DollarSign, desc: 'Encaissements en Ariary et clôture de caisse' },

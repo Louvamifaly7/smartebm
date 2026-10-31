@@ -16,10 +16,12 @@ import {
   ExternalLink,
   Edit2,
   Trash2,
+  Printer,
 } from 'lucide-react';
 import { TimetableSession } from '../types';
 import { createGoogleCalendarUrl, downloadICSFile } from '../utils/calendarExport';
 import { getTeachersForStudent } from '../utils/studentVisibility';
+import { exportTimetableToPDF, exportTeacherScheduleToPDF } from '../utils/pdfExport';
 
 interface TimetableGridProps {
   onOpenCreateModal: () => void;
@@ -86,6 +88,8 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [showWeekendForce, setShowWeekendForce] = useState<boolean>(false);
   const [mobileDayFilter, setMobileDayFilter] = useState<string>('ALL');
+  const [teacherPdfPeriod, setTeacherPdfPeriod] = useState<'WEEK' | 'MONTH' | 'SEMESTER'>('WEEK');
+  const [showTeacherPdfPanel, setShowTeacherPdfPanel] = useState<boolean>(false);
 
   // Time grid slots (08:00 to 19:00)
   const timeSlots = [
@@ -164,6 +168,75 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     downloadICSFile('EBM_Emploi_du_Temps', filteredSessions, courses, rooms, users);
   };
 
+  const handleExportTimetablePDF = () => {
+    const startStr = weekDays[0]?.dateStr || '';
+    const endStr = weekDays[weekDays.length - 1]?.dateStr || '';
+    const weekSessions = filteredSessions.filter(
+      (s) => (!startStr || s.date >= startStr) && (!endStr || s.date <= endStr)
+    );
+    const selectedGroupObj = groups.find((g) => g.id === selectedGroupId);
+    const selectedTeacherObj = users.find((u) => u.id === (isTeacher ? currentUser.id : selectedTeacherId));
+
+    exportTimetableToPDF({
+      title: selectedGroupObj
+        ? `Emploi du Temps — ${selectedGroupObj.code} (${selectedGroupObj.name})`
+        : isTeacher
+        ? `Emploi du Temps Enseignant — ${currentUser.name}`
+        : 'Emploi du Temps Officiel EBM Institute',
+      subtitle: selectedTeacherObj
+        ? `Enseignant : ${selectedTeacherObj.name}`
+        : selectedGroupObj
+        ? `Promotion : ${selectedGroupObj.code}`
+        : 'Toutes les promotions filtrées',
+      weekLabel: `Semaine du ${weekDays[0]?.displayDate || ''} au ${weekDays[weekDays.length - 1]?.displayDate || ''}`,
+      sessions: weekSessions.length > 0 ? weekSessions : filteredSessions,
+      courses,
+      rooms,
+      users,
+      groups,
+    });
+  };
+
+  const handleExportTeacherPeriodPDF = (period: 'WEEK' | 'MONTH' | 'SEMESTER') => {
+    const targetTeacherId = isTeacher
+      ? currentUser.id
+      : selectedTeacherId !== 'ALL'
+      ? selectedTeacherId
+      : teachers[0]?.id;
+    const teacherObj = users.find((u) => u.id === targetTeacherId) || currentUser;
+    const allTeacherSessions = sessions.filter((s) => s.teacherId === teacherObj.id);
+    const now = new Date();
+    let periodSessions = allTeacherSessions;
+    let periodLabel = 'Semestre complet';
+
+    if (period === 'WEEK') {
+      const startStr = weekDays[0]?.dateStr || '';
+      const endStr = weekDays[weekDays.length - 1]?.dateStr || '';
+      const wk = allTeacherSessions.filter((s) => s.date >= startStr && s.date <= endStr);
+      periodSessions = wk.length > 0 ? wk : allTeacherSessions;
+      periodLabel = `Semaine du ${weekDays[0]?.displayDate || ''} au ${weekDays[weekDays.length - 1]?.displayDate || ''}`;
+    } else if (period === 'MONTH') {
+      const ym = (weekDays[0]?.dateStr || now.toISOString()).slice(0, 7);
+      const mo = allTeacherSessions.filter((s) => s.date.startsWith(ym));
+      periodSessions = mo.length > 0 ? mo : allTeacherSessions;
+      periodLabel = `Mois de ${new Date(`${ym}-01`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
+    } else {
+      periodSessions = allTeacherSessions;
+      periodLabel = 'Semestre Académique Complet';
+    }
+
+    exportTeacherScheduleToPDF({
+      teacher: teacherObj,
+      periodType: period,
+      periodLabel,
+      sessions: periodSessions,
+      courses,
+      rooms,
+      groups,
+    });
+    setShowTeacherPdfPanel(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* Action and Filter Toolbar */}
@@ -225,6 +298,84 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleExportTimetablePDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs font-bold rounded-xl transition-colors border border-indigo-200 cursor-pointer"
+              title="Exporter l'emploi du temps bien mis en page en PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-indigo-700" />
+              Exporter PDF (Emploi du Temps)
+            </button>
+
+            {(!isStudent && !isParent) && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowTeacherPdfPanel((prev) => !prev)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold rounded-xl transition-colors border border-purple-200 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-purple-700" />
+                  Planning Enseignant PDF (Semaine/Mois/Semestre)
+                </button>
+
+                {showTeacherPdfPanel && (
+                  <div className="absolute right-0 top-full mt-1.5 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 p-3.5 z-40 space-y-2.5 text-xs">
+                    <div className="font-black text-slate-900">
+                      Exporter le Planning Enseignant en PDF
+                    </div>
+                    {!isTeacher && (
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                          Choisir l'enseignant :
+                        </label>
+                        <select
+                          value={selectedTeacherId === 'ALL' ? teachers[0]?.id || '' : selectedTeacherId}
+                          onChange={(e) => setSelectedTeacherId(e.target.value)}
+                          className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800"
+                        >
+                          {teachers.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                        Période à exporter :
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['WEEK', 'MONTH', 'SEMESTER'] as const).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setTeacherPdfPeriod(p)}
+                            className={`py-1.5 px-2 rounded-lg font-bold text-[11px] border cursor-pointer ${
+                              teacherPdfPeriod === p
+                                ? 'bg-purple-600 text-white border-purple-600'
+                                : 'bg-slate-50 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {p === 'WEEK' ? 'Semaine' : p === 'MONTH' ? 'Mois' : 'Semestre'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleExportTeacherPeriodPDF(teacherPdfPeriod)}
+                      className="w-full py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-xl cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Générer & Imprimer le PDF
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleExportICS}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl transition-colors border border-slate-200 cursor-pointer"

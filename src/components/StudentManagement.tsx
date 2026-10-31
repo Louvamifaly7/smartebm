@@ -133,10 +133,11 @@ export const StudentManagement: React.FC<StudentManagementProps> = () => {
   );
 
   const canDirectEditIdentity = ['ADMIN', 'SCOLARITE', 'SCHEDULER', 'ADMIN_STAFF'].includes(currentUser.role);
+  const isFinanceRole = currentUser.role === 'FINANCE';
 
   const openStudentSheet = (student: User, initialTab: 'GRADES' | 'FINANCES' | 'PROFILE' = 'PROFILE') => {
     setSelectedStudentId(student.id);
-    setDetailTab(initialTab);
+    setDetailTab(isFinanceRole && initialTab === 'GRADES' ? 'FINANCES' : initialTab);
     setIsEditingSheet(false);
     setSheetSaveBanner(null);
     setQuickPayError(null);
@@ -616,13 +617,22 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-[10px] uppercase font-bold text-blue-600 block mb-1">Moyenne académique</span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-blue-900">{stats.averageGrade}</span>
-                <span className="text-xs text-slate-500">/ 20</span>
+            {isFinanceRole ? (
+              <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs">
+                <span className="text-[10px] uppercase font-bold text-emerald-700 block mb-1">Total Déjà Payé (Encaissé)</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-emerald-700">{stats.totalPaid.toLocaleString()} Ar</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <span className="text-[10px] uppercase font-bold text-blue-600 block mb-1">Moyenne académique</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-blue-900">{stats.averageGrade}</span>
+                  <span className="text-xs text-slate-500">/ 20</span>
+                </div>
+              </div>
+            )}
 
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
               <span className="text-[10px] uppercase font-bold text-emerald-600 block mb-1">Régularité financière</span>
@@ -757,15 +767,17 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 >
                   Matricule
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSortBy('GRADE_DESC')}
-                  className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer ${
-                    sortBy === 'GRADE_DESC' ? 'bg-blue-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  Meilleures notes
-                </button>
+                {!isFinanceRole && (
+                  <button
+                    type="button"
+                    onClick={() => setSortBy('GRADE_DESC')}
+                    className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer ${
+                      sortBy === 'GRADE_DESC' ? 'bg-blue-600 text-white font-bold' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Meilleures notes
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setSortBy('UNPAID_DESC')}
@@ -811,8 +823,8 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                     <th className="p-3">Étudiant</th>
                     <th className="p-3">Mention, Parcours & Groupe</th>
                     <th className="p-3 text-center">Année</th>
-                    <th className="p-3 text-center">Moyenne Notes</th>
-                    <th className="p-3 text-right">Situation Financière</th>
+                    <th className="p-3 text-center">{isFinanceRole ? 'Déjà Payé (Ar)' : 'Moyenne Notes'}</th>
+                    <th className="p-3 text-right">{isFinanceRole ? 'Reste à Payer (Non Payé)' : 'Situation Financière'}</th>
                     <th className="p-3 text-center">Actions & Carte</th>
                   </tr>
                 </thead>
@@ -877,19 +889,25 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                           </td>
 
                           <td className="p-3 text-center">
-                            <div className="inline-flex flex-col items-center">
-                              <span
-                                className={`px-2 py-0.5 rounded-md font-black text-xs ${
-                                  (m?.averageGrade || 0) >= 12
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : (m?.averageGrade || 0) >= 10
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-rose-100 text-rose-800'
-                                }`}
-                              >
-                                {m?.averageGrade} / 20
+                            {isFinanceRole ? (
+                              <span className="px-2 py-0.5 rounded-md font-black text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {(m?.totalPaidAr || 0).toLocaleString()} Ar
                               </span>
-                            </div>
+                            ) : (
+                              <div className="inline-flex flex-col items-center">
+                                <span
+                                  className={`px-2 py-0.5 rounded-md font-black text-xs ${
+                                    (m?.averageGrade || 0) >= 12
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : (m?.averageGrade || 0) >= 10
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}
+                                >
+                                  {m?.averageGrade} / 20
+                                </span>
+                              </div>
+                            )}
                           </td>
 
                           <td className="p-3 text-right">
@@ -1216,17 +1234,19 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               >
                 Fiche Individuelle Complète (État civil, Famille & Historique)
               </button>
-              <button
-                type="button"
-                onClick={() => setDetailTab('GRADES')}
-                className={`py-2 px-3 border-b-2 transition-all cursor-pointer ${
-                  detailTab === 'GRADES'
-                    ? 'border-blue-600 text-blue-700'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Notes & Résultats Académiques
-              </button>
+              {!isFinanceRole && (
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('GRADES')}
+                  className={`py-2 px-3 border-b-2 transition-all cursor-pointer ${
+                    detailTab === 'GRADES'
+                      ? 'border-blue-600 text-blue-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Notes & Résultats Académiques
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setDetailTab('FINANCES')}

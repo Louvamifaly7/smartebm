@@ -100,21 +100,35 @@ export const HomePage: React.FC<HomePageProps> = ({
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-3 py-1 bg-blue-800/80 text-blue-200 font-semibold text-xs rounded-lg border border-blue-700/60">
+              <button
+                type="button"
+                onClick={onOpenUserProfile}
+                className="px-3 py-1 bg-blue-800/80 hover:bg-blue-700 text-blue-200 font-semibold text-xs rounded-lg border border-blue-700/60 cursor-pointer transition-colors"
+                title="Ouvrir ma Fiche Officielle Utilisateur"
+              >
                 {currentUser.role === 'STUDENT'
                   ? `Matricule : ${currentUser.matricule}`
                   : currentUser.role === 'PARENT'
                   ? 'Compte Parent / Tuteur Légal Vérifié'
                   : currentUser.role}
-              </span>
+              </button>
+              {currentUser.highestDiploma && (
+                <span className="px-2.5 py-1 bg-indigo-800/80 text-amber-200 font-bold text-xs rounded-lg border border-indigo-600/60">
+                  🎓 Diplôme : {currentUser.highestDiploma}
+                </span>
+              )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+            <h1
+              onClick={onOpenUserProfile}
+              className="text-2xl sm:text-3xl font-black tracking-tight text-white hover:text-amber-300 transition-colors cursor-pointer inline-flex items-center gap-2"
+              title="Cliquez pour afficher votre Fiche Officielle Utilisateur complète"
+            >
               Bonjour, {currentUser.name} 👋
             </h1>
 
             <p className="text-sm text-blue-200 max-w-2xl leading-relaxed">
-              Bienvenue sur votre portail unifié <strong>EBM Institute</strong>. Retrouvez ici en temps réel vos cours, salles attribuées, volumes horaires et notifications officielles.
+              Bienvenue sur votre portail unifié <strong>EBM Institute</strong>. Cliquez sur votre nom ou sur le bouton à droite pour afficher votre <strong>Fiche Officielle Utilisateur</strong> complète (état civil, diplôme le plus élevé, contacts, CV et disponibilités).
             </p>
           </div>
 
@@ -125,7 +139,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <UserIcon className="w-4 h-4 text-slate-950" />
-              Ma Fiche Utilisateur & Contacts
+              Fiche Officielle Utilisateur Complète
             </button>
             <button
               onClick={() => onNavigateTab('TIMETABLE')}

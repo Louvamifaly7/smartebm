@@ -22,6 +22,7 @@ import {
   Check,
   Plus,
   Database,
+  Clock,
   X,
 } from 'lucide-react';
 import { canRoleAccessTab, getRoleLabel } from '../utils/rbacPermissions';
@@ -66,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isVisible = (tabId: string) => {
     if (!canRoleAccessTab(currentUser?.role, tabId, currentUser?.customPermissions, customRoles)) return false;
     if (!appSettings.visibleMenuItems || appSettings.visibleMenuItems.length === 0) return true;
-    if (tabId === 'BACKUP_SECURITY' || tabId === 'PARENT_PORTAL') return true;
+    if (tabId === 'BACKUP_SECURITY' || tabId === 'PARENT_PORTAL' || tabId === 'VOLUMES') return true;
     return appSettings.visibleMenuItems.includes(tabId);
   };
 
@@ -250,6 +251,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <GraduationCap className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                 {!effectiveCollapsed && <span>Maquettes LMD</span>}
+              </button>
+            )}
+
+            {isVisible('VOLUMES') && (
+              <button
+                type="button"
+                onClick={() => handleSelectAndClose('VOLUMES')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
+                  currentTab === 'VOLUMES'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
+                }`}
+                title="Suivi des Volumes Horaires & Réalisations"
+              >
+                <Clock className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                {!effectiveCollapsed && <span>Suivi Volumes Horaires</span>}
               </button>
             )}
 

@@ -46,13 +46,27 @@ const PRESET_EQUIPMENT_CATALOG = [
 ];
 
 export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateToCreate }) => {
-  const { rooms, sessions, courses, users, groups, updateRoom, addSession, currentUser, appSettings } = useApp();
+  const { rooms, sessions, courses, users, groups, updateRoom, addSession, updateSession, currentUser, appSettings } = useApp();
   const [selectedRoomId, setSelectedRoomId] = useState<string>(rooms[0]?.id || '');
   const [isCustomizeModalOpen, setIsCustomizeModalOpen] = useState<boolean>(false);
   const [inlineEquipInput, setInlineEquipInput] = useState<string>('');
   const [customEquipModalInput, setCustomEquipModalInput] = useState<string>('');
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [editingRoomSessionId, setEditingRoomSessionId] = useState<string | null>(null);
+  const [editRoomSessionForm, setEditRoomSessionForm] = useState<{
+    date: string;
+    startTime: string;
+    endTime: string;
+    roomId: string;
+    notes: string;
+  }>({
+    date: '',
+    startTime: '08:00',
+    endTime: '10:00',
+    roomId: '',
+    notes: '',
+  });
 
   // Configurable time slots from Paramètres (default: 07:00 to 18:00 every 30 minutes)
   const scheduleConfig = appSettings.scheduleSettings || {
@@ -846,14 +860,19 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                       ) : (
                         daySessions.map((session) => {
                           const isOtherTeacherSession = isTeacher && session.teacherId !== currentUser.id;
+                          const canModifyThisSession =
+                            currentUser.role !== 'STUDENT' &&
+                            currentUser.role !== 'PARENT' &&
+                            !isOtherTeacherSession;
                           const course = courses.find((c) => c.id === session.courseId);
                           const teacher = users.find((u) => u.id === session.teacherId);
                           const assignedGroups = session.groupIds.map((gId) => groups.find((g) => g.id === gId)?.code);
+                          const isEditingThis = editingRoomSessionId === session.id;
 
                           return (
                             <div
                               key={session.id}
-                              className={`p-2.5 rounded-lg border shadow-xs text-xs space-y-1 ${
+                              className={`p-2.5 rounded-lg border shadow-xs text-xs space-y-1.5 ${
                                 isOtherTeacherSession
                                   ? 'bg-slate-100 border-slate-300 text-slate-500'
                                   : 'bg-white border-slate-200'
@@ -881,17 +900,182 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                               ) : (
                                 <>
                                   <h5 className="font-bold text-slate-900 leading-snug">
-                                    {course?.title}
+                                    {session.eventTitle || course?.title || 'Séance'}
                                   </h5>
 
                                   <p className="text-[10px] text-slate-600 font-medium">
-                                    Prof: {teacher?.name}
+                                    Prof: {session.eventSpeaker || teacher?.name}
                                   </p>
 
                                   <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
                                     <span>{assignedGroups.join(', ')}</span>
                                     <span className="text-emerald-700 font-semibold">Occupée</span>
                                   </div>
+
+                                  {canModifyThisSession && (
+                                    <div className="pt-1.5 border-t border-slate-100 space-y-1.5">
+                                      <div className="flex flex-col gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (isEditingThis) {
+                                              setEditingRoomSessionId(null);
+                                            } else {
+                                              setEditingRoomSessionId(session.id);
+                                              setEditRoomSessionForm({
+                                                date: session.date,
+                                                startTime: session.startTime,
+                                                endTime: session.endTime,
+                                                roomId: session.roomId,
+                                                notes: session.notes || '',
+                                              });
+                                            }
+                                          }}
+                                          className="w-full py-1 px-2 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 rounded-md font-bold text-[10px] transition-colors cursor-pointer text-center"
+                                        >
+                                          {isEditingThis ? 'Fermer édition' : '✏️ Modifier date / heure'}
+                                        </button>
+
+                                        <select
+                                          value={session.roomId}
+                                          onChange={(e) => {
+                                            const newRoomId = e.target.value;
+                                            if (newRoomId && newRoomId !== session.roomId) {
+                                              const targetRoom = rooms.find((r) => r.id === newRoomId);
+                                              updateSession(
+                                                session.id,
+                                                { roomId: newRoomId },
+                                                `Déplacement vers ${targetRoom?.name || newRoomId}`
+                                              );
+                                              setFeedbackMsg(
+                                                `Séance "${session.eventTitle || course?.title}" déplacée vers ${targetRoom?.name || newRoomId} !`
+                                              );
+                                              setTimeout(() => setFeedbackMsg(null), 4000);
+                                            }
+                                          }}
+                                          className="w-full py-1 px-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-bold text-slate-700 cursor-pointer"
+                                          title="Déplacer immédiatement vers une autre salle"
+                                        >
+                                          {rooms.map((r) => (
+                                            <option key={r.id} value={r.id}>
+                                              {r.id === session.roomId ? `📍 ${r.name}` : `➔ Déplacer : ${r.name}`}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {isEditingThis && (
+                                        <div className="p-2 bg-blue-50/90 border border-blue-200 rounded-lg space-y-1.5 text-[10px]">
+                                          <div>
+                                            <label className="font-bold text-slate-700 block">Date :</label>
+                                            <input
+                                              type="date"
+                                              value={editRoomSessionForm.date}
+                                              onChange={(e) =>
+                                                setEditRoomSessionForm({ ...editRoomSessionForm, date: e.target.value })
+                                              }
+                                              className="w-full p-1 bg-white border border-slate-300 rounded font-semibold"
+                                            />
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-1">
+                                            <div>
+                                              <label className="font-bold text-slate-700 block">Début :</label>
+                                              <select
+                                                value={editRoomSessionForm.startTime}
+                                                onChange={(e) =>
+                                                  setEditRoomSessionForm({
+                                                    ...editRoomSessionForm,
+                                                    startTime: e.target.value,
+                                                  })
+                                                }
+                                                className="w-full p-1 bg-white border border-slate-300 rounded font-mono font-bold"
+                                              >
+                                                {configurableTimeSlots.slice(0, -1).map((sl) => (
+                                                  <option key={sl} value={sl}>
+                                                    {sl}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label className="font-bold text-slate-700 block">Fin :</label>
+                                              <select
+                                                value={editRoomSessionForm.endTime}
+                                                onChange={(e) =>
+                                                  setEditRoomSessionForm({
+                                                    ...editRoomSessionForm,
+                                                    endTime: e.target.value,
+                                                  })
+                                                }
+                                                className="w-full p-1 bg-white border border-slate-300 rounded font-mono font-bold"
+                                              >
+                                                {configurableTimeSlots
+                                                  .filter((sl) => sl > editRoomSessionForm.startTime)
+                                                  .map((sl) => (
+                                                    <option key={sl} value={sl}>
+                                                      {sl}
+                                                    </option>
+                                                  ))}
+                                              </select>
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <label className="font-bold text-slate-700 block">Salle :</label>
+                                            <select
+                                              value={editRoomSessionForm.roomId}
+                                              onChange={(e) =>
+                                                setEditRoomSessionForm({
+                                                  ...editRoomSessionForm,
+                                                  roomId: e.target.value,
+                                                })
+                                              }
+                                              className="w-full p-1 bg-white border border-slate-300 rounded font-bold"
+                                            >
+                                              {rooms.map((r) => (
+                                                <option key={r.id} value={r.id}>
+                                                  {r.name} ({r.capacity} pl.)
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const [sH, sM] = editRoomSessionForm.startTime.split(':').map(Number);
+                                              const [eH, eM] = editRoomSessionForm.endTime.split(':').map(Number);
+                                              const durationHours = Math.max(
+                                                0.5,
+                                                (eH * 60 + eM - (sH * 60 + sM)) / 60
+                                              );
+                                              const targetRoom = rooms.find(
+                                                (r) => r.id === editRoomSessionForm.roomId
+                                              );
+                                              updateSession(
+                                                session.id,
+                                                {
+                                                  date: editRoomSessionForm.date,
+                                                  startTime: editRoomSessionForm.startTime,
+                                                  endTime: editRoomSessionForm.endTime,
+                                                  durationHours,
+                                                  roomId: editRoomSessionForm.roomId,
+                                                  notes: editRoomSessionForm.notes,
+                                                },
+                                                'Modification directe depuis le planning de salle'
+                                              );
+                                              setEditingRoomSessionId(null);
+                                              setFeedbackMsg(
+                                                `Planning modifié avec succès (${editRoomSessionForm.date} ${editRoomSessionForm.startTime}-${editRoomSessionForm.endTime} en salle ${targetRoom?.name || ''}).`
+                                              );
+                                              setTimeout(() => setFeedbackMsg(null), 4000);
+                                            }}
+                                            className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md cursor-pointer"
+                                          >
+                                            Enregistrer
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>

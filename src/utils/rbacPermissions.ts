@@ -63,6 +63,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
       'HOME',
       'TIMETABLE',
       'ROOMS',
+      'VOLUMES',
       'STUDENTS',
       'TEACHERS',
       'PARENT_PORTAL',

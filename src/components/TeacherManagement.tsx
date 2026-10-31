@@ -18,10 +18,15 @@ import {
   MapPin,
   Save,
   GraduationCap,
+  FileText,
+  Download,
+  Upload,
+  Printer,
 } from 'lucide-react';
 import { getTeachersForStudent } from '../utils/studentVisibility';
 import { TeacherAvailabilitySlot, User } from '../types';
 import { WIDE_TEACHER_SLOTS, buildWideAvailabilities } from './UserProfileModal';
+import { exportTeacherScheduleToPDF } from '../utils/pdfExport';
 
 interface TeacherManagementProps {
   onNavigateToCreate?: () => void;
@@ -79,6 +84,10 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
   const [editContractType, setEditContractType] = useState<'PERMANENT' | 'VACATAIRE' | 'MISSIONNAIRE'>('VACATAIRE');
   const [editBankRib, setEditBankRib] = useState<string>('');
   const [editCin, setEditCin] = useState<string>('');
+  const [editCvFileName, setEditCvFileName] = useState<string>('');
+  const [editCvFileUrl, setEditCvFileUrl] = useState<string>('');
+  const [editCvUploadedAt, setEditCvUploadedAt] = useState<string>('');
+  const [pdfPeriodType, setPdfPeriodType] = useState<'WEEK' | 'MONTH' | 'SEMESTER'>('WEEK');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   const activeTeacher = selectedTeacherId ? users.find((u) => u.id === selectedTeacherId) || null : null;
@@ -110,6 +119,9 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
     setEditContractType(teacher.contractType || 'VACATAIRE');
     setEditBankRib(teacher.bankRib || '');
     setEditCin(teacher.cin || '');
+    setEditCvFileName(teacher.cvFileName || '');
+    setEditCvFileUrl(teacher.cvFileUrl || '');
+    setEditCvUploadedAt(teacher.cvUploadedAt || '');
     setSaveFeedback(null);
   };
 
@@ -145,9 +157,51 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
       contractType: canEditFinanceOrSchedule ? editContractType : activeTeacher.contractType,
       bankRib: editBankRib.trim() || undefined,
       cin: editCin.trim() || undefined,
+      cvFileName: editCvFileName || undefined,
+      cvFileUrl: editCvFileUrl || undefined,
+      cvUploadedAt: editCvUploadedAt || undefined,
     });
-    setSaveFeedback('Fiche universitaire enseignant, coordonnées et disponibilités enregistrées avec succès !');
+    setSaveFeedback('Fiche universitaire enseignant, CV, coordonnées et disponibilités enregistrées avec succès !');
     setTimeout(() => setSaveFeedback(null), 3500);
+  };
+
+  const handleExportTeacherPdf = (teacher: User, period: 'WEEK' | 'MONTH' | 'SEMESTER') => {
+    const allTeacherSessions = sessions.filter((s) => s.teacherId === teacher.id);
+    const now = new Date();
+    let filtered = allTeacherSessions;
+    let periodLabel = 'Semestre complet';
+
+    if (period === 'WEEK') {
+      const day = now.getDay();
+      const diffToMonday = (day + 6) % 7;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diffToMonday);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const startStr = monday.toISOString().split('T')[0];
+      const endStr = sunday.toISOString().split('T')[0];
+      const weekSessions = allTeacherSessions.filter((s) => s.date >= startStr && s.date <= endStr);
+      filtered = weekSessions.length > 0 ? weekSessions : allTeacherSessions;
+      periodLabel = `Semaine du ${monday.toLocaleDateString('fr-FR')} au ${sunday.toLocaleDateString('fr-FR')}`;
+    } else if (period === 'MONTH') {
+      const ym = now.toISOString().slice(0, 7);
+      const monthSessions = allTeacherSessions.filter((s) => s.date.startsWith(ym));
+      filtered = monthSessions.length > 0 ? monthSessions : allTeacherSessions;
+      periodLabel = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    } else {
+      filtered = allTeacherSessions;
+      periodLabel = 'Semestre Académique Complet';
+    }
+
+    exportTeacherScheduleToPDF({
+      teacher,
+      periodType: period,
+      periodLabel,
+      sessions: filtered,
+      courses,
+      rooms,
+      groups,
+    });
   };
 
   const handleToggleAvailabilitySlot = (
@@ -828,6 +882,79 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                     </>
                   )}
                 </div>
+
+                {/* CV DE L'ENSEIGNANT : UPLOAD & TÉLÉCHARGEMENT */}
+                <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-indigo-600" />
+                      Curriculum Vitae (CV Académique & Universitaire)
+                    </span>
+                    <span className="text-[11px] text-slate-600 block mt-0.5">
+                      {editCvFileName ? (
+                        <>
+                          Fichier enregistré : <strong className="text-emerald-700">{editCvFileName}</strong>
+                          {editCvUploadedAt ? ` • Déposé le ${editCvUploadedAt}` : ''}
+                        </>
+                      ) : (
+                        'Aucun CV déposé sur cette fiche enseignant (Formats : PDF, DOCX)'
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {editCvFileName && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          if (editCvFileUrl) {
+                            a.href = editCvFileUrl;
+                          } else {
+                            const content = `CURRICULUM VITAE OFFICIEL - EBM INSTITUTE\nEnseignant : ${editCivilite} ${editName}\nGrade : ${editAcademicRank}\nDiplôme le plus élevé : ${editHighestDiploma}\nUniversité : ${editAlmaMater}\nSpécialité : ${editSpecialty}`;
+                            a.href = URL.createObjectURL(new Blob([content], { type: 'application/pdf' }));
+                          }
+                          a.download = editCvFileName;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        }}
+                        className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        Télécharger CV
+                      </button>
+                    )}
+
+                    {canEditActiveTeacher && (
+                      <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{editCvFileName ? 'Mettre à jour le CV' : 'Uploader CV (PDF/DOCX)'}</span>
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const nowStr = new Date().toLocaleDateString('fr-FR');
+                              const url = URL.createObjectURL(file);
+                              setEditCvFileName(file.name);
+                              setEditCvFileUrl(url);
+                              setEditCvUploadedAt(nowStr);
+                              updateTeacher(activeTeacher.id, {
+                                cvFileName: file.name,
+                                cvFileUrl: url,
+                                cvUploadedAt: nowStr,
+                              });
+                              setSaveFeedback(`CV "${file.name}" téléversé et rattaché à la fiche de ${activeTeacher.name} !`);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
               </form>
 
               {/* 2. GRILLE DE DISPONIBILITÉS HEBDOMADAIRES LARGE (07H00 À 17H00) POUR L'EMPLOI DU TEMPS */}
@@ -928,10 +1055,38 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
               {/* 3. SÉANCES AFFECTÉES À L'EMPLOI DU TEMPS */}
               <div className="grid grid-cols-1 gap-4">
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                    Séances Planifiées à l'Emploi du Temps
-                  </span>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-black uppercase text-slate-800 block">
+                        Séances Planifiées chez EBM & Export PDF du Planning
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        Choisissez la période (Semaine, Mois, Semestre) pour exporter en PDF tous les cours de cet enseignant chez EBM.
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={pdfPeriodType}
+                        onChange={(e) => setPdfPeriodType(e.target.value as 'WEEK' | 'MONTH' | 'SEMESTER')}
+                        className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+                      >
+                        <option value="WEEK">Période : Cette Semaine</option>
+                        <option value="MONTH">Période : Ce Mois</option>
+                        <option value="SEMESTER">Période : Tout le Semestre</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExportTeacherPdf(activeTeacher, pdfPeriodType)}
+                        className="px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        Exporter Planning PDF
+                      </button>
+                    </div>
+                  </div>
                   {(() => {
                     const teacherSessions = sessions.filter((s) => s.teacherId === activeTeacher.id);
                     if (teacherSessions.length === 0) {

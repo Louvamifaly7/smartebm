@@ -107,8 +107,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [hourlyRateAr, setHourlyRateAr] = useState<number>(40000);
   const [subjectsText, setSubjectsText] = useState('');
   const [cin, setCin] = useState('');
+  const [birthDate, setBirthDate] = useState('1985-05-15');
+  const [birthPlace, setBirthPlace] = useState('Antananarivo');
   const [bankRib, setBankRib] = useState('');
   const [hireDate, setHireDate] = useState('2024-09-01');
+  const [cvFileName, setCvFileName] = useState('');
+  const [cvFileUrl, setCvFileUrl] = useState('');
+  const [cvUploadedAt, setCvUploadedAt] = useState('');
   const [availabilities, setAvailabilities] = useState<TeacherAvailabilitySlot[]>([]);
 
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
@@ -134,15 +139,27 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
     setAcademicRank(userToView.academicRank || 'Maître de Conférences');
     setSpecialty(userToView.specialty || userToView.subjects?.join(', ') || 'Informatique & Sciences de Gestion');
-    setHighestDiploma(userToView.highestDiploma || 'Doctorat / PhD');
-    setAlmaMater(userToView.almaMater || 'Université d’Antananarivo / Partenaire International');
+    setHighestDiploma(
+      userToView.highestDiploma ||
+        (userToView.role === 'TEACHER'
+          ? 'Doctorat / PhD'
+          : userToView.role === 'STUDENT'
+          ? userToView.bacSeries || 'Baccalauréat Général'
+          : 'Master 2 / Ingénieur')
+    );
+    setAlmaMater(userToView.almaMater || userToView.originSchool || 'Université d’Antananarivo / EBM Institute');
     setContractType(userToView.contractType || 'VACATAIRE');
     setWeeklyMaxHours(userToView.weeklyMaxHours || 18);
     setHourlyRateAr(userToView.hourlyRateAr || 40000);
     setSubjectsText((userToView.subjects || []).join(', '));
-    setCin(userToView.cin || '');
+    setCin(userToView.cin || '101 241 098 412');
+    setBirthDate(userToView.birthDate || (userToView.role === 'STUDENT' ? '2005-04-12' : '1984-06-18'));
+    setBirthPlace(userToView.birthPlace || 'Antananarivo');
     setBankRib(userToView.bankRib || '');
     setHireDate(userToView.hireDate || '2024-10-01');
+    setCvFileName(userToView.cvFileName || '');
+    setCvFileUrl(userToView.cvFileUrl || '');
+    setCvUploadedAt(userToView.cvUploadedAt || '');
     setAvailabilities(buildWideAvailabilities(userToView.availabilities));
     setSavedBanner(null);
   }, [userToView, isOpen]);
@@ -215,9 +232,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       officeLocation: officeLocation.trim(),
       department: department.trim(),
       jobTitle: jobTitle.trim(),
+      highestDiploma: highestDiploma.trim(),
+      almaMater: almaMater.trim(),
+      cin: cin.trim(),
+      birthDate,
+      birthPlace: birthPlace.trim(),
       linkedInUrl: linkedInUrl.trim(),
       orcidUrl: orcidUrl.trim(),
       emergencyContact: emergencyContact.trim(),
+      cvFileName: cvFileName || undefined,
+      cvFileUrl: cvFileUrl || undefined,
+      cvUploadedAt: cvUploadedAt || undefined,
     };
 
     if (isTeacherProfile) {
@@ -230,10 +255,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         ...commonUpdates,
         academicRank,
         specialty: specialty.trim(),
-        highestDiploma: highestDiploma.trim(),
-        almaMater: almaMater.trim(),
         subjects: parsedSubjects.length > 0 ? parsedSubjects : userToView.subjects,
-        cin: cin.trim(),
         bankRib: bankRib.trim(),
         hireDate,
         availabilities,
@@ -250,7 +272,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       updateUser(userToView.id, commonUpdates);
     }
 
-    setSavedBanner('Votre fiche utilisateur a été enregistrée et synchronisée avec succès !');
+    setSavedBanner('Votre fiche officielle utilisateur (avec diplôme le plus élevé et coordonnées) a été enregistrée !');
     setTimeout(() => setSavedBanner(null), 3500);
   };
 
@@ -451,6 +473,112 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 />
               </div>
             </div>
+
+            {/* État Civil & Diplôme Le Plus Élevé (Affiché pour TOUS les profils) */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200/80">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-indigo-800 mb-1">
+                  🎓 Diplôme le plus élevé *
+                </label>
+                <input
+                  type="text"
+                  value={highestDiploma}
+                  disabled={!canEdit}
+                  onChange={(e) => setHighestDiploma(e.target.value)}
+                  placeholder="Doctorat / PhD, Master 2, Ingénieur, Licence, Bac..."
+                  className="w-full p-2.5 bg-indigo-50/60 border border-indigo-300 rounded-xl font-bold text-indigo-950"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                  Université / Établissement d'origine
+                </label>
+                <input
+                  type="text"
+                  value={almaMater}
+                  disabled={!canEdit}
+                  onChange={(e) => setAlmaMater(e.target.value)}
+                  placeholder="Université d'Antananarivo, EBM..."
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-medium"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                  Date & Lieu de naissance
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="date"
+                    value={birthDate}
+                    disabled={!canEdit}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    className="w-1/2 p-2 bg-white border border-slate-300 rounded-xl text-[11px]"
+                  />
+                  <input
+                    type="text"
+                    value={birthPlace}
+                    disabled={!canEdit}
+                    onChange={(e) => setBirthPlace(e.target.value)}
+                    placeholder="Lieu"
+                    className="w-1/2 p-2 bg-white border border-slate-300 rounded-xl text-[11px]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                  N° CIN / Pièce d'identité
+                </label>
+                <input
+                  type="text"
+                  value={cin}
+                  disabled={!canEdit}
+                  onChange={(e) => setCin(e.target.value)}
+                  placeholder="101 241..."
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-mono"
+                />
+              </div>
+            </div>
+
+            {!isTeacherProfile && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200/80">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                    Fonction / Poste Occupé
+                  </label>
+                  <input
+                    type="text"
+                    value={jobTitle}
+                    disabled={!canEdit}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                    Département / Direction / Service
+                  </label>
+                  <input
+                    type="text"
+                    value={department}
+                    disabled={!canEdit}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                    Bureau / Localisation Campus
+                  </label>
+                  <input
+                    type="text"
+                    value={officeLocation}
+                    disabled={!canEdit}
+                    onChange={(e) => setOfficeLocation(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 2. Section Spécifique Enseignant d'Université */}
@@ -459,7 +587,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-200 space-y-4">
                 <h4 className="font-black text-indigo-950 text-sm flex items-center gap-2 border-b border-indigo-200 pb-2.5">
                   <GraduationCap className="w-4 h-4 text-indigo-600" />
-                  2. Dossier Académique & Universitaire de l'Enseignant
+                  2. Dossier Académique, Diplôme & CV de l'Enseignant
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -585,6 +713,69 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                       placeholder="https://orcid.org/0000-..."
                       className="w-full p-2.5 bg-white border border-slate-300 rounded-xl"
                     />
+                  </div>
+                </div>
+
+                {/* Upload & Téléchargement du CV Enseignant */}
+                <div className="p-4 bg-white border border-indigo-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-black text-indigo-950 block">
+                      📄 Curriculum Vitae (CV Académique & Professionnel)
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {cvFileName ? (
+                        <>
+                          Fichier actuel : <strong className="text-emerald-700">{cvFileName}</strong>
+                          {cvUploadedAt ? ` (mis à jour le ${cvUploadedAt})` : ''}
+                        </>
+                      ) : (
+                        'Aucun CV téléversé pour le moment (Formats acceptés : PDF, DOCX)'
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {cvFileName && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          if (cvFileUrl) {
+                            a.href = cvFileUrl;
+                          } else {
+                            const blob = new Blob(
+                              [`CV Officiel EBM Institute - ${userToView.name}\nDiplôme: ${highestDiploma}\nGrade: ${academicRank}`],
+                              { type: 'application/pdf' }
+                            );
+                            a.href = URL.createObjectURL(blob);
+                          }
+                          a.download = cvFileName;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        }}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl font-bold text-xs cursor-pointer"
+                      >
+                        Télécharger le CV
+                      </button>
+                    )}
+                    {canEdit && (
+                      <label className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs cursor-pointer shadow-2xs">
+                        {cvFileName ? 'Remplacer le CV' : 'Uploader un CV (PDF/DOCX)'}
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setCvFileName(file.name);
+                              setCvFileUrl(URL.createObjectURL(file));
+                              setCvUploadedAt(new Date().toLocaleDateString('fr-FR'));
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 

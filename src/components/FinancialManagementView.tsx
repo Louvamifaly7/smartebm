@@ -44,6 +44,7 @@ import {
   Legend,
 } from 'recharts';
 import { UniversalStudentSelector } from './UniversalStudentSelector';
+import { exportFinancialStateToPDF } from '../utils/pdfExport';
 
 export const FinancialManagementView: React.FC = () => {
   const {
@@ -70,11 +71,13 @@ export const FinancialManagementView: React.FC = () => {
   );
   const isAdminOrStaff = ['ADMIN', 'FINANCE', 'ADMIN_STAFF', 'SCOLARITE', 'SCHEDULER'].includes(currentUser.role);
 
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'ANALYTICS' | 'TRANSACTIONS' | 'CASH_REGISTER' | 'FEES_CATALOG'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'PIVOT_TABLE' | 'OVERVIEW' | 'ANALYTICS' | 'TRANSACTIONS' | 'CASH_REGISTER' | 'FEES_CATALOG'>('PIVOT_TABLE');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('user-student-laurent');
   const [searchStudent, setSearchStudent] = useState<string>('');
   const [dashboardGroupFilter, setDashboardGroupFilter] = useState<string>('ALL');
   const [dashboardMethodFilter, setDashboardMethodFilter] = useState<string>('ALL');
+  const [pivotStatusFilter, setPivotStatusFilter] = useState<'ALL' | 'SOLDÉ' | 'PARTIEL' | 'IMPAYÉ'>('ALL');
+  const [pivotCategoryFilter, setPivotCategoryFilter] = useState<string>('ALL');
   const [showChartsInOverview, setShowChartsInOverview] = useState<boolean>(true);
 
   // Payment Recording Modal
@@ -377,6 +380,114 @@ export const FinancialManagementView: React.FC = () => {
     return `${val} Ar`;
   };
 
+  // ==========================================
+  // TABLEAU CROISÉ DYNAMIQUE (ÉTUDIANTS × FRAIS PAYÉS / NON PAYÉS)
+  // ==========================================
+  const pivotTableData = useMemo(() => {
+    const activeFees = fees.filter(
+      (f) => pivotCategoryFilter === 'ALL' || f.category === pivotCategoryFilter
+    );
+
+    const rows = students
+      .filter((st) => {
+        if (dashboardGroupFilter !== 'ALL' && st.groupId !== dashboardGroupFilter) return false;
+        if (searchStudent.trim()) {
+          const q = searchStudent.toLowerCase();
+          const matchName = st.name.toLowerCase().includes(q);
+          const matchMat = (st.matricule || '').toLowerCase().includes(q);
+          if (!matchName && !matchMat) return false;
+        }
+        return true;
+      })
+      .map((st) => {
+        const summary = getStudentFinancialSummary(st.id);
+        const grp = groups.find((g) => g.id === st.groupId);
+        const feeCells: Record<string, { paidAr: number; remainingAr: number; totalAr: number }> = {};
+
+        let rowExpected = 0;
+        let rowPaid = 0;
+        let rowRemaining = 0;
+
+        activeFees.forEach((f) => {
+          const detail = summary.feeDetails.find((fd) => fd.fee.id === f.id);
+          const paidAr = detail ? detail.paidAr : 0;
+          const remainingAr = detail ? detail.remainingAr : f.amountAr;
+          const totalAr = detail ? detail.fee.amountAr : f.amountAr;
+          feeCells[f.id] = { paidAr, remainingAr, totalAr };
+          rowExpected += totalAr;
+          rowPaid += paidAr;
+          rowRemaining += remainingAr;
+        });
+
+        const status: 'SOLDÉ' | 'PARTIEL' | 'IMPAYÉ' =
+          rowRemaining === 0 ? 'SOLDÉ' : rowPaid > 0 ? 'PARTIEL' : 'IMPAYÉ';
+
+        return {
+          studentId: st.id,
+          matricule: st.matricule || 'N/A',
+          studentName: st.name,
+          groupId: st.groupId || '',
+          groupCode: grp?.code || 'Sans groupe',
+          feeCells,
+          totalFeesAr: rowExpected,
+          totalPaidAr: rowPaid,
+          balanceDueAr: rowRemaining,
+          status,
+        };
+      })
+      .filter((r) => pivotStatusFilter === 'ALL' || r.status === pivotStatusFilter);
+
+    const columnTotals: Record<string, { paidAr: number; remainingAr: number; totalAr: number }> = {};
+    activeFees.forEach((f) => {
+      columnTotals[f.id] = { paidAr: 0, remainingAr: 0, totalAr: 0 };
+    });
+
+    let grandTotalFeesAr = 0;
+    let grandTotalPaidAr = 0;
+    let grandTotalDueAr = 0;
+
+    rows.forEach((r) => {
+      grandTotalFeesAr += r.totalFeesAr;
+      grandTotalPaidAr += r.totalPaidAr;
+      grandTotalDueAr += r.balanceDueAr;
+      activeFees.forEach((f) => {
+        const c = r.feeCells[f.id];
+        if (c) {
+          columnTotals[f.id].paidAr += c.paidAr;
+          columnTotals[f.id].remainingAr += c.remainingAr;
+          columnTotals[f.id].totalAr += c.totalAr;
+        }
+      });
+    });
+
+    return {
+      activeFees,
+      rows,
+      columnTotals,
+      grandTotalFeesAr,
+      grandTotalPaidAr,
+      grandTotalDueAr,
+    };
+  }, [students, fees, groups, dashboardGroupFilter, searchStudent, pivotStatusFilter, pivotCategoryFilter, getStudentFinancialSummary]);
+
+  const handleExportFinancialPDF = () => {
+    const grpObj = groups.find((g) => g.id === dashboardGroupFilter);
+    const groupLabel = grpObj ? `${grpObj.code} (${grpObj.name})` : 'Toutes les promotions';
+    const statusFilterLabel =
+      pivotStatusFilter === 'ALL'
+        ? 'Tous les statuts (Soldés, Partiels, Impayés)'
+        : `Statut : ${pivotStatusFilter}`;
+
+    exportFinancialStateToPDF({
+      title: 'État Détaillé des Paiements & Tableau Croisé par Étudiant',
+      groupLabel,
+      statusFilterLabel,
+      academicYear: selectedAcademicYear || '2025-2026',
+      fees: pivotTableData.activeFees,
+      rows: pivotTableData.rows,
+    });
+  };
+
   // Helper to get exclusively unpaid/partially paid fees for a student (ACC-009, ACC-010)
   const getUnpaidFeesForStudent = (stId: string) => {
     const summary = getStudentFinancialSummary(stId);
@@ -646,6 +757,14 @@ export const FinancialManagementView: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            type="button"
+            onClick={handleExportFinancialPDF}
+            className="flex items-center gap-2 bg-white hover:bg-emerald-50 text-emerald-950 font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-md transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-emerald-700" />
+            Exporter État de Paiement (PDF)
+          </button>
+          <button
             onClick={() => setShowChartsInOverview((prev) => !prev)}
             className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
           >
@@ -665,6 +784,17 @@ export const FinancialManagementView: React.FC = () => {
       {/* Tabs */}
       <div className="flex flex-wrap border-b border-slate-200">
         <button
+          onClick={() => setActiveTab('PIVOT_TABLE')}
+          className={`flex items-center gap-2 px-5 py-3 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'PIVOT_TABLE'
+              ? 'border-emerald-600 text-emerald-700 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Tableau Croisé Dynamique (Payés / Non Payés)
+        </button>
+        <button
           onClick={() => setActiveTab('OVERVIEW')}
           className={`flex items-center gap-2 px-5 py-3 font-semibold text-sm border-b-2 transition-colors cursor-pointer ${
             activeTab === 'OVERVIEW'
@@ -673,7 +803,7 @@ export const FinancialManagementView: React.FC = () => {
           }`}
         >
           <User className="w-4 h-4" />
-          Comptes Étudiants & Pilotage
+          Fiches & Comptes Étudiants
         </button>
         <button
           onClick={() => setActiveTab('ANALYTICS')}
@@ -720,6 +850,296 @@ export const FinancialManagementView: React.FC = () => {
           Catalogue des Frais ({fees.length})
         </button>
       </div>
+
+      {/* ==========================================
+          TAB 0: TABLEAU CROISÉ DYNAMIQUE (ÉTUDIANTS × FRAIS PAYÉS ET NON PAYÉS)
+          ========================================== */}
+      {activeTab === 'PIVOT_TABLE' && (
+        <div className="space-y-4">
+          {/* Pivot Filters & Export Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-600" />
+                  Tableau Croisé Dynamique : Frais Déjà Payés vs Non Encore Payés par Étudiant
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Vue matricielle complète pour le Pôle Finance (sans les notes académiques) : chaque colonne croise l'étudiant avec chaque frais universitaire.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExportFinancialPDF}
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <Printer className="w-4 h-4" />
+                Exporter cet État de Paiement en PDF ({pivotTableData.rows.length} étud.)
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  Recherche Étudiant (Nom / Matricule)
+                </label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={searchStudent}
+                    onChange={(e) => setSearchStudent(e.target.value)}
+                    placeholder="Filtrer un étudiant..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  Groupe / Promotion
+                </label>
+                <select
+                  value={dashboardGroupFilter}
+                  onChange={(e) => setDashboardGroupFilter(e.target.value)}
+                  className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                >
+                  <option value="ALL">Tous les groupes ({students.length} étudiants)</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.code} — {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  Statut de Règlement
+                </label>
+                <select
+                  value={pivotStatusFilter}
+                  onChange={(e) => setPivotStatusFilter(e.target.value as any)}
+                  className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                >
+                  <option value="ALL">Tous les étudiants</option>
+                  <option value="IMPAYÉ">Impayés (0 Ar payé)</option>
+                  <option value="PARTIEL">Règlement Partiel (Reste à payer)</option>
+                  <option value="SOLDÉ">Soldés à 100% (0 Ar dû)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                  Catégorie de Frais (Colonnes)
+                </label>
+                <select
+                  value={pivotCategoryFilter}
+                  onChange={(e) => setPivotCategoryFilter(e.target.value)}
+                  className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                >
+                  <option value="ALL">Toutes les colonnes de frais ({fees.length})</option>
+                  <option value="INSCRIPTION">Droits d'inscription</option>
+                  <option value="ECOLAGE">Écolages semestriels</option>
+                  <option value="EXAMEN">Frais d'examen</option>
+                  <option value="INDIVIDUEL">Frais individuels</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Summary KPI Strip for Pivot */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-600">Total Facturé (Sélection) :</span>
+                <span className="font-mono font-black text-sm text-slate-900">
+                  {pivotTableData.grandTotalFeesAr.toLocaleString()} Ar
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-800">Total Déjà Payé (Encaissé) :</span>
+                <span className="font-mono font-black text-sm text-emerald-700">
+                  {pivotTableData.grandTotalPaidAr.toLocaleString()} Ar
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-800">Total Non Encore Payé (Reste Dû) :</span>
+                <span className="font-mono font-black text-sm text-rose-700">
+                  {pivotTableData.grandTotalDueAr.toLocaleString()} Ar
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dynamic Cross-Tabulation Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="bg-slate-900 text-white uppercase text-[10px]">
+                  <tr>
+                    <th className="p-3 border-r border-slate-700">Matricule</th>
+                    <th className="p-3 border-r border-slate-700">Étudiant</th>
+                    <th className="p-3 border-r border-slate-700 text-center">Groupe</th>
+                    {pivotTableData.activeFees.map((f) => (
+                      <th key={f.id} className="p-3 border-r border-slate-700 text-right min-w-[140px]">
+                        <div className="font-bold text-emerald-300">{f.title}</div>
+                        <div className="text-[9px] text-slate-300 font-mono">
+                          Tarif : {f.amountAr.toLocaleString()} Ar
+                        </div>
+                      </th>
+                    ))}
+                    <th className="p-3 border-r border-slate-700 text-right bg-slate-800">Total Déjà Payé</th>
+                    <th className="p-3 border-r border-slate-700 text-right bg-slate-800">Reste Non Payé</th>
+                    <th className="p-3 border-r border-slate-700 text-center">Statut</th>
+                    <th className="p-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {pivotTableData.rows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={pivotTableData.activeFees.length + 7}
+                        className="p-8 text-center text-slate-400 italic"
+                      >
+                        Aucun étudiant ne correspond aux critères sélectionnés.
+                      </td>
+                    </tr>
+                  ) : (
+                    pivotTableData.rows.map((row) => (
+                      <tr key={row.studentId} className="hover:bg-slate-50/90 transition-colors">
+                        <td className="p-2.5 border-r border-slate-100 font-mono font-bold text-blue-700 whitespace-nowrap">
+                          {row.matricule}
+                        </td>
+                        <td className="p-2.5 border-r border-slate-100 font-bold text-slate-900 whitespace-nowrap">
+                          {row.studentName}
+                        </td>
+                        <td className="p-2.5 border-r border-slate-100 text-center">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded font-bold text-[10px]">
+                            {row.groupCode}
+                          </span>
+                        </td>
+                        {pivotTableData.activeFees.map((f) => {
+                          const cell = row.feeCells[f.id] || {
+                            paidAr: 0,
+                            remainingAr: f.amountAr,
+                            totalAr: f.amountAr,
+                          };
+                          const isPaid = cell.remainingAr === 0;
+                          const isPartial = cell.paidAr > 0 && cell.remainingAr > 0;
+                          return (
+                            <td
+                              key={f.id}
+                              className={`p-2.5 border-r border-slate-100 text-right font-mono ${
+                                isPaid
+                                  ? 'bg-emerald-50/40'
+                                  : isPartial
+                                  ? 'bg-amber-50/40'
+                                  : 'bg-rose-50/25'
+                              }`}
+                            >
+                              <div className="text-[11px] font-bold text-emerald-700">
+                                Payé : {cell.paidAr.toLocaleString()} Ar
+                              </div>
+                              <div
+                                className={`text-[10px] font-extrabold ${
+                                  cell.remainingAr > 0 ? 'text-rose-700' : 'text-emerald-600'
+                                }`}
+                              >
+                                Non payé : {cell.remainingAr.toLocaleString()} Ar
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="p-2.5 border-r border-slate-100 text-right font-mono font-black text-emerald-700 bg-emerald-50/30 whitespace-nowrap">
+                          {row.totalPaidAr.toLocaleString()} Ar
+                        </td>
+                        <td
+                          className={`p-2.5 border-r border-slate-100 text-right font-mono font-black whitespace-nowrap ${
+                            row.balanceDueAr > 0
+                              ? 'text-rose-700 bg-rose-50/40'
+                              : 'text-emerald-700 bg-emerald-50/30'
+                          }`}
+                        >
+                          {row.balanceDueAr.toLocaleString()} Ar
+                        </td>
+                        <td className="p-2.5 border-r border-slate-100 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              row.status === 'SOLDÉ'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : row.status === 'PARTIEL'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
+                            {row.balanceDueAr > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => openPaymentModalForStudent(row.studentId)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg cursor-pointer"
+                              >
+                                Encaisser
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStudentId(row.studentId);
+                                setActiveTab('OVERVIEW');
+                              }}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] rounded-lg cursor-pointer"
+                            >
+                              Détail
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {pivotTableData.rows.length > 0 && (
+                  <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold text-xs">
+                    <tr>
+                      <td colSpan={3} className="p-3 text-right uppercase text-slate-700 font-black">
+                        Totaux Croisés par Frais ({pivotTableData.rows.length} étudiants) :
+                      </td>
+                      {pivotTableData.activeFees.map((f) => {
+                        const col = pivotTableData.columnTotals[f.id] || {
+                          paidAr: 0,
+                          remainingAr: 0,
+                          totalAr: 0,
+                        };
+                        return (
+                          <td key={f.id} className="p-2.5 text-right font-mono border-r border-slate-200">
+                            <div className="text-emerald-700 font-bold">
+                              Payé : {col.paidAr.toLocaleString()} Ar
+                            </div>
+                            <div className="text-rose-700 font-extrabold">
+                              Reste : {col.remainingAr.toLocaleString()} Ar
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td className="p-2.5 text-right font-mono font-black text-emerald-800">
+                        {pivotTableData.grandTotalPaidAr.toLocaleString()} Ar
+                      </td>
+                      <td className="p-2.5 text-right font-mono font-black text-rose-800">
+                        {pivotTableData.grandTotalDueAr.toLocaleString()} Ar
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==========================================
           VISUAL ANALYTICS DASHBOARD (RECHARTS)

@@ -465,7 +465,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
 
               {/* 4. Maquettes LMD */}
-              {canRoleAccessTab(currentUser?.role, 'LMD_MAQUETTES') && (
+              {canRoleAccessTab(currentUser?.role, 'LMD_MAQUETTES', currentUser?.customPermissions, customRoles) && (
                 <button
                   type="button"
                   onClick={() => handleNavigate('LMD_MAQUETTES')}
@@ -477,6 +477,23 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <Layers className="w-4 h-4 text-indigo-400" />
                   <span>Maquettes LMD</span>
+                </button>
+              )}
+
+              {/* 4b. Suivi des Volumes Horaires & Réalisations */}
+              {canRoleAccessTab(currentUser?.role, 'VOLUMES', currentUser?.customPermissions, customRoles) && (
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('VOLUMES')}
+                  className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+                    currentTab === 'VOLUMES'
+                      ? 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-400'
+                      : 'text-purple-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title="Suivi des Volumes Horaires & Validation des Séances"
+                >
+                  <Clock className="w-4 h-4 text-purple-400" />
+                  <span>Suivi Volumes Horaires</span>
                 </button>
               )}
 

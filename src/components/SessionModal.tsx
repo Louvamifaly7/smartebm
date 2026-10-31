@@ -94,6 +94,9 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     conflicts: [],
     suggestions: [],
   });
+  const [showSmartAssistant, setShowSmartAssistant] = useState<boolean>(true);
+  const [desiredDurationHours, setDesiredDurationHours] = useState<number>(2);
+  const [assistantAppliedMsg, setAssistantAppliedMsg] = useState<string | null>(null);
 
   // Initialize form when opened or mode changed
   useEffect(() => {
@@ -178,6 +181,100 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     const [eH, eM] = end.split(':').map(Number);
     return Math.max(0.5, (eH * 60 + eM - (sH * 60 + sM)) / 60);
   };
+
+  // Smart Scheduling Assistant: Compute best available (date, startTime, endTime, room) slots
+  const smartRecommendedSlots = (() => {
+    const selectedTeacherObj = users.find((u) => u.id === teacherId);
+    const totalStudentsNeeded = groupIds.reduce((sum, gid) => {
+      const grp = groups.find((g) => g.id === gid);
+      return sum + (grp?.studentCount || 25);
+    }, 0);
+
+    const compatibleRooms = rooms.filter((r) => r.capacity >= Math.max(15, totalStudentsNeeded));
+    const candidateRooms = compatibleRooms.length > 0 ? compatibleRooms : rooms;
+
+    const baseDate = date ? new Date(date) : new Date();
+    const dayOfWeek = baseDate.getDay();
+    const diffToMonday = (dayOfWeek + 6) % 7;
+    const monday = new Date(baseDate);
+    monday.setDate(baseDate.getDate() - diffToMonday);
+
+    const dayNamesFr = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+    const candidateTimeStarts = ['07:00', '08:00', '09:00', '10:00', '13:30', '14:00', '15:00'];
+
+    const recommendations: Array<{
+      date: string;
+      dayLabel: string;
+      startTime: string;
+      endTime: string;
+      roomId: string;
+      roomName: string;
+      roomCapacity: number;
+      teacherDeclaredAvailable: boolean;
+    }> = [];
+
+    for (let dIdx = 0; dIdx < 6; dIdx++) {
+      const dObj = new Date(monday);
+      dObj.setDate(monday.getDate() + dIdx);
+      const dStr = dObj.toISOString().split('T')[0];
+      const dayName = dayNamesFr[dIdx];
+
+      for (const st of candidateTimeStarts) {
+        const [sH, sM] = st.split(':').map(Number);
+        const endMinutes = sH * 60 + sM + desiredDurationHours * 60;
+        if (endMinutes > 18 * 60) continue;
+        const eH = String(Math.floor(endMinutes / 60)).padStart(2, '0');
+        const eM = String(endMinutes % 60).padStart(2, '0');
+        const et = `${eH}:${eM}`;
+
+        // Check if teacher declared availability covers this slot
+        const teacherAvail =
+          selectedTeacherObj?.availabilities?.some(
+            (av) => av.day === dayName && (av.startTime || '07:00') <= st && (av.endTime || '17:00') >= et
+          ) ?? true;
+
+        for (const rm of candidateRooms) {
+          const check = detectSessionConflicts(
+            {
+              id: sessionToEdit?.id,
+              courseId: sessionType === 'COURSE' ? courseId : `EVENT-${sessionType}`,
+              teacherId: teacherId || 'EXTERNAL_SPEAKER',
+              groupIds,
+              roomId: rm.id,
+              date: dStr,
+              startTime: st,
+              endTime: et,
+            },
+            sessions,
+            rooms,
+            groups,
+            users
+          );
+
+          if (!check.hasConflict) {
+            recommendations.push({
+              date: dStr,
+              dayLabel: `${dayName} ${dObj.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`,
+              startTime: st,
+              endTime: et,
+              roomId: rm.id,
+              roomName: rm.name,
+              roomCapacity: rm.capacity,
+              teacherDeclaredAvailable: teacherAvail,
+            });
+            break; // One best room per time slot is enough to keep suggestions diverse
+          }
+        }
+        if (recommendations.length >= 9) break;
+      }
+      if (recommendations.length >= 9) break;
+    }
+
+    // Prioritize slots where teacher explicitly declared availability
+    return recommendations.sort(
+      (a, b) => Number(b.teacherDeclaredAvailable) - Number(a.teacherDeclaredAvailable)
+    ).slice(0, 6);
+  })();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -627,6 +724,127 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* ASSISTANT INTELLIGENT DE PLANIFICATION (Aide au placement Date, Heure & Salle) */}
+              <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-blue-50 to-slate-50 border border-indigo-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-black text-indigo-950 block">
+                        Assistant de Planification (Placement Intelligent Date, Heure & Salle)
+                      </span>
+                      <span className="text-[10px] text-slate-600">
+                        Analyse les disponibilités de l'enseignant, l'emploi du temps des étudiants et la capacité des salles
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={desiredDurationHours}
+                      onChange={(e) => setDesiredDurationHours(Number(e.target.value))}
+                      className="text-[11px] font-bold bg-white border border-indigo-200 rounded-lg px-2 py-1 text-indigo-900"
+                      title="Durée souhaitée"
+                    >
+                      <option value={1}>Durée : 1h</option>
+                      <option value={1.5}>Durée : 1h30</option>
+                      <option value={2}>Durée : 2h</option>
+                      <option value={3}>Durée : 3h</option>
+                      <option value={4}>Durée : 4h</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowSmartAssistant((prev) => !prev)}
+                      className="text-[11px] font-bold text-indigo-700 hover:underline px-1.5 cursor-pointer"
+                    >
+                      {showSmartAssistant ? 'Masquer' : 'Afficher'}
+                    </button>
+                  </div>
+                </div>
+
+                {assistantAppliedMsg && (
+                  <div className="p-2 bg-emerald-100/90 border border-emerald-300 rounded-xl text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>{assistantAppliedMsg}</span>
+                  </div>
+                )}
+
+                {showSmartAssistant && (
+                  <div className="space-y-2 pt-1">
+                    {smartRecommendedSlots.length === 0 ? (
+                      <p className="text-[11px] text-slate-500 italic">
+                        Aucun créneau automatique trouvé sur cette semaine. Vous pouvez changer la date de référence ci-dessous.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {smartRecommendedSlots.map((slot, idx) => {
+                          const isCurrentlySelected =
+                            date === slot.date &&
+                            startTime === slot.startTime &&
+                            endTime === slot.endTime &&
+                            roomId === slot.roomId;
+
+                          return (
+                            <button
+                              key={`${slot.date}-${slot.startTime}-${slot.roomId}-${idx}`}
+                              type="button"
+                              onClick={() => {
+                                setDate(slot.date);
+                                setStartTime(slot.startTime);
+                                setEndTime(slot.endTime);
+                                setRoomId(slot.roomId);
+                                setAssistantAppliedMsg(
+                                  `Créneau appliqué : ${slot.dayLabel} de ${slot.startTime} à ${slot.endTime} en salle ${slot.roomName}`
+                                );
+                              }}
+                              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                isCurrentlySelected
+                                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+                                  : 'bg-white hover:bg-indigo-50/70 text-slate-800 border-indigo-200/80'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-xs truncate">{slot.dayLabel}</span>
+                                  {slot.teacherDeclaredAvailable && (
+                                    <span
+                                      className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                        isCurrentlySelected
+                                          ? 'bg-emerald-400 text-slate-950'
+                                          : 'bg-emerald-100 text-emerald-800'
+                                      }`}
+                                    >
+                                      Prof Dispo
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  className={`text-[11px] font-mono font-bold mt-0.5 ${
+                                    isCurrentlySelected ? 'text-indigo-100' : 'text-indigo-700'
+                                  }`}
+                                >
+                                  {slot.startTime} - {slot.endTime} • {slot.roomName} ({slot.roomCapacity} pl.)
+                                </div>
+                              </div>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${
+                                  isCurrentlySelected
+                                    ? 'bg-white text-indigo-700'
+                                    : 'bg-indigo-100 text-indigo-800'
+                                }`}
+                              >
+                                {isCurrentlySelected ? 'Choisi ✓' : 'Choisir'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Date, Start time, End time */}

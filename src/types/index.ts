@@ -195,6 +195,9 @@ export interface User {
   emergencyContact?: string; // Contact d'urgence (Nom & Téléphone)
   cin?: string;
   bankRib?: string;
+  cvFileName?: string;     // Nom du fichier CV téléversé (ex: CV_Prof_Rakotoarisoa.pdf)
+  cvFileUrl?: string;      // URL / DataURL du CV téléversé
+  cvUploadedAt?: string;   // Date de mise à jour du CV
 }
 
 export interface Filiere {
