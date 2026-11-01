@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { TimetableSession, SessionActivityType } from '../types';
 import { detectSessionConflicts } from '../utils/conflictDetector';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { showAppToast } from './ToastAndConfirmCenter';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -97,9 +99,13 @@ export const SessionModal: React.FC<SessionModalProps> = ({
   const [showSmartAssistant, setShowSmartAssistant] = useState<boolean>(true);
   const [desiredDurationHours, setDesiredDurationHours] = useState<number>(2);
   const [assistantAppliedMsg, setAssistantAppliedMsg] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isRecurring, setIsRecurring] = useState<boolean>(false);
+  const [repeatWeeks, setRepeatWeeks] = useState<number>(12);
 
   // Initialize form when opened or mode changed
   useEffect(() => {
+    setFormError(null);
     if (sessionToEdit) {
       setSessionType(sessionToEdit.sessionType || 'COURSE');
       setEventTitle(sessionToEdit.eventTitle || '');
@@ -129,7 +135,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       setGroupIds(defaultCourse?.groupIds || [groups[0]?.id || '']);
       setRoomId(rooms[0]?.id || '');
       
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getAntananarivoDateStr();
       setDate(todayStr);
       setStartTime('08:30');
       setEndTime('10:30');
@@ -179,7 +185,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
   const calculateDuration = (start: string, end: string) => {
     const [sH, sM] = start.split(':').map(Number);
     const [eH, eM] = end.split(':').map(Number);
-    return Math.max(0.5, (eH * 60 + eM - (sH * 60 + sM)) / 60);
+    return Number((((eH * 60 + eM) - (sH * 60 + sM)) / 60).toFixed(2));
   };
 
   // Smart Scheduling Assistant: Compute best available (date, startTime, endTime, room) slots
@@ -216,7 +222,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     for (let dIdx = 0; dIdx < 6; dIdx++) {
       const dObj = new Date(monday);
       dObj.setDate(monday.getDate() + dIdx);
-      const dStr = dObj.toISOString().split('T')[0];
+      const dStr = getAntananarivoDateStr(dObj);
       const dayName = dayNamesFr[dIdx];
 
       for (const st of candidateTimeStarts) {
@@ -278,10 +284,11 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
 
     if (mode === 'CANCEL') {
       if (!sessionToEdit || !reason.trim()) {
-        alert('Le motif d’annulation est obligatoire.');
+        setFormError('Le motif d’annulation est obligatoire.');
         return;
       }
       cancelSession(sessionToEdit.id, reason.trim());
@@ -291,10 +298,14 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
     if (mode === 'RESCHEDULE') {
       if (!sessionToEdit || !reason.trim()) {
-        alert('Le motif de report est obligatoire.');
+        setFormError('Le motif de report est obligatoire.');
         return;
       }
-      rescheduleSession(
+      if (rescheduleStartTime >= rescheduleEndTime) {
+        setFormError('L’heure de fin du report doit être strictement postérieure à l’heure de début.');
+        return;
+      }
+      const res = rescheduleSession(
         sessionToEdit.id,
         rescheduleDate,
         rescheduleStartTime,
@@ -302,46 +313,95 @@ export const SessionModal: React.FC<SessionModalProps> = ({
         rescheduleRoomId || sessionToEdit.roomId,
         reason.trim()
       );
+      if (!res.success) {
+        setFormError(`Impossible de reporter la séance : ${res.error}`);
+        return;
+      }
       onClose();
       return;
     }
 
     // CREATE or EDIT
+    if (startTime >= endTime) {
+      setFormError('L’heure de fin doit être strictement postérieure à l’heure de début.');
+      return;
+    }
     const durationHours = calculateDuration(startTime, endTime);
+    if (!Number.isFinite(durationHours) || durationHours <= 0) {
+      setFormError('Plage horaire invalide : la durée de la séance doit être strictement positive.');
+      return;
+    }
     const isCustomEvent = sessionType !== 'COURSE';
 
     if (isCustomEvent && !eventTitle.trim()) {
-      alert('Veuillez saisir le titre de la conférence ou de l’événement.');
+      setFormError('Veuillez saisir le titre de la conférence ou de l’événement.');
       return;
     }
 
     if (mode === 'CREATE') {
-      const res = addSession({
-        courseId: isCustomEvent ? `EVENT-${sessionType}` : courseId,
-        sessionType,
-        eventTitle: isCustomEvent ? eventTitle.trim() : undefined,
-        eventSpeaker: isCustomEvent ? eventSpeaker.trim() : undefined,
-        eventCategoryLabel:
-          sessionType === 'AUTRE_EVENEMENT' && eventCategoryLabel.trim()
-            ? eventCategoryLabel.trim()
-            : undefined,
-        teacherId: teacherId || 'EXTERNAL_SPEAKER',
-        groupIds,
-        roomId,
-        date,
-        startTime,
-        endTime,
-        durationHours,
-        status: 'PUBLISHED',
-        notes,
-      });
+      const totalOccurrences = isRecurring ? Math.max(2, Math.min(20, repeatWeeks)) : 1;
+      let createdCount = 0;
+      const skippedReasons: string[] = [];
 
-      if (!res.success) {
-        alert(`Impossible d’enregistrer : ${res.error}`);
+      for (let w = 0; w < totalOccurrences; w++) {
+        const targetDateObj = new Date(date);
+        targetDateObj.setDate(targetDateObj.getDate() + w * 7);
+        const targetDateStr = w === 0 ? date : getAntananarivoDateStr(targetDateObj);
+
+        const res = addSession({
+          courseId: isCustomEvent ? `EVENT-${sessionType}` : courseId,
+          sessionType,
+          eventTitle: isCustomEvent ? eventTitle.trim() : undefined,
+          eventSpeaker: isCustomEvent ? eventSpeaker.trim() : undefined,
+          eventCategoryLabel:
+            sessionType === 'AUTRE_EVENEMENT' && eventCategoryLabel.trim()
+              ? eventCategoryLabel.trim()
+              : undefined,
+          teacherId: teacherId || 'EXTERNAL_SPEAKER',
+          groupIds,
+          roomId,
+          date: targetDateStr,
+          startTime,
+          endTime,
+          durationHours,
+          status: 'PUBLISHED',
+          notes: isRecurring ? `${notes ? notes + ' · ' : ''}Séance récurrente (${w + 1}/${totalOccurrences})` : notes,
+        });
+
+        if (!res.success) {
+          if (w === 0 && !isRecurring) {
+            setFormError(`Impossible d’enregistrer : ${res.error}`);
+            showAppToast({
+              type: 'error',
+              title: 'Création refusée (Conflit)',
+              message: res.error,
+            });
+            return;
+          }
+          skippedReasons.push(`${targetDateStr} : ${res.error}`);
+        } else {
+          createdCount += 1;
+        }
+      }
+
+      if (createdCount === 0) {
+        setFormError(`Aucune séance n'a pu être planifiée : ${skippedReasons[0] || 'Conflit détecté'}`);
         return;
       }
+
+      showAppToast({
+        type: skippedReasons.length > 0 ? 'warning' : 'success',
+        title:
+          totalOccurrences > 1
+            ? `${createdCount}/${totalOccurrences} séances récurrentes planifiées`
+            : 'Séance planifiée avec succès',
+        message:
+          skippedReasons.length > 0
+            ? `${skippedReasons.length} semaine(s) ignorée(s) pour conflit (${skippedReasons[0]}).`
+            : `Créneau ${startTime} - ${endTime} enregistré dans l'emploi du temps.`,
+      });
     } else if (mode === 'EDIT' && sessionToEdit) {
-      updateSession(
+      const res = updateSession(
         sessionToEdit.id,
         {
           courseId: isCustomEvent ? `EVENT-${sessionType}` : courseId,
@@ -363,6 +423,20 @@ export const SessionModal: React.FC<SessionModalProps> = ({
         },
         'Modification planifiée'
       );
+      if (!res.success) {
+        setFormError(`Impossible de modifier la séance : ${res.error}`);
+        showAppToast({
+          type: 'error',
+          title: 'Modification refusée',
+          message: res.error,
+        });
+        return;
+      }
+      showAppToast({
+        type: 'success',
+        title: 'Séance mise à jour',
+        message: `Modifications enregistrées pour le ${date} (${startTime} - ${endTime}).`,
+      });
     }
 
     onClose();
@@ -416,6 +490,12 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          {formError && (
+            <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 font-semibold flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
           
           {/* MODE: CANCEL */}
           {mode === 'CANCEL' && (
@@ -906,6 +986,44 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Recurring Weekly Option (Séances récurrentes sur le semestre) */}
+              {mode === 'CREATE' && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isRecurring}
+                        onChange={(e) => setIsRecurring(e.target.checked)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Répéter chaque semaine (Séance récurrente sur le semestre)</span>
+                    </label>
+                    {isRecurring && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="text-slate-600 font-semibold">Pendant :</span>
+                        <select
+                          value={repeatWeeks}
+                          onChange={(e) => setRepeatWeeks(Number(e.target.value))}
+                          className="px-2 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-900 text-xs"
+                        >
+                          <option value={4}>4 semaines (1 mois)</option>
+                          <option value={8}>8 semaines (Demi-semestre)</option>
+                          <option value={12}>12 semaines (Semestre standard)</option>
+                          <option value={15}>15 semaines (Semestre complet)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {isRecurring && (
+                    <p className="text-[11px] text-slate-500">
+                      Ce créneau ({startTime} - {endTime}) sera planifié automatiquement le même jour de chaque semaine pendant{' '}
+                      <strong>{repeatWeeks} semaines</strong> avec contrôle individuel des conflits.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Notes */}
               <div>

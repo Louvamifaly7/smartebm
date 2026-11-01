@@ -68,13 +68,22 @@ import {
   initialDeliberations,
 } from '../data/mockData';
 import { detectSessionConflicts } from '../utils/conflictDetector';
-import { syncSystemRolePermissions } from '../utils/rbacPermissions';
+import { canUserPerformOperation, syncSystemRolePermissions } from '../utils/rbacPermissions';
+import {
+  getAntananarivoDateStr,
+  generateUniqueId,
+  hashPasswordSync,
+  verifyPasswordSync,
+  computeSessionToken,
+  verifySessionToken,
+  safeJsonParse,
+  safeLocalStorageSet,
+} from '../utils/securityAndDateUtils';
 import {
   auth,
   googleProvider,
   signInWithPopup,
   sendPasswordResetEmail,
-  signInAnonymously,
   signOut,
   onAuthStateChanged,
   FirebaseUser,
@@ -82,10 +91,20 @@ import {
 } from '../firebase';
 import {
   syncDocToFirestore,
+  removeDocFromFirestore,
   syncCollectionBatch,
   fetchCollectionFromFirestore,
+  mergeCollectionById,
+  subscribeToFirestoreCollection,
+  ensureFirebaseAuthSession,
+  verifyBackupSnapshotIntegrity,
   buildSystemBackupSnapshot,
+  getDeletedTombstones,
+  clearDeletedTombstones,
+  pullRemoteTombstones,
+  flushPendingSyncOutbox,
 } from '../services/firestoreSync';
+import { showAppToast } from '../components/ToastAndConfirmCenter';
 
 interface CourseHourlyStats {
   totalHours: number;
@@ -105,6 +124,7 @@ interface AppContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
   switchUserRole: (role: UserRole) => void;
+  isRealAdminSession: boolean;
   isAuthenticated: boolean;
   login: (identifier: string, password?: string) => { success: boolean; error?: string };
   logout: () => void;
@@ -112,7 +132,7 @@ interface AppContextType {
   users: User[];
   addUser: (userData: Partial<User>) => { success: boolean; error?: string };
   updateUser: (id: string, updates: Partial<User>) => void;
-  deleteUser: (id: string) => void;
+  deleteUser: (id: string) => { success: boolean; error?: string };
   resetUserPassword: (id: string) => void;
   sendUserPasswordResetEmail: (id: string) => Promise<{ success: boolean; message: string }>;
   setDirectUserPassword: (
@@ -138,8 +158,8 @@ interface AppContextType {
 
   // Session actions
   addSession: (data: Omit<TimetableSession, 'id' | 'history'>) => { success: boolean; session?: TimetableSession; error?: string };
-  updateSession: (id: string, updates: Partial<TimetableSession>, reason?: string) => void;
-  rescheduleSession: (id: string, newDate: string, newStartTime: string, newEndTime: string, newRoomId: string, reason: string) => void;
+  updateSession: (id: string, updates: Partial<TimetableSession>, reason?: string) => { success: boolean; error?: string };
+  rescheduleSession: (id: string, newDate: string, newStartTime: string, newEndTime: string, newRoomId: string, reason: string) => { success: boolean; error?: string };
   cancelSession: (id: string, reason: string) => void;
   validateSession: (id: string) => void;
   deleteSession: (id: string) => void;
@@ -159,11 +179,11 @@ interface AppContextType {
   // Data Creation and Management CRUD
   addCourse: (data: Omit<Course, 'id'>) => { success: boolean; course?: Course; error?: string };
   updateCourse: (id: string, updates: Partial<Course>) => void;
-  deleteCourse: (id: string) => void;
+  deleteCourse: (id: string) => { success: boolean; error?: string };
 
   addRoom: (data: Omit<Room, 'id'>) => { success: boolean; room?: Room; error?: string };
   updateRoom: (id: string, updates: Partial<Room>) => void;
-  deleteRoom: (id: string) => void;
+  deleteRoom: (id: string) => { success: boolean; error?: string };
 
   addTeacher: (data: { name: string; email: string; phone?: string; subjects: string[]; weeklyMaxHours?: number }) => { success: boolean; teacher?: User; error?: string };
   updateTeacher: (id: string, updates: Partial<User>) => void;
@@ -171,7 +191,7 @@ interface AppContextType {
 
   addGroup: (data: Omit<StudentGroup, 'id'>) => { success: boolean; group?: StudentGroup; error?: string };
   updateGroup: (id: string, updates: Partial<StudentGroup>) => void;
-  deleteGroup: (id: string) => void;
+  deleteGroup: (id: string) => { success: boolean; error?: string };
 
   addFiliere: (data: Omit<Filiere, 'id'>) => { success: boolean; filiere?: Filiere; error?: string };
   updateFiliere: (id: string, updates: Partial<Filiere>) => void;
@@ -193,7 +213,7 @@ interface AppContextType {
   setSelectedAcademicYear: (year: string) => void;
   createAcademicYear: (data: { code: string; name: string; startDate: string; endDate: string; isCurrent?: boolean; cloneFromPrevious?: boolean }) => { success: boolean; academicYear?: AcademicYear; error?: string };
   updateAcademicYear: (id: string, updates: Partial<AcademicYear>) => void;
-  deleteAcademicYear: (id: string) => void;
+  deleteAcademicYear: (id: string) => { success: boolean; error?: string };
   setActiveAcademicYear: (code: string) => void;
   parcours: Parcours[];
   addParcours: (data: Omit<Parcours, 'id'>) => { success: boolean; parcours?: Parcours; error?: string };
@@ -228,8 +248,8 @@ interface AppContextType {
 
   // Grades / Évaluations LMD & Délibérations du Jury
   grades: EcGrade[];
-  saveGrade: (studentId: string, ecId: string, quizScore?: number, examScore?: number, isDraft?: boolean, comment?: string, rattrapageScore?: number) => void;
-  publishGrades: (ecId: string) => void;
+  saveGrade: (studentId: string, ecId: string, quizScore?: number, examScore?: number, isDraft?: boolean, comment?: string, rattrapageScore?: number) => { success: boolean; error?: string };
+  publishGrades: (ecId: string) => { success: boolean; error?: string };
   calculateEcFinalScore: (quizScore?: number, examScore?: number, ecId?: string) => number | undefined;
   getStudentEcGrade: (studentId: string, ecId: string) => EcGrade | undefined;
   getStudentUeSummary: (studentId: string, ueId: string) => { average: number; isPassed: boolean; totalCredits: number; validatedCredits: number; ecDetails: { ec: ElementConstitutif; grade?: EcGrade; isPassed: boolean }[] };
@@ -378,11 +398,23 @@ const STORAGE_KEYS = {
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load from localStorage or mockData, ensuring new accounts & SIS v1.2 fields exist
+  const deletedDocIdsRef = React.useRef<Set<string>>(getDeletedTombstones());
+
+  const filterOutDeleted = <T extends { id: string }>(items: T[], colName?: string): T[] => {
+    const tombstones = deletedDocIdsRef.current;
+    return items.filter(
+      (item) =>
+        item &&
+        !tombstones.has(item.id) &&
+        (!colName || !tombstones.has(`${colName}:${item.id}`))
+    );
+  };
+
+  // Load from localStorage or mockData, ensuring new accounts & SIS v1.2 fields exist (P56 safeJsonParse)
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USERS);
-    if (!saved) return initialUsers;
-    const parsed: User[] = JSON.parse(saved);
+    if (!saved) return filterOutDeleted(initialUsers, 'users');
+    const parsed: User[] = safeJsonParse<User[]>(saved, initialUsers);
     const legacyEuropeanNames = new Set([
       'Alexandre Morel',
       'Sandrine Girard',
@@ -432,6 +464,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         lastName: shouldMigrateIdentity ? seed.lastName : (u.lastName || seed.lastName),
         firstName: shouldMigrateIdentity ? seed.firstName : (u.firstName || seed.firstName),
         email: shouldMigrateIdentity ? seed.email : u.email,
+        googleEmail:
+          u.id === 'user-admin'
+            ? 'louvamifaly@gmail.com'
+            : shouldMigrateIdentity
+            ? seed.googleEmail
+            : (u.googleEmail || seed.googleEmail),
         parentRelation: shouldMigrateIdentity ? seed.parentRelation : (u.parentRelation || seed.parentRelation),
         cardToken: u.cardToken || seed.cardToken,
         cardIssueNumber: u.cardIssueNumber || seed.cardIssueNumber || 1,
@@ -467,47 +505,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
     const missingInitial = initialUsers.filter((iu) => !enriched.some((p) => p.id === iu.id));
-    return missingInitial.length > 0 ? [...enriched, ...missingInitial] : enriched;
+    const combined = missingInitial.length > 0 ? [...enriched, ...missingInitial] : enriched;
+    return filterOutDeleted(combined, 'users');
   });
 
   const [courses, setCourses] = useState<Course[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.COURSES);
-    return saved ? JSON.parse(saved) : initialCourses;
+    return filterOutDeleted(safeJsonParse<Course[]>(saved, initialCourses), 'courses');
   });
 
   const [rooms, setRooms] = useState<Room[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ROOMS);
-    return saved ? JSON.parse(saved) : initialRooms;
+    return filterOutDeleted(safeJsonParse<Room[]>(saved, initialRooms), 'rooms');
   });
 
   const [groups, setGroups] = useState<StudentGroup[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.GROUPS);
-    return saved ? JSON.parse(saved) : initialGroups;
+    return filterOutDeleted(safeJsonParse<StudentGroup[]>(saved, initialGroups), 'groups');
   });
 
   const [filieres, setFilieres] = useState<Filiere[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.FILIERES);
-    if (!saved) return initialFilieres;
-    const parsed: Filiere[] = JSON.parse(saved);
-    return parsed.map((f) => {
-      const seed = initialFilieres.find((ifil) => ifil.id === f.id);
-      return {
-        ...f,
-        domaine: f.domaine || seed?.domaine || 'Sciences et Technologies',
-        etablissement: f.etablissement || seed?.etablissement || 'EBM Institute',
-      };
-    });
+    if (!saved) return filterOutDeleted(initialFilieres, 'filieres');
+    const parsed: Filiere[] = safeJsonParse<Filiere[]>(saved, initialFilieres);
+    return filterOutDeleted(
+      parsed.map((f) => {
+        const seed = initialFilieres.find((ifil) => ifil.id === f.id);
+        return {
+          ...f,
+          domaine: f.domaine || seed?.domaine || 'Sciences et Technologies',
+          etablissement: f.etablissement || seed?.etablissement || 'EBM Institute',
+        };
+      }),
+      'filieres'
+    );
   });
 
   const [domaines, setDomaines] = useState<string[]>(() => {
     const saved = localStorage.getItem('ebm_domaines_v3');
-    if (saved) return JSON.parse(saved);
-    return [
+    return safeJsonParse<string[]>(saved, [
       'Sciences et Technologies',
       'Sciences de Gestion & Économie',
       'Sciences de l’Ingénieur & Numérique',
       'Droit, Gouvernance & Relations Internationales',
-    ];
+    ]);
   });
 
   const addDomaine = (name: string): { success: boolean; error?: string } => {
@@ -519,6 +560,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDomaines((prev) => {
       const next = [...prev, clean];
       localStorage.setItem('ebm_domaines_v3', JSON.stringify(next));
+      syncDocToFirestore('appSettings', { id: 'lmd_domaines', items: next, updatedAt: new Date().toISOString() });
       return next;
     });
     return { success: true };
@@ -533,10 +575,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDomaines((prev) => {
       const next = prev.map((d) => (d === oldName ? clean : d));
       localStorage.setItem('ebm_domaines_v3', JSON.stringify(next));
+      syncDocToFirestore('appSettings', { id: 'lmd_domaines', items: next, updatedAt: new Date().toISOString() });
       return next;
     });
     setFilieres((prev) =>
-      prev.map((f) => ((f.domaine || 'Sciences et Technologies') === oldName ? { ...f, domaine: clean } : f))
+      prev.map((f) => {
+        if ((f.domaine || 'Sciences et Technologies') !== oldName) return f;
+        const updated = { ...f, domaine: clean };
+        syncDocToFirestore('filieres', updated);
+        return updated;
+      })
     );
     logAudit('MODIFICATION_DOMAINE_LMD', `Renommage du domaine LMD "${oldName}" en "${clean}"`);
     return { success: true };
@@ -553,6 +601,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDomaines((prev) => {
       const next = prev.filter((d) => d !== name);
       localStorage.setItem('ebm_domaines_v3', JSON.stringify(next));
+      syncDocToFirestore('appSettings', { id: 'lmd_domaines', items: next, updatedAt: new Date().toISOString() });
       return next;
     });
     return { success: true };
@@ -560,25 +609,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [sessions, setSessions] = useState<TimetableSession[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.SESSIONS);
-    return saved ? JSON.parse(saved) : initialSessions;
+    return filterOutDeleted(safeJsonParse<TimetableSession[]>(saved, initialSessions), 'sessions');
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-    return saved ? JSON.parse(saved) : initialNotifications;
+    return safeJsonParse<AppNotification[]>(saved, initialNotifications);
   });
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-    return saved ? JSON.parse(saved) : initialAuditLogs;
-  });
-
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('ebm_auth_logged_in') === 'true';
+    return safeJsonParse<AuditLog[]>(saved, initialAuditLogs);
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
     return localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID) || 'user-admin';
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const loggedIn = localStorage.getItem('ebm_auth_logged_in') === 'true';
+    const savedUserId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
+    const savedSig = localStorage.getItem('ebm_session_sig_v3');
+    if (!loggedIn || !savedUserId || !savedSig) return false;
+    const matched = users.find((u) => u.id === savedUserId);
+    return Boolean(matched && matched.isActive && verifySessionToken(matched, savedSig));
+  });
+
+  const [isRealAdminSession, setIsRealAdminSession] = useState<boolean>(() => {
+    const savedAdminId = localStorage.getItem('ebm_admin_root_id_v3');
+    const savedAdminSig = localStorage.getItem('ebm_admin_root_sig_v3');
+    if (!savedAdminId || !savedAdminSig) return false;
+    const matched = users.find((u) => u.id === savedAdminId && u.role === 'ADMIN' && u.isActive);
+    return Boolean(matched && verifySessionToken(matched, savedAdminSig));
   });
 
   const [isAndroidView, setIsAndroidView] = useState<boolean>(false);
@@ -589,7 +651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Complementary LMD states & Academic Years
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ACADEMIC_YEARS);
-    return saved ? JSON.parse(saved) : initialAcademicYears;
+    return filterOutDeleted(safeJsonParse<AcademicYear[]>(saved, initialAcademicYears), 'academicYears');
   });
 
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>(() => {
@@ -632,8 +694,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const saved = localStorage.getItem(STORAGE_KEYS.APP_SETTINGS);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      const items = parsed.visibleMenuItems || [];
+      const parsed = safeJsonParse<AppSettings>(saved, defaultSettings);
+      const items = Array.isArray(parsed.visibleMenuItems) ? [...parsed.visibleMenuItems] : [...defaultSettings.visibleMenuItems];
       if (!items.includes('STUDENTS')) items.push('STUDENTS');
       if (!items.includes('TEACHERS')) items.push('TEACHERS');
       if (!items.includes('PARENT_PORTAL')) items.push('PARENT_PORTAL');
@@ -653,7 +715,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.systemRolePermissions !== undefined) {
         syncSystemRolePermissions(updated.systemRolePermissions);
       }
-      localStorage.setItem(STORAGE_KEYS.APP_SETTINGS, JSON.stringify(updated));
+      safeLocalStorageSet(STORAGE_KEYS.APP_SETTINGS, updated);
+      syncDocToFirestore('appSettings', { ...updated, id: 'global_settings', updatedAt: new Date().toISOString() });
       return updated;
     });
   };
@@ -668,7 +731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: 'msg-1',
         senderId: 'user-teacher-1',
         recipientId: 'user-admin',
-        text: 'Bonjour ! Les syllabus et maquettes pour le cours d\'Algorithmique ont été mis à jour.',
+        text: "Bonjour ! Les syllabus et maquettes pour le cours d'Algorithmique ont été mis à jour.",
         timestamp: 'Hier 16:40',
         isRead: true,
       },
@@ -684,34 +747,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: 'msg-3',
         senderId: 'user-student-1',
         recipientId: 'user-admin',
-        text: 'Bonjour, j\'ai une question concernant mon attestation d\'inscription pour 2026-2027.',
-        timestamp: 'Aujourd\'hui 08:30',
+        text: "Bonjour, j'ai une question concernant mon attestation d'inscription pour 2026-2027.",
+        timestamp: "Aujourd'hui 08:30",
         isRead: false,
       },
     ];
     const saved = localStorage.getItem(STORAGE_KEYS.CHAT_MESSAGES);
-    return saved ? JSON.parse(saved) : defaultChat;
+    return filterOutDeleted(safeJsonParse<ChatMessage[]>(saved, defaultChat), 'chatMessages');
   });
 
   const [ues, setUes] = useState<UniteEnseignement[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.UES);
-    return saved ? JSON.parse(saved) : initialUes;
+    return filterOutDeleted(safeJsonParse<UniteEnseignement[]>(saved, initialUes), 'ues');
   });
 
   const [ecs, setEcs] = useState<ElementConstitutif[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ECS);
-    return saved ? JSON.parse(saved) : initialEcs;
+    return filterOutDeleted(safeJsonParse<ElementConstitutif[]>(saved, initialEcs), 'ecs');
   });
 
   const [inscriptions, setInscriptions] = useState<StudentInscription[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.INSCRIPTIONS);
-    return saved ? JSON.parse(saved) : initialInscriptions;
+    return filterOutDeleted(safeJsonParse<StudentInscription[]>(saved, initialInscriptions), 'inscriptions');
   });
 
   const [grades, setGrades] = useState<EcGrade[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.GRADES);
-    if (!saved) return initialGrades;
-    const parsed: EcGrade[] = JSON.parse(saved);
+    if (!saved) return filterOutDeleted(initialGrades, 'grades');
+    const parsed: EcGrade[] = safeJsonParse<EcGrade[]>(saved, initialGrades);
     const enriched = parsed.map((g) => {
       const seed = initialGrades.find((ig) => ig.id === g.id);
       const ec = initialEcs.find((e) => e.id === g.ecId);
@@ -724,29 +787,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
     const missingGrades = initialGrades.filter((ig) => !enriched.some((g) => g.id === ig.id));
-    return missingGrades.length > 0 ? [...enriched, ...missingGrades] : enriched;
+    const combined = missingGrades.length > 0 ? [...enriched, ...missingGrades] : enriched;
+    return filterOutDeleted(combined, 'grades');
   });
 
   const [qrSessions, setQrSessions] = useState<QrAttendanceSession[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.QR_SESSIONS);
-    return saved ? JSON.parse(saved) : initialQrSessions;
+    return filterOutDeleted(safeJsonParse<QrAttendanceSession[]>(saved, initialQrSessions), 'qrSessions');
   });
 
   const [internalMessages, setInternalMessages] = useState<InternalMessage[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.MESSAGES);
-    return saved ? JSON.parse(saved) : initialMessages;
+    return filterOutDeleted(safeJsonParse<InternalMessage[]>(saved, initialMessages), 'internalMessages');
   });
 
   const [groupPosts, setGroupPosts] = useState<GroupPost[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.POSTS);
-    return saved ? JSON.parse(saved) : initialGroupPosts;
+    return filterOutDeleted(safeJsonParse<GroupPost[]>(saved, initialGroupPosts), 'groupPosts');
   });
 
   const [fees, setFees] = useState<StudentFee[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.FEES);
-    if (!saved) return initialFees;
-    const parsed: StudentFee[] = JSON.parse(saved);
-    // Ensure standard institutional fees are not locked to a single groupId so all students can select them
+    if (!saved) return filterOutDeleted(initialFees, 'fees');
+    const parsed: StudentFee[] = safeJsonParse<StudentFee[]>(saved, initialFees);
     const normalized = parsed.map((f) => {
       if (['fee-insc-2026', 'fee-ecol-s1', 'fee-ecol-s2', 'fee-labo-2026'].includes(f.id)) {
         const { groupId: _removed, ...rest } = f;
@@ -755,58 +818,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return f;
     });
     const missingFees = initialFees.filter((ifee) => !normalized.some((f) => f.id === ifee.id));
-    return missingFees.length > 0 ? [...normalized, ...missingFees] : normalized;
+    const combined = missingFees.length > 0 ? [...normalized, ...missingFees] : normalized;
+    return filterOutDeleted(combined, 'fees');
   });
 
   const [payments, setPayments] = useState<PaymentTransaction[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-    return saved ? JSON.parse(saved) : initialPayments;
+    return filterOutDeleted(safeJsonParse<PaymentTransaction[]>(saved, initialPayments), 'payments');
   });
 
   const [cashRegisterDays, setCashRegisterDays] = useState<CashRegisterDay[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CASH_DAYS);
-    return saved ? JSON.parse(saved) : initialCashRegisterDays;
+    return filterOutDeleted(safeJsonParse<CashRegisterDay[]>(saved, initialCashRegisterDays), 'cashDays');
   });
 
   const [homework, setHomework] = useState<HomeworkAssignment[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.HOMEWORK);
-    return saved ? JSON.parse(saved) : initialHomework;
+    return filterOutDeleted(safeJsonParse<HomeworkAssignment[]>(saved, initialHomework), 'homework');
   });
 
   const [submissions, setSubmissions] = useState<HomeworkSubmission[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
-    return saved ? JSON.parse(saved) : initialSubmissions;
+    return filterOutDeleted(safeJsonParse<HomeworkSubmission[]>(saved, initialSubmissions), 'submissions');
   });
 
   const [learningResources, setLearningResources] = useState<LearningResource[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.RESOURCES);
-    return saved ? JSON.parse(saved) : initialLearningResources;
+    return filterOutDeleted(safeJsonParse<LearningResource[]>(saved, initialLearningResources), 'learningResources');
   });
 
   const [parcours, setParcours] = useState<Parcours[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.PARCOURS);
-    return saved ? JSON.parse(saved) : initialParcours;
+    return filterOutDeleted(safeJsonParse<Parcours[]>(saved, initialParcours), 'parcours');
   });
 
   const [academicRules, setAcademicRules] = useState<AcademicValidationRules[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ACADEMIC_RULES);
-    return saved ? JSON.parse(saved) : initialAcademicRules;
+    return filterOutDeleted(safeJsonParse<AcademicValidationRules[]>(saved, initialAcademicRules), 'academicRules');
   });
 
   const [deliberations, setDeliberations] = useState<DeliberationRecord[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.DELIBERATIONS);
-    return saved ? JSON.parse(saved) : initialDeliberations;
+    return filterOutDeleted(safeJsonParse<DeliberationRecord[]>(saved, initialDeliberations), 'deliberations');
   });
 
   const [savedBackups, setSavedBackups] = useState<SystemBackupSnapshot[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.BACKUPS);
-    return saved ? JSON.parse(saved) : [];
+    return safeJsonParse<SystemBackupSnapshot[]>(saved, []);
   });
 
   const [customRoles, setCustomRoles] = useState<CustomRoleDefinition[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOM_ROLES);
-    if (saved) return JSON.parse(saved);
-    return [
+    const defaultCustomRoles: CustomRoleDefinition[] = [
       {
         id: 'crole-surveillant',
         code: 'SURVEILLANT_EXAMEN',
@@ -830,134 +892,278 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createdAt: '2026-09-01T08:00:00.000Z',
       },
     ];
+    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOM_ROLES);
+    return filterOutDeleted(safeJsonParse<CustomRoleDefinition[]>(saved, defaultCustomRoles), 'customRoles');
   });
 
   const [profileChangeRequests, setProfileChangeRequests] = useState<ProfileChangeRequest[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.PROFILE_REQUESTS);
-    return saved ? JSON.parse(saved) : [];
+    return filterOutDeleted(safeJsonParse<ProfileChangeRequest[]>(saved, []), 'profileChangeRequests');
   });
 
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'IDLE' | 'SYNCING' | 'SYNCED' | 'ERROR'>('IDLE');
 
-  // Listen to Firebase Auth state & verify Cloud Firestore connection
+  // Establish real-time multi-device Firestore listeners ONLY when authenticated in SIS (all 28 collections)
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let unsubscribers: Array<() => void> = [];
+    const activeUser = users.find((u) => u.id === currentUserId) || users[0];
+
+    const handleQuotaOrError = (info: { error: string; isQuotaExceeded?: boolean }) => {
+      if (info.isQuotaExceeded) {
+        setCloudSyncStatus('ERROR');
+      }
+    };
+
+    const bindCollection = <T extends { id: string }>(
+      colName: string,
+      setter: React.Dispatch<React.SetStateAction<T[]>>,
+      updateSyncTimestamp = false
+    ) => {
+      return subscribeToFirestoreCollection<T>(
+        colName,
+        (remote, removedIds) => {
+          removedIds.forEach((id) => {
+            deletedDocIdsRef.current.add(id);
+            deletedDocIdsRef.current.add(`${colName}:${id}`);
+          });
+          setter((prev) => {
+            const filtered = prev.filter((item) => !removedIds.includes(item.id));
+            return mergeCollectionById(filtered, remote, deletedDocIdsRef.current, colName);
+          });
+          if (updateSyncTimestamp) {
+            setLastSyncDate(new Date());
+          }
+        },
+        handleQuotaOrError
+      );
+    };
+
+    const startRealtimeListeners = () => {
+      unsubscribers.forEach((u) => u());
+      unsubscribers = [
+        bindCollection<TimetableSession>('sessions', setSessions, true),
+        bindCollection<Room>('rooms', setRooms),
+        bindCollection<Course>('courses', setCourses),
+        bindCollection<StudentGroup>('groups', setGroups),
+        bindCollection<Filiere>('filieres', setFilieres),
+        bindCollection<UniteEnseignement>('ues', setUes),
+        bindCollection<ElementConstitutif>('ecs', setEcs),
+        bindCollection<EcGrade>('grades', setGrades),
+        bindCollection<QrAttendanceSession>('qrSessions', setQrSessions),
+        bindCollection<StudentFee>('fees', setFees),
+        bindCollection<PaymentTransaction>('payments', setPayments),
+        bindCollection<User>('users', setUsers),
+        bindCollection<AcademicYear>('academicYears', setAcademicYears),
+        bindCollection<Parcours>('parcours', setParcours),
+        bindCollection<AcademicValidationRules>('academicRules', setAcademicRules),
+        bindCollection<StudentInscription>('inscriptions', setInscriptions),
+        bindCollection<DeliberationRecord>('deliberations', setDeliberations),
+        bindCollection<CashRegisterDay>('cashDays', setCashRegisterDays),
+        bindCollection<HomeworkAssignment>('homework', setHomework),
+        bindCollection<HomeworkSubmission>('submissions', setSubmissions),
+        bindCollection<LearningResource>('learningResources', setLearningResources),
+        bindCollection<InternalMessage>('internalMessages', setInternalMessages),
+        bindCollection<GroupPost>('groupPosts', setGroupPosts),
+        bindCollection<AppNotification>('notifications', setNotifications),
+        bindCollection<CustomRoleDefinition>('customRoles', setCustomRoles),
+        bindCollection<ProfileChangeRequest>('profileChangeRequests', setProfileChangeRequests),
+        bindCollection<AuditLog>('auditLogs', setAuditLogs),
+        bindCollection<ChatMessage>('chatMessages', setChatMessages),
+      ];
+    };
+
+    const synchronizeOnConnection = async () => {
+      const remoteTombstones = await pullRemoteTombstones();
+      remoteTombstones.forEach((id) => deletedDocIdsRef.current.add(id));
+      const outboxRes = await flushPendingSyncOutbox();
+      await pullFromCloudFirestore();
+      if (outboxRes.conflicts > 0) {
+        showAppToast({
+          title: 'Synchronisation multi-postes',
+          message: `${outboxRes.conflicts} modification(s) hors-ligne ont été fusionnées avec des changements distants concurrents.`,
+          type: 'info',
+        });
+      }
+      setCloudSyncStatus('SYNCED');
+      setLastSyncDate(new Date());
+    };
+
     testFirestoreConnection().then((res) => {
-      setIsCloudConnected(res.connected);
-    });
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
-      setFirebaseUser(fbUser);
-      if (fbUser) {
-        setIsCloudConnected(true);
+      if (!res.connected) {
+        setIsCloudConnected(false);
       }
     });
-    return () => unsubscribe();
-  }, []);
 
-  // Sync state to localStorage
+    ensureFirebaseAuthSession(activeUser).then((ok) => {
+      if (ok) {
+        setIsCloudConnected(true);
+        startRealtimeListeners();
+        synchronizeOnConnection();
+      }
+    });
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      setFirebaseUser(fbUser && !fbUser.isAnonymous ? fbUser : null);
+      if (fbUser && !fbUser.isAnonymous) {
+        const ok = await ensureFirebaseAuthSession(activeUser);
+        if (ok) {
+          setIsCloudConnected(true);
+          startRealtimeListeners();
+          await synchronizeOnConnection();
+        } else {
+          setIsCloudConnected(false);
+        }
+      } else {
+        setIsCloudConnected(false);
+      }
+    });
+
+    const handleBrowserOnline = () => {
+      setIsOfflineMode(false);
+      ensureFirebaseAuthSession(activeUser).then((ok) => {
+        if (ok) {
+          setIsCloudConnected(true);
+          startRealtimeListeners();
+          synchronizeOnConnection();
+        }
+      });
+    };
+
+    const handleBrowserOffline = () => {
+      setIsOfflineMode(true);
+    };
+
+    window.addEventListener('online', handleBrowserOnline);
+    window.addEventListener('offline', handleBrowserOffline);
+
+    return () => {
+      window.removeEventListener('online', handleBrowserOnline);
+      window.removeEventListener('offline', handleBrowserOffline);
+      unsubscribeAuth();
+      unsubscribers.forEach((u) => u());
+    };
+  }, [isAuthenticated, currentUserId]);
+
+  // Sync state to localStorage with QuotaExceededError protection (P57)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    safeLocalStorageSet(STORAGE_KEYS.USERS, users);
   }, [users]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(courses));
+    safeLocalStorageSet(STORAGE_KEYS.COURSES, courses);
   }, [courses]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ROOMS, JSON.stringify(rooms));
+    safeLocalStorageSet(STORAGE_KEYS.ROOMS, rooms);
   }, [rooms]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+    safeLocalStorageSet(STORAGE_KEYS.GROUPS, groups);
   }, [groups]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.FILIERES, JSON.stringify(filieres));
+    safeLocalStorageSet(STORAGE_KEYS.FILIERES, filieres);
   }, [filieres]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
+    safeLocalStorageSet(STORAGE_KEYS.SESSIONS, sessions);
   }, [sessions]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
+    safeLocalStorageSet(STORAGE_KEYS.NOTIFICATIONS, notifications);
   }, [notifications]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(auditLogs));
+    safeLocalStorageSet(STORAGE_KEYS.AUDIT_LOGS, auditLogs);
   }, [auditLogs]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, currentUserId);
+    safeLocalStorageSet(STORAGE_KEYS.CURRENT_USER_ID, currentUserId);
   }, [currentUserId]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SELECTED_YEAR, selectedAcademicYear);
+    safeLocalStorageSet(STORAGE_KEYS.SELECTED_YEAR, selectedAcademicYear);
   }, [selectedAcademicYear]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.UES, JSON.stringify(ues));
+    safeLocalStorageSet(STORAGE_KEYS.UES, ues);
   }, [ues]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ECS, JSON.stringify(ecs));
+    safeLocalStorageSet(STORAGE_KEYS.ECS, ecs);
   }, [ecs]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.INSCRIPTIONS, JSON.stringify(inscriptions));
+    safeLocalStorageSet(STORAGE_KEYS.INSCRIPTIONS, inscriptions);
   }, [inscriptions]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.GRADES, JSON.stringify(grades));
+    safeLocalStorageSet(STORAGE_KEYS.GRADES, grades);
   }, [grades]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.QR_SESSIONS, JSON.stringify(qrSessions));
+    safeLocalStorageSet(STORAGE_KEYS.QR_SESSIONS, qrSessions);
   }, [qrSessions]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(internalMessages));
+    safeLocalStorageSet(STORAGE_KEYS.MESSAGES, internalMessages);
   }, [internalMessages]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.POSTS, JSON.stringify(groupPosts));
+    safeLocalStorageSet(STORAGE_KEYS.POSTS, groupPosts);
   }, [groupPosts]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.FEES, JSON.stringify(fees));
+    safeLocalStorageSet(STORAGE_KEYS.FEES, fees);
   }, [fees]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+    safeLocalStorageSet(STORAGE_KEYS.PAYMENTS, payments);
   }, [payments]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CASH_DAYS, JSON.stringify(cashRegisterDays));
+    safeLocalStorageSet(STORAGE_KEYS.CASH_DAYS, cashRegisterDays);
   }, [cashRegisterDays]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.HOMEWORK, JSON.stringify(homework));
+    safeLocalStorageSet(STORAGE_KEYS.HOMEWORK, homework);
   }, [homework]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
+    safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, submissions);
   }, [submissions]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.RESOURCES, JSON.stringify(learningResources));
+    safeLocalStorageSet(STORAGE_KEYS.RESOURCES, learningResources);
   }, [learningResources]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ACADEMIC_YEARS, JSON.stringify(academicYears));
+    safeLocalStorageSet(STORAGE_KEYS.ACADEMIC_YEARS, academicYears);
   }, [academicYears]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CHAT_MESSAGES, JSON.stringify(chatMessages));
+    safeLocalStorageSet(STORAGE_KEYS.CHAT_MESSAGES, chatMessages);
   }, [chatMessages]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PARCOURS, JSON.stringify(parcours));
+    safeLocalStorageSet(STORAGE_KEYS.PARCOURS, parcours);
   }, [parcours]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ACADEMIC_RULES, JSON.stringify(academicRules));
+    safeLocalStorageSet(STORAGE_KEYS.ACADEMIC_RULES, academicRules);
   }, [academicRules]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.DELIBERATIONS, JSON.stringify(deliberations));
+    safeLocalStorageSet(STORAGE_KEYS.DELIBERATIONS, deliberations);
   }, [deliberations]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BACKUPS, JSON.stringify(savedBackups));
+    safeLocalStorageSet(STORAGE_KEYS.BACKUPS, savedBackups.slice(0, 3));
   }, [savedBackups]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CUSTOM_ROLES, JSON.stringify(customRoles));
+    safeLocalStorageSet(STORAGE_KEYS.CUSTOM_ROLES, customRoles);
   }, [customRoles]);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PROFILE_REQUESTS, JSON.stringify(profileChangeRequests));
+    safeLocalStorageSet(STORAGE_KEYS.PROFILE_REQUESTS, profileChangeRequests);
   }, [profileChangeRequests]);
 
   const currentUser = users.find((u) => u.id === currentUserId) || users[0];
 
   const setCurrentUser = (user: User) => {
+    if (!isRealAdminSession && currentUser.role !== 'ADMIN') return;
     setCurrentUserId(user.id);
+    localStorage.setItem('ebm_session_sig_v3', computeSessionToken(user));
   };
 
-  const login = (identifier: string, _password?: string) => {
+  const login = (identifier: string, password?: string) => {
     const cleanId = identifier.trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
+
+    if (!cleanPassword) {
+      return {
+        success: false,
+        error: 'Veuillez saisir votre mot de passe.',
+      };
+    }
+
     const legacyAliasMap: Record<string, string> = {
       'alexandre.morel@ebm-institute.edu': 'user-admin',
       'sandrine.girard@ebm-institute.edu': 'user-scheduler',
@@ -992,17 +1198,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
+    // Always verify password strictly (no undefined or demo bypass)
+    const isPasswordValid = verifyPasswordSync(cleanPassword, found.passwordHash, {
+      birthDate: found.birthDate,
+      role: found.role,
+      username: found.username,
+    });
+    if (!isPasswordValid) {
+      logAudit('ECHEC_AUTHENTIFICATION_MDP', `Mot de passe invalide pour ${found.name} (${found.matricule || found.username})`);
+      return {
+        success: false,
+        error: 'Mot de passe incorrect. Pour une première connexion étudiante, utilisez votre date de naissance (AAAA-MM-JJ).',
+      };
+    }
+
+    const sessionSig = computeSessionToken(found);
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, found.id);
+    localStorage.setItem('ebm_session_sig_v3', sessionSig);
+    localStorage.setItem('ebm_auth_logged_in', 'true');
+
+    if (found.role === 'ADMIN') {
+      localStorage.setItem('ebm_admin_root_id_v3', found.id);
+      localStorage.setItem('ebm_admin_root_sig_v3', sessionSig);
+      setIsRealAdminSession(true);
+    } else {
+      localStorage.removeItem('ebm_admin_root_id_v3');
+      localStorage.removeItem('ebm_admin_root_sig_v3');
+      setIsRealAdminSession(false);
+    }
+
     setCurrentUserId(found.id);
     setIsAuthenticated(true);
-    localStorage.setItem('ebm_auth_logged_in', 'true');
     logAudit('CONNEXION', `Connexion réussie de ${found.name} [Rôle: ${found.role}]`);
 
-    // Ensure background anonymous or active Firebase session if available
-    if (!auth.currentUser) {
-      signInAnonymously(auth).catch(() => {
-        // Ignore if anonymous auth is not enabled in console; Google Sign-In is primary
-      });
-    }
+    // Bind authenticated SIS user to Firebase session
+    ensureFirebaseAuthSession(found);
 
     return { success: true };
   };
@@ -1011,40 +1241,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const cred = await signInWithPopup(auth, googleProvider);
       const fbUser = cred.user;
-      setFirebaseUser(fbUser);
-      setIsCloudConnected(true);
-
       const emailLower = (fbUser.email || '').toLowerCase();
-      let matchedUser = users.find((u) => u.email.toLowerCase() === emailLower);
+      let matchedUser = users.find(
+        (u) =>
+          u.email.toLowerCase() === emailLower ||
+          (u.googleEmail && u.googleEmail.toLowerCase() === emailLower)
+      );
 
-      if (!matchedUser) {
-        const isBootstrappedAdmin = emailLower === 'louvamifaly@gmail.com';
-        const newPortalUser: User = {
-          id: `user-fb-${fbUser.uid.slice(0, 8)}`,
-          uid: fbUser.uid,
-          username: emailLower.split('@')[0] || 'user.ebm',
-          name: fbUser.displayName || 'Administrateur EBM',
-          email: fbUser.email || 'admin@ebm-institute.edu',
-          role: isBootstrappedAdmin ? 'ADMIN' : 'ADMIN',
-          isActive: true,
-          avatarUrl: fbUser.photoURL || undefined,
-          googleCalendarLinked: true,
-          googleEmail: fbUser.email || undefined,
-        };
-        setUsers((prev) => [newPortalUser, ...prev]);
-        matchedUser = newPortalUser;
-        await syncDocToFirestore('users', newPortalUser);
-      } else {
-        const updatedUser = { ...matchedUser, uid: fbUser.uid };
-        setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-        await syncDocToFirestore('users', updatedUser);
+      // 1. Bootstrapped institutional Super-Admin (louvamifaly@gmail.com) always binds to the root ADMIN profile
+      if (!matchedUser && emailLower === 'louvamifaly@gmail.com') {
+        matchedUser = users.find((u) => u.id === 'user-admin' || u.role === 'ADMIN') || users[0];
       }
 
-      setCurrentUserId(matchedUser.id);
-      setIsAuthenticated(true);
+      // 2. If user is already logged into an active institutional SIS profile, allow linking their Google account for Cloud Sync
+      if (!matchedUser && isAuthenticated && currentUser && currentUser.isActive) {
+        matchedUser = currentUser;
+      }
+
+      // Block automatic account creation for unknown external Google accounts when not authenticated
+      if (!matchedUser) {
+        await signOut(auth).catch(() => {});
+        setFirebaseUser(null);
+        return {
+          success: false,
+          message: `Aucun compte institutionnel EBM Institute n'est associé à l'adresse Google "${fbUser.email}". Veuillez contacter le service Scolarité ou l'Administration.`,
+        };
+      }
+
+      if (!matchedUser.isActive) {
+        await signOut(auth).catch(() => {});
+        setFirebaseUser(null);
+        return {
+          success: false,
+          message: `Accès refusé (RG-22) : Le compte de ${matchedUser.name} a été désactivé par l'administration.`,
+        };
+      }
+
+      const updatedUser: User = {
+        ...matchedUser,
+        uid: fbUser.uid,
+        googleEmail: fbUser.email || matchedUser.googleEmail,
+        googleCalendarLinked: true,
+        avatarUrl: matchedUser.avatarUrl || fbUser.photoURL || undefined,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+
+      // Initialize /users/{fbUser.uid} in Firestore FIRST so security rules recognize the session
+      await ensureFirebaseAuthSession(updatedUser);
+      await syncDocToFirestore('users', updatedUser);
+
+      setFirebaseUser(fbUser);
+      setIsCloudConnected(true);
+      setCloudSyncStatus('SYNCING');
+
+      const sessionSig = computeSessionToken(updatedUser);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, updatedUser.id);
+      localStorage.setItem('ebm_session_sig_v3', sessionSig);
       localStorage.setItem('ebm_auth_logged_in', 'true');
-      logAudit('CONNEXION_FIREBASE_GOOGLE', `Authentification Firebase officielle de ${fbUser.email} [UID: ${fbUser.uid}]`);
-      return { success: true, message: `Connecté via Firebase Authentication (${fbUser.email})` };
+
+      if (updatedUser.role === 'ADMIN') {
+        localStorage.setItem('ebm_admin_root_id_v3', updatedUser.id);
+        localStorage.setItem('ebm_admin_root_sig_v3', sessionSig);
+        setIsRealAdminSession(true);
+      } else {
+        localStorage.removeItem('ebm_admin_root_id_v3');
+        localStorage.removeItem('ebm_admin_root_sig_v3');
+        setIsRealAdminSession(false);
+      }
+
+      setCurrentUserId(updatedUser.id);
+      setIsAuthenticated(true);
+
+      // Immediately flush offline outbox, pull remote state, and push local timetable sessions
+      await flushPendingSyncOutbox();
+      await pullFromCloudFirestore();
+      await syncCollectionBatch('sessions', sessions);
+      setCloudSyncStatus('SYNCED');
+      setLastSyncDate(new Date());
+
+      logAudit('CONNEXION_FIREBASE_GOOGLE', `Authentification Firebase officielle de ${fbUser.email} [UID: ${fbUser.uid}, Rôle: ${updatedUser.role}]`);
+      return {
+        success: true,
+        message: `Connecté et synchronisé en temps réel via Cloud Firestore (${fbUser.email})`,
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, message: `Authentification Google interrompue : ${msg}` };
@@ -1054,16 +1335,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => {
     logAudit('DECONNEXION', `Déconnexion de ${currentUser?.name || 'utilisateur'}`);
     setIsAuthenticated(false);
+    setIsRealAdminSession(false);
     localStorage.removeItem('ebm_auth_logged_in');
+    localStorage.removeItem('ebm_session_sig_v3');
+    localStorage.removeItem('ebm_admin_root_id_v3');
+    localStorage.removeItem('ebm_admin_root_sig_v3');
     if (auth.currentUser) {
       signOut(auth).catch(() => {});
     }
   };
 
   const switchUserRole = (role: UserRole) => {
+    if (!isRealAdminSession && currentUser.role !== 'ADMIN') return;
     const targetUser = users.find((u) => u.role === role && u.isActive);
     if (targetUser) {
       setCurrentUserId(targetUser.id);
+      localStorage.setItem('ebm_session_sig_v3', computeSessionToken(targetUser));
     }
   };
 
@@ -1084,7 +1371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logAudit = (action: string, details: string, platform: 'WEB' | 'ANDROID' = isAndroidView ? 'ANDROID' : 'WEB') => {
     const newLog: AuditLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUniqueId('log'),
       timestamp: new Date().toISOString(),
       userId: currentUser.id,
       userName: currentUser.name,
@@ -1094,27 +1381,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       platform,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
-    // Persist immutable audit log to Cloud Firestore when authenticated
-    syncDocToFirestore('auditLogs', newLog);
+    if (isAuthenticated) {
+      syncDocToFirestore('auditLogs', newLog);
+    }
   };
 
   // Helper to trigger push notification
   const triggerNotification = (notif: Omit<AppNotification, 'id' | 'createdAt' | 'isReadWeb' | 'isReadAndroid' | 'pushStatus'>) => {
     const newNotif: AppNotification = {
       ...notif,
-      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUniqueId('notif'),
       createdAt: new Date().toISOString(),
       isReadWeb: false,
       isReadAndroid: false,
       pushStatus: 'DELIVERED',
     };
     setNotifications((prev) => [newNotif, ...prev]);
-    // Trigger simulated Android Push Banner
+    syncDocToFirestore('notifications', newNotif);
     setActivePushBanner(newNotif);
   };
 
-  // Session Actions
+  // Session Actions (with Real-Time Cloud Firestore Sync)
   const addSession = (data: Omit<TimetableSession, 'id' | 'history'>) => {
+    if (!canUserPerformOperation(currentUser, 'CREATION', customRoles)) {
+      return { success: false, error: 'Droits insuffisants (RBAC) pour créer une séance.' };
+    }
+
+    const [sH, sM] = (data.startTime || '').split(':').map(Number);
+    const [eH, eM] = (data.endTime || '').split(':').map(Number);
+    const rawDuration = Number(((eH * 60 + eM - (sH * 60 + sM)) / 60).toFixed(2));
+    if (!Number.isFinite(rawDuration) || rawDuration <= 0) {
+      return {
+        success: false,
+        error: `Plage horaire invalide : l'heure de fin (${data.endTime}) doit être strictement postérieure à l'heure de début (${data.startTime}).`,
+      };
+    }
+
     // Conflict check
     const check = detectSessionConflicts(
       {
@@ -1143,14 +1445,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? data.eventTitle || 'Conférence / Événement'
       : course?.title || data.courseId;
 
+    const nowIso = new Date().toISOString();
     const newSession: TimetableSession = {
       ...data,
+      durationHours: rawDuration,
       sessionType: data.sessionType || 'COURSE',
-      id: `sess-${Date.now()}`,
+      id: generateUniqueId('sess'),
+      updatedAt: nowIso,
       history: [
         {
-          id: `h-${Date.now()}`,
-          timestamp: new Date().toISOString(),
+          id: generateUniqueId('h'),
+          timestamp: nowIso,
           authorName: currentUser.name,
           action: 'CREATION',
           details: isCustomEvent
@@ -1161,13 +1466,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSessions((prev) => [...prev, newSession]);
+    syncDocToFirestore('sessions', newSession);
 
     logAudit(
       isCustomEvent ? 'PLANIFICATION_EVENEMENT' : 'CREATION_SEANCE',
       `Ajout ${isCustomEvent ? `événement [${data.sessionType}]` : 'séance'} "${sessionLabel}" le ${data.date} ${data.startTime}-${data.endTime}`
     );
 
-    // Notify affected teacher if assigned
     if (data.teacherId && data.teacherId !== 'EXTERNAL_SPEAKER') {
       triggerNotification({
         recipientId: data.teacherId,
@@ -1179,49 +1484,109 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    // Notify affected students when a conference or special event is inserted in their timetable
-    if (isCustomEvent) {
-      const affectedStudents = users.filter(
-        (u) => u.role === 'STUDENT' && u.groupId && data.groupIds.includes(u.groupId)
-      );
-      affectedStudents.forEach((student) => {
-        triggerNotification({
-          recipientId: student.id,
-          recipientRole: 'STUDENT',
-          title: `🎤 Nouvel événement au planning : ${sessionLabel}`,
-          message: `Événement programmé dans votre emploi du temps le ${data.date} de ${data.startTime} à ${data.endTime}${
-            data.eventSpeaker ? ` — Intervenant : ${data.eventSpeaker}` : ''
-          }.`,
-          type: 'INFO',
-          sessionId: newSession.id,
-        });
+    const affectedStudents = users.filter(
+      (u) => u.role === 'STUDENT' && u.groupId && data.groupIds.includes(u.groupId)
+    );
+    affectedStudents.forEach((student) => {
+      triggerNotification({
+        recipientId: student.id,
+        recipientRole: 'STUDENT',
+        title: isCustomEvent
+          ? `🎤 Nouvel événement au planning : ${sessionLabel}`
+          : `📅 Nouveau cours planifié : ${sessionLabel}`,
+        message: `${isCustomEvent ? 'Événement' : 'Cours'} programmé dans votre emploi du temps le ${data.date} de ${data.startTime} à ${data.endTime}${
+          data.eventSpeaker ? ` — Intervenant : ${data.eventSpeaker}` : ''
+        }.`,
+        type: 'INFO',
+        sessionId: newSession.id,
       });
-    }
+    });
 
     return { success: true, session: newSession };
   };
 
-  const updateSession = (id: string, updates: Partial<TimetableSession>, reason?: string) => {
+  const updateSession = (
+    id: string,
+    updates: Partial<TimetableSession>,
+    reason?: string
+  ): { success: boolean; error?: string } => {
+    const existing = sessions.find((s) => s.id === id);
+    if (!existing) {
+      return { success: false, error: 'Séance introuvable.' };
+    }
+
+    // Do not resurrect a CANCELLED session unless status is explicitly changed by caller
+    if (existing.status === 'CANCELLED' && !updates.status) {
+      return { success: false, error: 'Impossible de modifier une séance annulée.' };
+    }
+
+    const mergedCandidate = {
+      id,
+      courseId: updates.courseId ?? existing.courseId,
+      teacherId: updates.teacherId ?? existing.teacherId,
+      groupIds: updates.groupIds ?? existing.groupIds,
+      roomId: updates.roomId ?? existing.roomId,
+      date: updates.date ?? existing.date,
+      startTime: updates.startTime ?? existing.startTime,
+      endTime: updates.endTime ?? existing.endTime,
+    };
+
+    const [sH, sM] = (mergedCandidate.startTime || '').split(':').map(Number);
+    const [eH, eM] = (mergedCandidate.endTime || '').split(':').map(Number);
+    const recalculatedDuration = Number(((eH * 60 + eM - (sH * 60 + sM)) / 60).toFixed(2));
+    if (!Number.isFinite(recalculatedDuration) || recalculatedDuration <= 0) {
+      return {
+        success: false,
+        error: `Plage horaire invalide : l'heure de fin (${mergedCandidate.endTime}) doit être strictement postérieure à l'heure de début (${mergedCandidate.startTime}).`,
+      };
+    }
+
+    // Run conflict detection before applying update
+    const check = detectSessionConflicts(mergedCandidate, sessions, rooms, groups, users);
+    if (check.hasConflict) {
+      const conflictMsg = check.conflicts[0].message;
+      logAudit('CONFLIT_MODIFICATION_SEANCE', `Modification bloquée sur ${id} : ${conflictMsg}`);
+      return { success: false, error: conflictMsg };
+    }
+
+    const nowIso = new Date().toISOString();
+    const baseUpdatedAt = existing.updatedAt;
     setSessions((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
         const historyItem = {
-          id: `h-${Date.now()}`,
-          timestamp: new Date().toISOString(),
+          id: generateUniqueId('h'),
+          timestamp: nowIso,
           authorName: currentUser.name,
           action: 'MODIFICATION',
           details: `Mise à jour: ${Object.keys(updates).join(', ')}`,
           reason,
         };
-        return {
+        const updatedSession: TimetableSession = {
           ...s,
           ...updates,
-          status: 'MODIFIED',
+          durationHours: recalculatedDuration,
+          status: updates.status || (s.status === 'COMPLETED_VALIDATED' ? 'COMPLETED_VALIDATED' : 'MODIFIED'),
+          updatedAt: nowIso,
           history: [historyItem, ...s.history],
         };
+        syncDocToFirestore('sessions', updatedSession, {
+          previousItem: s as unknown as Record<string, unknown>,
+          baseUpdatedAt,
+          onConflict: (_remoteItem, mergedItem) => {
+            setSessions((curr) => curr.map((item) => (item.id === id ? mergedItem : item)));
+            showAppToast({
+              title: 'Modification simultanée détectée',
+              message: 'Les changements d’un autre utilisateur ont été fusionnés dans l’historique de la séance.',
+              type: 'info',
+            });
+          },
+        });
+        return updatedSession;
       })
     );
     logAudit('MODIFICATION_SEANCE', `Modification séance ${id}. Raison: ${reason || 'Mise à jour opérationnelle'}`);
+    return { success: true };
   };
 
   const rescheduleSession = (
@@ -1231,14 +1596,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newEndTime: string,
     newRoomId: string,
     reason: string
-  ) => {
+  ): { success: boolean; error?: string } => {
     const current = sessions.find((s) => s.id === id);
-    if (!current) return;
+    if (!current) {
+      return { success: false, error: 'Séance introuvable.' };
+    }
+    if (current.status === 'CANCELLED') {
+      return { success: false, error: 'Impossible de reporter une séance annulée.' };
+    }
 
-    // Calculate duration
-    const [startH, startM] = newStartTime.split(':').map(Number);
-    const [endH, endM] = newEndTime.split(':').map(Number);
-    const durationHours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+    const [startH, startM] = (newStartTime || '').split(':').map(Number);
+    const [endH, endM] = (newEndTime || '').split(':').map(Number);
+    const durationHours = Number(((endH * 60 + endM - (startH * 60 + startM)) / 60).toFixed(2));
+    if (!Number.isFinite(durationHours) || durationHours <= 0) {
+      return {
+        success: false,
+        error: `Plage horaire invalide : l'heure de fin (${newEndTime}) doit être strictement postérieure à l'heure de début (${newStartTime}).`,
+      };
+    }
+
+    // Run conflict detection on target slot before rescheduling
+    const conflictCheck = detectSessionConflicts(
+      {
+        id,
+        courseId: current.courseId,
+        teacherId: current.teacherId,
+        groupIds: current.groupIds,
+        roomId: newRoomId,
+        date: newDate,
+        startTime: newStartTime,
+        endTime: newEndTime,
+      },
+      sessions,
+      rooms,
+      groups,
+      users
+    );
+    if (conflictCheck.hasConflict) {
+      const conflictMsg = conflictCheck.conflicts[0].message;
+      logAudit('CONFLIT_REPORT_SEANCE', `Report refusé pour ${id} : ${conflictMsg}`);
+      return { success: false, error: conflictMsg };
+    }
 
     const originalState = {
       originalDate: current.date,
@@ -1247,18 +1645,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       originalRoomId: current.roomId,
     };
 
+    const nowIso = new Date().toISOString();
+    const baseUpdatedAt = current.updatedAt;
     setSessions((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
         const historyItem = {
-          id: `h-${Date.now()}`,
-          timestamp: new Date().toISOString(),
+          id: generateUniqueId('h'),
+          timestamp: nowIso,
           authorName: currentUser.name,
           action: 'REPORT',
           details: `Reporté du ${originalState.originalDate} (${originalState.originalStartTime}) au ${newDate} (${newStartTime})`,
           reason,
         };
-        return {
+        const updatedSession: TimetableSession = {
           ...s,
           date: newDate,
           startTime: newStartTime,
@@ -1267,8 +1667,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           durationHours,
           status: 'RESCHEDULED',
           rescheduledFrom: originalState,
+          updatedAt: nowIso,
           history: [historyItem, ...s.history],
         };
+        syncDocToFirestore('sessions', updatedSession, {
+          previousItem: s as unknown as Record<string, unknown>,
+          baseUpdatedAt,
+          onConflict: (_remoteItem, mergedItem) => {
+            setSessions((curr) => curr.map((item) => (item.id === id ? mergedItem : item)));
+            showAppToast({
+              title: 'Modification simultanée détectée',
+              message: 'Le report a été synchronisé en préservant l’historique concurrent.',
+              type: 'info',
+            });
+          },
+        });
+        return updatedSession;
       })
     );
 
@@ -1280,146 +1694,181 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Report séance ${current.id} (${course?.title}): ${originalState.originalDate} -> ${newDate} (${newStartTime}). Motif: ${reason}`
     );
 
-    // RG-14: Notify students of the affected groups & teacher
     const affectedStudents = users.filter((u) => u.role === 'STUDENT' && u.groupId && current.groupIds.includes(u.groupId));
 
     affectedStudents.forEach((student) => {
       triggerNotification({
         recipientId: student.id,
         recipientRole: 'STUDENT',
-        title: `📅 Cours reporté : ${course?.title || 'Cours'}`,
+        title: `📅 Cours reporté : ${course?.title || current.eventTitle || 'Cours'}`,
         message: `Initialement prévu le ${originalState.originalDate} à ${originalState.originalStartTime}, ce cours aura lieu le ${newDate} de ${newStartTime} à ${newEndTime} (${newRoom?.name || newRoomId}). Motif : ${reason}`,
         type: 'RESCHEDULE',
         sessionId: id,
       });
     });
 
-    triggerNotification({
-      recipientId: current.teacherId,
-      recipientRole: 'TEACHER',
-      title: `📅 Cours reporté : ${course?.title || 'Cours'}`,
-      message: `Votre cours a été déplacé au ${newDate} de ${newStartTime} à ${newEndTime}. Motif : ${reason}`,
-      type: 'RESCHEDULE',
-      sessionId: id,
-    });
+    if (current.teacherId && current.teacherId !== 'EXTERNAL_SPEAKER') {
+      triggerNotification({
+        recipientId: current.teacherId,
+        recipientRole: 'TEACHER',
+        title: `📅 Cours reporté : ${course?.title || current.eventTitle || 'Cours'}`,
+        message: `Votre cours a été déplacé au ${newDate} de ${newStartTime} à ${newEndTime}. Motif : ${reason}`,
+        type: 'RESCHEDULE',
+        sessionId: id,
+      });
+    }
+
+    return { success: true };
   };
 
   const cancelSession = (id: string, reason: string) => {
     const current = sessions.find((s) => s.id === id);
     if (!current) return;
 
+    const nowIso = new Date().toISOString();
     setSessions((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
         const historyItem = {
-          id: `h-${Date.now()}`,
-          timestamp: new Date().toISOString(),
+          id: generateUniqueId('h'),
+          timestamp: nowIso,
           authorName: currentUser.name,
           action: 'ANNULATION',
           details: `Séance annulée. Non comptabilisée dans les heures réalisées.`,
           reason,
         };
-        return {
+        const updatedSession: TimetableSession = {
           ...s,
           status: 'CANCELLED',
           cancellationReason: reason,
-          cancellationDate: new Date().toISOString(),
+          cancellationDate: nowIso,
+          updatedAt: nowIso,
           history: [historyItem, ...s.history],
         };
+        syncDocToFirestore('sessions', updatedSession);
+        return updatedSession;
       })
     );
 
     const course = courses.find((c) => c.id === current.courseId);
     logAudit('ANNULATION_COURS', `Annulation séance ${id} (${course?.title}) le ${current.date}. Motif: ${reason}`);
 
-    // RG-14: Notify all affected students + teacher
     const affectedStudents = users.filter((u) => u.role === 'STUDENT' && u.groupId && current.groupIds.includes(u.groupId));
 
     affectedStudents.forEach((student) => {
       triggerNotification({
         recipientId: student.id,
         recipientRole: 'STUDENT',
-        title: `⚠️ Cours annulé : ${course?.title || 'Cours'}`,
+        title: `⚠️ Cours annulé : ${course?.title || current.eventTitle || 'Cours'}`,
         message: `La séance du ${current.date} de ${current.startTime} à ${current.endTime} est annulée. Motif : ${reason}`,
         type: 'CANCEL',
         sessionId: id,
       });
     });
 
-    triggerNotification({
-      recipientId: current.teacherId,
-      recipientRole: 'TEACHER',
-      title: `⚠️ Annulation confirmée : ${course?.title || 'Cours'}`,
-      message: `La séance du ${current.date} est annulée. Motif : ${reason}`,
-      type: 'CANCEL',
-      sessionId: id,
-    });
+    if (current.teacherId && current.teacherId !== 'EXTERNAL_SPEAKER') {
+      triggerNotification({
+        recipientId: current.teacherId,
+        recipientRole: 'TEACHER',
+        title: `⚠️ Annulation confirmée : ${course?.title || current.eventTitle || 'Cours'}`,
+        message: `La séance du ${current.date} est annulée. Motif : ${reason}`,
+        type: 'CANCEL',
+        sessionId: id,
+      });
+    }
   };
 
   const validateSession = (id: string) => {
     const current = sessions.find((s) => s.id === id);
     if (!current) return;
 
+    const nowIso = new Date().toISOString();
     setSessions((prev) =>
       prev.map((s) => {
         if (s.id !== id) return s;
         const historyItem = {
-          id: `h-${Date.now()}`,
-          timestamp: new Date().toISOString(),
+          id: generateUniqueId('h'),
+          timestamp: nowIso,
           authorName: currentUser.name,
           action: 'VALIDATION',
           details: `Séance validée comme réalisée (${s.durationHours}h ajoutées au compteur officiel)`,
         };
-        return {
+        const updatedSession: TimetableSession = {
           ...s,
           status: 'COMPLETED_VALIDATED',
-          validatedAt: new Date().toISOString(),
+          validatedAt: nowIso,
           validatedBy: currentUser.name,
+          updatedAt: nowIso,
           history: [historyItem, ...s.history],
         };
+        syncDocToFirestore('sessions', updatedSession);
+        return updatedSession;
       })
     );
 
     const course = courses.find((c) => c.id === current.courseId);
     logAudit('VALIDATION_HEURES', `Validation séance ${id} (${course?.title}): ${current.durationHours}h réalisées.`);
 
-    // Notification to teacher
-    triggerNotification({
-      recipientId: current.teacherId,
-      recipientRole: 'TEACHER',
-      title: `✅ Séance validée (${current.durationHours}h)`,
-      message: `Votre séance de ${course?.title} du ${current.date} a été validée par la direction des études.`,
-      type: 'SUCCESS',
-      sessionId: id,
-    });
+    if (current.teacherId && current.teacherId !== 'EXTERNAL_SPEAKER') {
+      triggerNotification({
+        recipientId: current.teacherId,
+        recipientRole: 'TEACHER',
+        title: `✅ Séance validée (${current.durationHours}h)`,
+        message: `Votre séance de ${course?.title || current.eventTitle || 'Cours'} du ${current.date} a été validée par la direction des études.`,
+        type: 'SUCCESS',
+        sessionId: id,
+      });
+    }
   };
 
   const deleteSession = (id: string) => {
+    const target = sessions.find((s) => s.id === id);
+    deletedDocIdsRef.current.add(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
-    logAudit('SUPPRESSION_SEANCE', `Suppression définitive séance ${id}`);
+    removeDocFromFirestore('sessions', id);
+    // P36: Deactivate any active QR sessions tied to this deleted timetable session
+    setQrSessions((prev) =>
+      prev.map((qr) => {
+        if (qr.sessionId === id && qr.isActive) {
+          const closed = { ...qr, isActive: false };
+          syncDocToFirestore('qrSessions', closed);
+          return closed;
+        }
+        return qr;
+      })
+    );
+    logAudit('SUPPRESSION_SEANCE', `Suppression définitive séance ${id} (${target?.date || ''})`);
   };
 
-  // Notification methods
+  // Notification methods (synced to Cloud Firestore across devices)
   const markAsRead = (id: string, platform: 'WEB' | 'ANDROID') => {
     setNotifications((prev) =>
       prev.map((n) => {
         if (n.id !== id) return n;
-        return {
+        const updated: AppNotification = {
           ...n,
           isReadWeb: platform === 'WEB' ? true : n.isReadWeb,
           isReadAndroid: platform === 'ANDROID' ? true : n.isReadAndroid,
         };
+        syncDocToFirestore('notifications', updated);
+        return updated;
       })
     );
   };
 
   const markAllAsRead = (platform: 'WEB' | 'ANDROID') => {
     setNotifications((prev) =>
-      prev.map((n) => ({
-        ...n,
-        isReadWeb: platform === 'WEB' ? true : n.isReadWeb,
-        isReadAndroid: platform === 'ANDROID' ? true : n.isReadAndroid,
-      }))
+      prev.map((n) => {
+        const alreadyRead = platform === 'WEB' ? n.isReadWeb : n.isReadAndroid;
+        if (alreadyRead) return n;
+        const updated: AppNotification = {
+          ...n,
+          isReadWeb: platform === 'WEB' ? true : n.isReadWeb,
+          isReadAndroid: platform === 'ANDROID' ? true : n.isReadAndroid,
+        };
+        syncDocToFirestore('notifications', updated);
+        return updated;
+      })
     );
   };
 
@@ -1434,29 +1883,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('TEST_PUSH_NOTIFICATION', `Notification manuelle envoyée : "${title}"`);
   };
 
-  // User methods
+  // User methods (P8, P9: Real salted password hashing & Firestore sync)
   const changePassword = (userId: string, newPassword: string) => {
-    if (!newPassword || newPassword.length < 6) return false;
+    const cleanPwd = (newPassword || '').trim();
+    if (cleanPwd.length < 6) return false;
+    const hashed = hashPasswordSync(cleanPwd);
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== userId) return u;
-        return {
+        const updated: User = {
           ...u,
           mustChangePassword: false, // RG-03 satisfied!
-          passwordHash: `hash-${newPassword.length}-secure`,
+          passwordHash: hashed,
         };
+        syncDocToFirestore('users', updated);
+        return updated;
       })
     );
-    logAudit('MODIFICATION_MDP', `Mot de passe changé pour l'utilisateur ${userId}`);
+    logAudit('MODIFICATION_MDP', `Mot de passe changé et haché pour l'utilisateur ${userId}`);
     return true;
   };
 
   const toggleUserStatus = (userId: string) => {
+    if (userId === currentUser.id) return; // Prevent self-lockout
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== userId) return u;
         const newStatus = !u.isActive;
-        return { ...u, isActive: newStatus };
+        const updated = { ...u, isActive: newStatus };
+        syncDocToFirestore('users', updated);
+        return updated;
       })
     );
     const target = users.find((u) => u.id === userId);
@@ -1480,9 +1936,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: `L'identifiant "${identifier}" est déjà utilisé par un autre compte.` };
     }
 
+    const defaultBirthDate = userData.birthDate || '2005-01-01';
     const newUser: User = {
-      id: `user-${Date.now()}`,
-      username: userData.username || userData.matricule || `user.${Date.now()}`,
+      id: generateUniqueId('user'),
+      username: userData.username || userData.matricule || generateUniqueId('usr'),
       matricule: userData.role === 'STUDENT' ? (userData.matricule || userData.username) : undefined,
       name: userData.name,
       civilite: userData.civilite,
@@ -1496,7 +1953,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       groupId: userData.groupId,
       subGroupId: userData.subGroupId,
       parcoursId: userData.parcoursId,
-      birthDate: userData.birthDate || '2005-01-01',
+      birthDate: defaultBirthDate,
       birthPlace: userData.birthPlace,
       address: userData.address,
       postalCode: userData.postalCode,
@@ -1507,10 +1964,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       parentContacts: userData.parentContacts || [],
       cardToken:
         userData.role === 'STUDENT'
-          ? userData.cardToken || `EBM-CARD-${(userData.matricule || userData.username || String(Date.now())).slice(-4).toUpperCase()}-V1`
+          ? userData.cardToken || `EBM-CARD-${(userData.matricule || userData.username || generateUniqueId('card')).slice(-4).toUpperCase()}-V1`
           : undefined,
       cardIssueNumber: userData.role === 'STUDENT' ? 1 : undefined,
-      cardIssuedAt: userData.role === 'STUDENT' ? new Date().toISOString().split('T')[0] : undefined,
+      cardIssuedAt: userData.role === 'STUDENT' ? getAntananarivoDateStr() : undefined,
       revokedCardTokens: [],
       department: userData.department,
       service: userData.service,
@@ -1519,6 +1976,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       parentRelation: userData.parentRelation,
       parentVerificationStatus: userData.role === 'PARENT' ? (userData.parentVerificationStatus || 'VERIFIED') : undefined,
       customPermissions: userData.customPermissions,
+      passwordHash: hashPasswordSync(userData.role === 'STUDENT' ? defaultBirthDate : 'ebm2026'),
       mustChangePassword: userData.mustChangePassword ?? true,
       isActive: userData.isActive ?? true,
       googleCalendarLinked: false,
@@ -1527,6 +1985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setUsers((prev) => [...prev, newUser]);
+    syncDocToFirestore('users', newUser);
     logAudit('CREATION_UTILISATEUR', `Création du compte ${newUser.name} [Rôle: ${newUser.role}] (${newUser.matricule || newUser.username})`);
     return { success: true };
   };
@@ -1557,7 +2016,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         trackedKeys.forEach((key) => {
           if (updates[key] !== undefined && String(updates[key]) !== String(u[key] ?? '')) {
             newLogs.push({
-              id: `mod-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: generateUniqueId('mod'),
               timestamp: new Date().toISOString(),
               authorId: currentUser.id,
               authorName: currentUser.name,
@@ -1582,10 +2041,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('MODIFICATION_UTILISATEUR', `Mise à jour de la fiche utilisateur ${id} par ${currentUser.name}`);
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = (id: string): { success: boolean; error?: string } => {
+    // P41: Block self-deletion and block deleting the last active ADMIN
+    if (id === currentUser.id) {
+      return { success: false, error: 'Suppression refusée : vous ne pouvez pas supprimer votre propre compte actif.' };
+    }
     const target = users.find((u) => u.id === id);
+    if (!target) {
+      return { success: false, error: 'Utilisateur introuvable.' };
+    }
+    if (target.role === 'ADMIN') {
+      const activeAdmins = users.filter((u) => u.role === 'ADMIN' && u.isActive);
+      if (activeAdmins.length <= 1) {
+        return {
+          success: false,
+          error: 'Suppression refusée : impossible de supprimer le dernier administrateur actif du système.',
+        };
+      }
+    }
+    const hasActiveSessions = sessions.some((s) => s.teacherId === id && s.status !== 'CANCELLED');
+    if (hasActiveSessions) {
+      return {
+        success: false,
+        error: `Suppression refusée : ${target.name} est assigné(e) à des séances d'emploi du temps actives. Veuillez d'abord réaffecter ou annuler ces séances.`,
+      };
+    }
+    deletedDocIdsRef.current.add(id);
     setUsers((prev) => prev.filter((u) => u.id !== id));
-    logAudit('SUPPRESSION_UTILISATEUR', `Suppression du compte de ${target?.name || id}`);
+    removeDocFromFirestore('users', id);
+    logAudit('SUPPRESSION_UTILISATEUR', `Suppression du compte de ${target.name || id}`);
+    return { success: true };
   };
 
   const resetUserPassword = (id: string) => {
@@ -1622,7 +2107,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await sendPasswordResetEmail(auth, target.email);
       firebaseSent = true;
     } catch {
-      // If email is not yet registered in Firebase Auth Email/Password provider, still process SIS reset notification & email dispatch record
       firebaseSent = false;
     }
 
@@ -1630,7 +2114,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((u) => {
         if (u.id !== id) return u;
         const modLog: UserModificationLog = {
-          id: `mod-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: generateUniqueId('mod'),
           timestamp: new Date().toISOString(),
           authorId: currentUser.id,
           authorName: currentUser.name,
@@ -1687,21 +2171,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Utilisateur introuvable.' };
     }
 
+    // P8: Hash password with hashPasswordSync instead of storing plaintext
+    const hashedPwd = hashPasswordSync(cleanPwd);
+
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== id) return u;
         const modLog: UserModificationLog = {
-          id: `mod-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: generateUniqueId('mod'),
           timestamp: new Date().toISOString(),
           authorId: currentUser.id,
           authorName: currentUser.name,
           field: 'Mot de passe défini par Admin',
           oldValue: '••••••••',
-          newValue: forceChangeOnNextLogin ? 'Nouveau MDP (Changement forcé)' : 'Nouveau MDP actif immédiat',
+          newValue: forceChangeOnNextLogin ? 'Nouveau MDP haché (Changement forcé)' : 'Nouveau MDP haché actif immédiat',
         };
         const updated: User = {
           ...u,
-          passwordHash: cleanPwd,
+          passwordHash: hashedPwd,
           mustChangePassword: forceChangeOnNextLogin,
           modificationHistory: [modLog, ...(u.modificationHistory || [])],
         };
@@ -1712,7 +2199,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     logAudit(
       'DEFINITION_MDP_ADMIN',
-      `Nouveau mot de passe défini directement par ${currentUser.name} pour ${target.name} (${target.matricule || target.username})`
+      `Nouveau mot de passe haché défini par ${currentUser.name} pour ${target.name} (${target.matricule || target.username})`
     );
 
     triggerNotification({
@@ -1727,7 +2214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: true,
-      message: `Nouveau mot de passe enregistré immédiatement pour ${target.name}.`,
+      message: `Nouveau mot de passe chiffré enregistré immédiatement pour ${target.name}.`,
     };
   };
 
@@ -1741,8 +2228,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: `Le matricule ${studentData.matricule} existe déjà (RG-04).` };
     }
 
+    const birthDate = studentData.birthDate || '2005-01-01';
     const newStudent: User = {
-      id: `user-student-${Date.now()}`,
+      id: generateUniqueId('user-student'),
       matricule: studentData.matricule,
       username: studentData.matricule,
       name: studentData.name,
@@ -1756,7 +2244,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       groupId: studentData.groupId || 'grp-l1-info-a',
       subGroupId: studentData.subGroupId,
       parcoursId: studentData.parcoursId,
-      birthDate: studentData.birthDate || '2005-01-01',
+      birthDate,
       birthPlace: studentData.birthPlace || 'Antananarivo',
       address: studentData.address || '',
       postalCode: studentData.postalCode || '101',
@@ -1767,7 +2255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       parentContacts: studentData.parentContacts || [],
       cardToken: `EBM-CARD-${studentData.matricule.slice(-4).toUpperCase()}-V1`,
       cardIssueNumber: 1,
-      cardIssuedAt: new Date().toISOString().split('T')[0],
+      cardIssuedAt: getAntananarivoDateStr(),
       revokedCardTokens: [],
       isAdult: true,
       parentAccessConsent: {
@@ -1776,12 +2264,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         financial: true,
         administrative: true,
       },
+      passwordHash: hashPasswordSync(birthDate),
       mustChangePassword: true, // RG-03: Mandatory first change!
       isActive: true,
       googleCalendarLinked: false,
     };
 
     setUsers((prev) => [...prev, newStudent]);
+    syncDocToFirestore('users', newStudent);
     logAudit('CREATION_ETUDIANT', `Création individuelle étudiant ${newStudent.name} (${newStudent.matricule}) - Carte: ${newStudent.cardToken}`);
     return { success: true };
   };
@@ -1818,16 +2308,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Match group or fallback
       const matchedGroup = groups.find((g) => g.code.toLowerCase() === row.groupe?.trim().toLowerCase()) || groups[0];
+      const birthDate = row.dateNaissance?.trim() || '2005-01-01';
 
       const newStudent: User = {
-        id: `user-import-${Date.now()}-${index}`,
+        id: generateUniqueId(`user-import-${index}`),
         matricule: cleanMatricule,
         username: cleanMatricule,
         name: `${row.prenom.trim()} ${row.nom.trim()}`,
         email: row.email?.trim() || `${cleanMatricule.toLowerCase()}@etudiant.ebm.edu`,
         role: 'STUDENT',
         groupId: matchedGroup.id,
-        birthDate: row.dateNaissance?.trim() || '2005-01-01',
+        birthDate,
+        passwordHash: hashPasswordSync(birthDate),
         mustChangePassword: true, // RG-03
         isActive: true,
         googleCalendarLinked: false,
@@ -1839,6 +2331,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (createdStudents.length > 0) {
       setUsers((prev) => [...prev, ...createdStudents]);
+      syncCollectionBatch('users', createdStudents);
       logAudit(
         'IMPORTATION_MASSE',
         `Importation de ${createdStudents.length} étudiants réussie. ${duplicateCount} doublons détectés, ${errors.length} rejets.`
@@ -1860,11 +2353,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((u) => {
         if (u.id !== userId) return u;
         const newLinked = !u.googleCalendarLinked;
-        return {
+        const updated = {
           ...u,
           googleCalendarLinked: newLinked,
           googleEmail: newLinked ? (email || `${u.username}@gmail.com`) : undefined,
         };
+        syncDocToFirestore('users', updated);
+        return updated;
       })
     );
     const u = users.find((usr) => usr.id === userId);
@@ -1874,10 +2369,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  // Hourly tracking calculations (RG-08, RG-09, RG-10)
+  // Hourly tracking calculations (RG-08, RG-09, RG-10, P37: use ?? 0 instead of || 30)
   const getCourseHourlyStats = (courseId: string): CourseHourlyStats => {
     const course = courses.find((c) => c.id === courseId);
-    const totalHours = course?.totalHours || 30;
+    const totalHours = course?.totalHours ?? 0;
 
     // Filter sessions for this course
     const courseSessions = sessions.filter((s) => s.courseId === courseId);
@@ -1923,85 +2418,156 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  // --- DATA CREATION CRUD IMPLEMENTATIONS ---
+  // --- DATA CREATION CRUD IMPLEMENTATIONS (Synced in Real-Time to Firestore — P13, P16, P39-P44) ---
   const addCourse = (data: Omit<Course, 'id'>) => {
     if (!data.title || !data.code) {
       return { success: false, error: 'Le titre et le code de la matière sont obligatoires.' };
     }
     const newCourse: Course = {
       ...data,
-      id: `crs-${Date.now()}`,
+      id: generateUniqueId('crs'),
     };
     setCourses((prev) => [...prev, newCourse]);
+    syncDocToFirestore('courses', newCourse);
     logAudit('CREATION_COURS', `Création du cours "${newCourse.title}" (${newCourse.code}) - Volume : ${newCourse.totalHours}h`);
     return { success: true, course: newCourse };
   };
 
   const updateCourse = (id: string, updates: Partial<Course>) => {
-    setCourses((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    setCourses((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const updated = { ...c, ...updates };
+        syncDocToFirestore('courses', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_COURS', `Modification du cours ${id}`);
   };
 
-  const deleteCourse = (id: string) => {
+  const deleteCourse = (id: string): { success: boolean; error?: string } => {
     const course = courses.find((c) => c.id === id);
+    if (!course) {
+      return { success: false, error: 'Cours introuvable.' };
+    }
+    const linkedSessions = sessions.filter((s) => s.courseId === id);
+    if (linkedSessions.length > 0) {
+      return {
+        success: false,
+        error: `Suppression refusée : le cours "${course.title}" (${course.code}) possède ${linkedSessions.length} séance(s) planifiée(s). Supprimez d'abord les séances associées.`,
+      };
+    }
+    deletedDocIdsRef.current.add(id);
     setCourses((prev) => prev.filter((c) => c.id !== id));
-    logAudit('SUPPRESSION_COURS', `Suppression du cours "${course?.title || id}"`);
+    removeDocFromFirestore('courses', id);
+    logAudit('SUPPRESSION_COURS', `Suppression du cours "${course.title || id}"`);
+    return { success: true };
   };
 
   const addRoom = (data: Omit<Room, 'id'>) => {
     if (!data.name || !data.code) {
       return { success: false, error: 'Le nom et le code de la salle sont obligatoires.' };
     }
+    if (!Number.isFinite(data.capacity) || data.capacity < 1) {
+      return { success: false, error: 'La capacité de la salle doit être d’au moins 1 place (P43).' };
+    }
+    const codeExists = rooms.some((r) => r.code.toLowerCase() === data.code.trim().toLowerCase());
+    if (codeExists) {
+      return { success: false, error: `Une salle avec le code "${data.code}" existe déjà (P43).` };
+    }
     const newRoom: Room = {
       ...data,
-      id: `room-${Date.now()}`,
+      id: generateUniqueId('room'),
     };
     setRooms((prev) => [...prev, newRoom]);
+    syncDocToFirestore('rooms', newRoom);
     logAudit('CREATION_SALLE', `Création de la salle "${newRoom.name}" (${newRoom.code}) - Capacité : ${newRoom.capacity} places`);
     return { success: true, room: newRoom };
   };
 
   const updateRoom = (id: string, updates: Partial<Room>) => {
-    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+    setRooms((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const updated = { ...r, ...updates };
+        syncDocToFirestore('rooms', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_SALLE', `Modification de la salle ${id}`);
   };
 
-  const deleteRoom = (id: string) => {
+  const deleteRoom = (id: string): { success: boolean; error?: string } => {
     const room = rooms.find((r) => r.id === id);
+    if (!room) {
+      return { success: false, error: 'Salle introuvable.' };
+    }
+    const linkedSessions = sessions.filter((s) => s.roomId === id);
+    if (linkedSessions.length > 0) {
+      return {
+        success: false,
+        error: `Suppression refusée : la salle "${room.name}" (${room.code}) est utilisée par ${linkedSessions.length} séance(s). Déplacez ou supprimez ces séances avant de supprimer la salle.`,
+      };
+    }
+    deletedDocIdsRef.current.add(id);
     setRooms((prev) => prev.filter((r) => r.id !== id));
-    logAudit('SUPPRESSION_SALLE', `Suppression de la salle "${room?.name || id}"`);
+    removeDocFromFirestore('rooms', id);
+    logAudit('SUPPRESSION_SALLE', `Suppression de la salle "${room.name || id}"`);
+    return { success: true };
   };
 
   const addTeacher = (data: { name: string; email: string; phone?: string; subjects: string[]; weeklyMaxHours?: number }) => {
     if (!data.name || !data.email) {
       return { success: false, error: 'Le nom et l\'adresse e-mail sont obligatoires.' };
     }
-    const slug = data.name.toLowerCase().replace(/\s+/g, '.').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // P42: Verify unique email and deduplicate username slug
+    const cleanEmail = data.email.trim().toLowerCase();
+    if (users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: `L'adresse e-mail "${data.email}" est déjà associée à un compte existant (P42).` };
+    }
+    let slug = data.name.toLowerCase().replace(/\s+/g, '.').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (users.some((u) => u.username.toLowerCase() === slug)) {
+      slug = `${slug}.${Math.floor(100 + Math.random() * 900)}`;
+    }
     const newTeacher: User = {
-      id: `user-teacher-${Date.now()}`,
+      id: generateUniqueId('user-teacher'),
       username: slug,
       name: data.name,
-      email: data.email,
+      email: data.email.trim(),
       phone: data.phone || '',
       role: 'TEACHER',
       isActive: true,
+      passwordHash: hashPasswordSync('ebm2026'),
       subjects: data.subjects || [],
       weeklyMaxHours: data.weeklyMaxHours || 18,
       googleCalendarLinked: false,
     };
     setUsers((prev) => [...prev, newTeacher]);
+    syncDocToFirestore('users', newTeacher);
     logAudit('CREATION_ENSEIGNANT', `Création du compte enseignant "${newTeacher.name}" (${newTeacher.email})`);
     return { success: true, teacher: newTeacher };
   };
 
   const updateTeacher = (id: string, updates: Partial<User>) => {
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== id) return u;
+        const updated = { ...u, ...updates };
+        syncDocToFirestore('users', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_ENSEIGNANT', `Modification de l'enseignant ${id}`);
   };
 
   const deleteTeacher = (id: string) => {
     const teacher = users.find((u) => u.id === id);
+    if (sessions.some((s) => s.teacherId === id && s.status !== 'CANCELLED')) {
+      return;
+    }
+    deletedDocIdsRef.current.add(id);
     setUsers((prev) => prev.filter((u) => u.id !== id));
+    removeDocFromFirestore('users', id);
     logAudit('SUPPRESSION_ENSEIGNANT', `Suppression de l'enseignant "${teacher?.name || id}"`);
   };
 
@@ -2011,22 +2577,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const newGroup: StudentGroup = {
       ...data,
-      id: `grp-${Date.now()}`,
+      id: generateUniqueId('grp'),
     };
     setGroups((prev) => [...prev, newGroup]);
+    syncDocToFirestore('groups', newGroup);
     logAudit('CREATION_GROUPE', `Création du groupe "${newGroup.code}" - Effectif : ${newGroup.studentCount}`);
     return { success: true, group: newGroup };
   };
 
   const updateGroup = (id: string, updates: Partial<StudentGroup>) => {
-    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...updates } : g)));
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== id) return g;
+        const updated = { ...g, ...updates };
+        syncDocToFirestore('groups', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_GROUPE', `Modification du groupe ${id}`);
   };
 
-  const deleteGroup = (id: string) => {
+  const deleteGroup = (id: string): { success: boolean; error?: string } => {
     const group = groups.find((g) => g.id === id);
+    if (!group) {
+      return { success: false, error: 'Groupe introuvable.' };
+    }
+    const hasStudents = users.some((u) => u.role === 'STUDENT' && u.groupId === id);
+    const hasSessions = sessions.some((s) => s.groupIds.includes(id));
+    const hasInscriptions = inscriptions.some((i) => i.groupId === id);
+    const hasFees = fees.some((f) => f.groupId === id);
+    if (hasStudents || hasSessions || hasInscriptions || hasFees) {
+      return {
+        success: false,
+        error: `Suppression refusée : le groupe "${group.code}" contient des étudiants inscrits, des séances planifiées ou des frais rattachés.`,
+      };
+    }
+    deletedDocIdsRef.current.add(id);
     setGroups((prev) => prev.filter((g) => g.id !== id));
-    logAudit('SUPPRESSION_GROUPE', `Suppression du groupe "${group?.code || id}"`);
+    removeDocFromFirestore('groups', id);
+    logAudit('SUPPRESSION_GROUPE', `Suppression du groupe "${group.code || id}"`);
+    return { success: true };
   };
 
   const addFiliere = (data: Omit<Filiere, 'id'>) => {
@@ -2035,29 +2625,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const newFiliere: Filiere = {
       ...data,
-      id: `fil-${Date.now()}`,
+      id: generateUniqueId('fil'),
     };
     setFilieres((prev) => [...prev, newFiliere]);
+    syncDocToFirestore('filieres', newFiliere);
     logAudit('CREATION_FILIERE', `Création de la filière "${newFiliere.code}" (${newFiliere.name})`);
     return { success: true, filiere: newFiliere };
   };
 
   const updateFiliere = (id: string, updates: Partial<Filiere>) => {
-    setFilieres((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
+    setFilieres((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const updated = { ...f, ...updates };
+        syncDocToFirestore('filieres', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_FILIERE', `Modification de la filière ${id}`);
   };
 
   const deleteFiliere = (id: string) => {
     const filiere = filieres.find((f) => f.id === id);
+    deletedDocIdsRef.current.add(id);
     setFilieres((prev) => prev.filter((f) => f.id !== id));
+    removeDocFromFirestore('filieres', id);
     logAudit('SUPPRESSION_FILIERE', `Suppression de la filière "${filiere?.code || id}"`);
   };
 
   const seedBatchDemoData = () => {
     // Inject a quick fresh scenario: New Room, New Course 30h, New Teacher, New Group
-    const timestamp = Date.now();
     const demoRoom: Room = {
-      id: `room-demo-${timestamp}`,
+      id: generateUniqueId('room-demo'),
       code: 'LABO-CYBER',
       name: 'Laboratoire Cybersécurité & Hacking Éthique',
       building: 'Pôle Technologies Numériques',
@@ -2069,7 +2668,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const demoTeacher: User = {
-      id: `user-teacher-demo-${timestamp}`,
+      id: generateUniqueId('user-teacher-demo'),
       username: 'mialy.ravelojaona',
       name: 'Dr. Mialy Ravelojaona',
       civilite: 'Dr.',
@@ -2096,7 +2695,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const demoGroup: StudentGroup = {
-      id: `grp-demo-${timestamp}`,
+      id: generateUniqueId('grp-demo'),
       code: 'M2-CYBER-A',
       name: 'Master 2 Cybersécurité & Défense des SI',
       filiereId: 'fil-4',
@@ -2104,13 +2703,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       academicYear: '2026-2027',
       studentCount: 22,
       subGroups: [
-        { id: `sub-demo-1-${timestamp}`, code: 'M2-CYBER-TP1', name: 'Groupe RedTeam', studentCount: 11 },
-        { id: `sub-demo-2-${timestamp}`, code: 'M2-CYBER-TP2', name: 'Groupe BlueTeam', studentCount: 11 },
+        { id: generateUniqueId('sub-demo-1'), code: 'M2-CYBER-TP1', name: 'Groupe RedTeam', studentCount: 11 },
+        { id: generateUniqueId('sub-demo-2'), code: 'M2-CYBER-TP2', name: 'Groupe BlueTeam', studentCount: 11 },
       ],
     };
 
     const demoCourse: Course = {
-      id: `crs-demo-${timestamp}`,
+      id: generateUniqueId('crs-demo'),
       code: 'CYB-501',
       title: 'Sécurité Offensive & Tests d’Intrusion Avancés',
       filiereId: 'fil-4',
@@ -2128,6 +2727,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) => [demoTeacher, ...prev]);
     setGroups((prev) => [demoGroup, ...prev]);
     setCourses((prev) => [demoCourse, ...prev]);
+    syncDocToFirestore('rooms', demoRoom);
+    syncDocToFirestore('users', demoTeacher);
+    syncDocToFirestore('groups', demoGroup);
+    syncDocToFirestore('courses', demoCourse);
 
     logAudit('GENERATION_DONNEES_DEMO', 'Génération automatique d’un module complet : Salle Labo Cyber + Enseignant Dr. Mialy Ravelojaona + Groupe M2 Cyber + Cours.');
     triggerNotification({
@@ -2149,21 +2752,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const newUe: UniteEnseignement = {
       ...data,
-      id: `ue-${Date.now()}`,
+      id: generateUniqueId('ue'),
     };
     setUes((prev) => [...prev, newUe]);
+    syncDocToFirestore('ues', newUe);
     logAudit('CREATION_UE', `Création de l’UE "${newUe.code}" (${newUe.title}) - ${newUe.creditsEcts} ECTS`);
     return { success: true, ue: newUe };
   };
 
   const updateUe = (id: string, updates: Partial<UniteEnseignement>) => {
-    setUes((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    setUes((prev) =>
+      prev.map((u) => {
+        if (u.id !== id) return u;
+        const updated = { ...u, ...updates };
+        syncDocToFirestore('ues', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_UE', `Mise à jour de l’UE ${id}`);
   };
 
   const deleteUe = (id: string) => {
     const ue = ues.find((u) => u.id === id);
+    deletedDocIdsRef.current.add(id);
     setUes((prev) => prev.filter((u) => u.id !== id));
+    removeDocFromFirestore('ues', id);
     logAudit('SUPPRESSION_UE', `Suppression de l’UE "${ue?.code || id}"`);
   };
 
@@ -2173,34 +2786,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const newEc: ElementConstitutif = {
       ...data,
-      id: `ec-${Date.now()}`,
+      id: generateUniqueId('ec'),
     };
     setEcs((prev) => [...prev, newEc]);
+    syncDocToFirestore('ecs', newEc);
     // Also attach to parent UE
     setUes((prev) =>
-      prev.map((ue) =>
-        ue.id === data.ueId && !ue.ecIds.includes(newEc.id)
-          ? { ...ue, ecIds: [...ue.ecIds, newEc.id] }
-          : ue
-      )
+      prev.map((ue) => {
+        if (ue.id === data.ueId && !ue.ecIds.includes(newEc.id)) {
+          const updatedUe = { ...ue, ecIds: [...ue.ecIds, newEc.id] };
+          syncDocToFirestore('ues', updatedUe);
+          return updatedUe;
+        }
+        return ue;
+      })
     );
     logAudit('CREATION_EC', `Création de l’EC "${newEc.code}" (${newEc.title}) rattaché à l’UE ${data.ueId}`);
     return { success: true, ec: newEc };
   };
 
   const updateEc = (id: string, updates: Partial<ElementConstitutif>) => {
-    setEcs((prev) => prev.map((e) => (e.id === id ? { ...e, ...updates } : e)));
+    setEcs((prev) =>
+      prev.map((e) => {
+        if (e.id !== id) return e;
+        const updated = { ...e, ...updates };
+        syncDocToFirestore('ecs', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_EC', `Mise à jour de l’EC ${id}`);
   };
 
   const deleteEc = (id: string) => {
     const ec = ecs.find((e) => e.id === id);
+    deletedDocIdsRef.current.add(id);
     setEcs((prev) => prev.filter((e) => e.id !== id));
+    removeDocFromFirestore('ecs', id);
     setUes((prev) =>
-      prev.map((ue) => ({
-        ...ue,
-        ecIds: ue.ecIds.filter((ecId) => ecId !== id),
-      }))
+      prev.map((ue) => {
+        if (!ue.ecIds.includes(id)) return ue;
+        const updatedUe = {
+          ...ue,
+          ecIds: ue.ecIds.filter((ecId) => ecId !== id),
+        };
+        syncDocToFirestore('ues', updatedUe);
+        return updatedUe;
+      })
     );
     logAudit('SUPPRESSION_EC', `Suppression de l’EC "${ec?.code || id}"`);
   };
@@ -2218,12 +2849,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newEcs: ElementConstitutif[] = [];
 
     sourceUes.forEach((oldUe) => {
-      const newUeId = `ue-${targetYear}-${oldUe.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
+      const newUeId = generateUniqueId(`ue-${targetYear}-${oldUe.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`);
       const childEcs = ecs.filter((ec) => ec.ueId === oldUe.id || oldUe.ecIds.includes(ec.id));
       const newChildEcIds: string[] = [];
 
       childEcs.forEach((oldEc) => {
-        const newEcId = `ec-${targetYear}-${oldEc.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
+        const newEcId = generateUniqueId(`ec-${targetYear}-${oldEc.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`);
         newChildEcIds.push(newEcId);
         newEcs.push({
           ...oldEc,
@@ -2244,6 +2875,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setUes((prev) => [...prev, ...newUes]);
     setEcs((prev) => [...prev, ...newEcs]);
+    syncCollectionBatch('ues', newUes);
+    syncCollectionBatch('ecs', newEcs);
 
     logAudit(
       'DUPLICATION_MAQUETTE_LMD',
@@ -2304,9 +2937,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const isComplete = Object.values(docs).every(Boolean);
 
+    const targetStudent = users.find((u) => u.id === studentId);
     const newInscription: StudentInscription = {
-      id: `insc-${studentId}-${academicYear}-${Date.now()}`,
+      id: generateUniqueId(`insc-${studentId}-${academicYear}`),
       studentId,
+      studentUid: targetStudent?.uid || studentId,
       academicYear,
       filiereId,
       parcoursId: extra?.parcoursId,
@@ -2316,7 +2951,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       academicStatus: extra?.academicStatus || 'NOUVEAU',
       dossierComplete: isComplete,
       documents: docs,
-      inscriptionDate: new Date().toISOString().split('T')[0],
+      inscriptionDate: getAntananarivoDateStr(),
       status: 'CONFIRMED',
     };
     setInscriptions((prev) => {
@@ -2346,7 +2981,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const newParc: Parcours = {
       ...data,
-      id: `parc-${data.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+      id: generateUniqueId(`parc-${data.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`),
     };
     setParcours((prev) => [...prev, newParc]);
     syncDocToFirestore('parcours', newParc);
@@ -2369,7 +3004,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteParcours = (id: string) => {
+    deletedDocIdsRef.current.add(id);
     setParcours((prev) => prev.filter((p) => p.id !== id));
+    removeDocFromFirestore('parcours', id);
     logAudit('SUPPRESSION_PARCOURS', `Suppression du parcours ${id}`);
   };
 
@@ -2466,8 +3103,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAcademicYears((prev) => {
       let list = [...prev];
       if (data.isCurrent) {
-        list = list.map((ay) => ({ ...ay, isCurrent: false }));
+        list = list.map((ay) => {
+          const updated = { ...ay, isCurrent: false };
+          syncDocToFirestore('academicYears', updated);
+          return updated;
+        });
       }
+      syncDocToFirestore('academicYears', newYear);
       return [newYear, ...list];
     });
 
@@ -2487,10 +3129,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAcademicYears((prev) =>
       prev.map((ay) => {
         if (ay.id === id) {
-          return { ...ay, ...updates };
+          const updated = { ...ay, ...updates };
+          syncDocToFirestore('academicYears', updated);
+          return updated;
         }
         if (updates.isCurrent && ay.id !== id) {
-          return { ...ay, isCurrent: false };
+          const updated = { ...ay, isCurrent: false };
+          syncDocToFirestore('academicYears', updated);
+          return updated;
         }
         return ay;
       })
@@ -2501,18 +3147,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('MODIFICATION_ANNEE_ACADEMIQUE', `Mise à jour de l'année académique ${id}`);
   };
 
-  const deleteAcademicYear = (id: string) => {
+  const deleteAcademicYear = (id: string): { success: boolean; error?: string } => {
+    const targetAy = academicYears.find((ay) => ay.id === id);
+    if (!targetAy) {
+      return { success: false, error: 'Année académique introuvable.' };
+    }
+    // P40: Prevent deleting the currently active academic year
+    if (targetAy.isCurrent || targetAy.code === selectedAcademicYear) {
+      logAudit('BLOCAGE_SUPPRESSION_ANNEE_ACTIVE', `Tentative bloquée de suppression de l'année académique active ${targetAy.code}`);
+      return {
+        success: false,
+        error: `Suppression refusée : impossible de supprimer l'année académique active (${targetAy.code}).`,
+      };
+    }
+    const hasLinkedData =
+      ues.some((u) => u.academicYear === targetAy.code) ||
+      inscriptions.some((i) => i.academicYear === targetAy.code) ||
+      grades.some((g) => g.academicYear === targetAy.code);
+    if (hasLinkedData) {
+      return {
+        success: false,
+        error: `Suppression refusée : l'année ${targetAy.code} contient des maquettes UE, inscriptions ou notes rattachées.`,
+      };
+    }
+    deletedDocIdsRef.current.add(id);
     setAcademicYears((prev) => prev.filter((ay) => ay.id !== id));
+    removeDocFromFirestore('academicYears', id);
     logAudit('SUPPRESSION_ANNEE_ACADEMIQUE', `Suppression de l'année académique ${id}`);
+    return { success: true };
   };
 
   const setActiveAcademicYear = (code: string) => {
     setAcademicYears((prev) =>
-      prev.map((ay) => ({
-        ...ay,
-        isCurrent: ay.code === code,
-        status: ay.code === code ? 'OPEN' : ay.status,
-      }))
+      prev.map((ay) => {
+        const updated: AcademicYear = {
+          ...ay,
+          isCurrent: ay.code === code,
+          status: ay.code === code ? 'OPEN' : ay.status,
+        };
+        syncDocToFirestore('academicYears', updated);
+        return updated;
+      })
     );
     setSelectedAcademicYear(code);
     logAudit('CHANGEMENT_ANNEE_ACTIVE', `L'année ${code} a été définie comme année académique courante.`);
@@ -2524,7 +3199,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const newMsg: ChatMessage = {
-      id: `chat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUniqueId('chat'),
       senderId: currentUser.id,
       recipientId,
       text: text.trim(),
@@ -2533,6 +3208,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setChatMessages((prev) => [...prev, newMsg]);
+    syncDocToFirestore('chatMessages', newMsg);
 
     setTimeout(() => {
       const recipientUser = users.find((u) => u.id === recipientId);
@@ -2558,7 +3234,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const randomReply = pool[Math.floor(Math.random() * pool.length)];
 
         const replyMsg: ChatMessage = {
-          id: `chat-${Date.now()}-reply`,
+          id: generateUniqueId('chat-reply'),
           senderId: recipientId,
           recipientId: currentUser.id,
           text: randomReply,
@@ -2566,6 +3242,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isRead: false,
         };
         setChatMessages((prev) => [...prev, replyMsg]);
+        syncDocToFirestore('chatMessages', replyMsg);
       }
     }, 1500);
   };
@@ -2573,11 +3250,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markChatAsRead = (partnerId: string) => {
     if (!currentUser) return;
     setChatMessages((prev) =>
-      prev.map((m) =>
-        m.senderId === partnerId && m.recipientId === currentUser.id
-          ? { ...m, isRead: true }
-          : m
-      )
+      prev.map((m) => {
+        if (m.senderId === partnerId && m.recipientId === currentUser.id && !m.isRead) {
+          const updated = { ...m, isRead: true };
+          syncDocToFirestore('chatMessages', updated);
+          return updated;
+        }
+        return m;
+      })
     );
   };
 
@@ -2590,27 +3270,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ].filter(Boolean) as string[];
 
   // Formule d'évaluation : 40% CC + 60% Examen OU Évaluation Directe 100%
+  // P64: Only compute weighted sum when BOTH quizScore and examScore are defined (unless direct 100% evaluation)
   const calculateEcFinalScore = (quizScore?: number, examScore?: number, ecId?: string): number | undefined => {
     const targetEc = ecId ? ecs.find((e) => e.id === ecId) : undefined;
     const isDirect100 = targetEc ? (targetEc.quizWeight === 0 || targetEc.examWeight === 1.0) : false;
 
     if (isDirect100) {
-      if (examScore !== undefined) return Number(examScore.toFixed(2));
-      if (quizScore !== undefined) return Number(quizScore.toFixed(2));
+      if (examScore !== undefined && Number.isFinite(examScore)) return Number(examScore.toFixed(2));
+      if (quizScore !== undefined && Number.isFinite(quizScore)) return Number(quizScore.toFixed(2));
       return undefined;
     }
 
     const qWeight = targetEc?.quizWeight ?? 0.40;
     const eWeight = targetEc?.examWeight ?? 0.60;
 
-    if (quizScore !== undefined && examScore !== undefined) {
+    if (quizScore !== undefined && examScore !== undefined && Number.isFinite(quizScore) && Number.isFinite(examScore)) {
       return Number(((quizScore * qWeight) + (examScore * eWeight)).toFixed(2));
-    }
-    if (quizScore !== undefined) {
-      return Number((quizScore * qWeight).toFixed(2));
-    }
-    if (examScore !== undefined) {
-      return Number((examScore * eWeight).toFixed(2));
     }
     return undefined;
   };
@@ -2623,29 +3298,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isDraft: boolean = true,
     comment?: string,
     rattrapageScore?: number
-  ) => {
+  ): { success: boolean; error?: string } => {
     const targetEc = ecs.find((e) => e.id === ecId);
+    // P25: Verify teacher ownership when role === 'TEACHER'
+    if (
+      currentUser.role === 'TEACHER' &&
+      targetEc &&
+      Array.isArray(targetEc.teacherIds) &&
+      targetEc.teacherIds.length > 0 &&
+      !targetEc.teacherIds.includes(currentUser.id)
+    ) {
+      logAudit('ACCES_REFUSE_NOTE_EC', `Tentative non autorisée de saisie de note sur ${targetEc.code} par ${currentUser.name}`);
+      return {
+        success: false,
+        error: `Accès refusé : vous n'êtes pas l'enseignant responsable de l'élément constitutif ${targetEc.code}.`,
+      };
+    }
+
+    // Strict score bounds validation [0, 20] — reject out-of-range values instead of clamping silently
+    const validateScore = (val: number | undefined, label: string): { valid: boolean; value?: number; error?: string } => {
+      if (val === undefined || val === null) return { valid: true, value: undefined };
+      if (!Number.isFinite(val) || val < 0 || val > 20) {
+        return {
+          valid: false,
+          error: `Note invalide (${label} : ${val}) : la note doit être comprise strictement entre 0 et 20.`,
+        };
+      }
+      return { valid: true, value: Number(val.toFixed(2)) };
+    };
+
+    const qCheck = validateScore(quizScore, 'Contrôle Continu');
+    if (!qCheck.valid) return { success: false, error: qCheck.error };
+    const eCheck = validateScore(examScore, 'Examen');
+    if (!eCheck.valid) return { success: false, error: eCheck.error };
+    const rCheck = validateScore(rattrapageScore, 'Rattrapage');
+    if (!rCheck.valid) return { success: false, error: rCheck.error };
+
+    const validQuiz = qCheck.value;
+    const validExam = eCheck.value;
+    const validRattrapage = rCheck.value;
+
     const targetUe = ues.find((u) => u.id === targetEc?.ueId);
     const ecSemester = targetEc?.semester || targetUe?.semester || 'S1';
 
-    const session1Score = calculateEcFinalScore(quizScore, examScore, ecId);
+    const session1Score = calculateEcFinalScore(validQuiz, validExam, ecId);
     const finalScore =
-      rattrapageScore !== undefined
-        ? Number(Math.max(session1Score ?? 0, rattrapageScore).toFixed(2))
+      validRattrapage !== undefined
+        ? Number(Math.max(session1Score ?? 0, validRattrapage).toFixed(2))
         : session1Score;
 
-    const existingIndex = grades.findIndex((g) => g.studentId === studentId && g.ecId === ecId);
+    // P68: Match by (studentId, ecId, academicYear)
+    const existingIndex = grades.findIndex(
+      (g) =>
+        g.studentId === studentId &&
+        g.ecId === ecId &&
+        (!g.academicYear || g.academicYear === selectedAcademicYear)
+    );
 
+    const targetStudent = users.find((u) => u.id === studentId);
     const updatedGrade: EcGrade = {
-      id: existingIndex >= 0 ? grades[existingIndex].id : `grd-${studentId}-${ecId}-${Date.now()}`,
+      id: existingIndex >= 0 ? grades[existingIndex].id : generateUniqueId(`grd-${studentId}-${ecId}`),
       studentId,
+      studentUid: targetStudent?.uid || studentId,
       ecId,
       academicYear: selectedAcademicYear,
       semester: ecSemester,
-      quizScore,
-      examScore,
+      quizScore: validQuiz,
+      examScore: validExam,
       session1Score,
-      rattrapageScore,
+      rattrapageScore: validRattrapage,
       finalScore,
       isPublished: !isDraft,
       isDraft,
@@ -2659,38 +3380,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       setGrades((prev) => [...prev, updatedGrade]);
     }
+    syncDocToFirestore('grades', updatedGrade);
 
     logAudit(
       'SAISIE_NOTE_LMD',
-      `Saisie de note EC ${targetEc?.code || ecId} (${ecSemester}) pour étudiant ${studentId} (Quiz: ${quizScore ?? '-'}, Examen: ${examScore ?? '-'}, Rattrapage: ${rattrapageScore ?? '-'}, Retenu: ${finalScore ?? '-'})`
+      `Saisie de note EC ${targetEc?.code || ecId} (${ecSemester}) pour étudiant ${studentId} (Quiz: ${validQuiz ?? '-'}, Examen: ${validExam ?? '-'}, Rattrapage: ${validRattrapage ?? '-'}, Retenu: ${finalScore ?? '-'})`
     );
+    return { success: true };
   };
 
-  const publishGrades = (ecId: string) => {
+  const publishGrades = (ecId: string): { success: boolean; error?: string } => {
     const ec = ecs.find((e) => e.id === ecId);
+    if (!ec) {
+      return { success: false, error: 'Élément constitutif introuvable.' };
+    }
+    // P25: Verify teacher ownership when role === 'TEACHER'
+    if (
+      currentUser.role === 'TEACHER' &&
+      Array.isArray(ec.teacherIds) &&
+      ec.teacherIds.length > 0 &&
+      !ec.teacherIds.includes(currentUser.id)
+    ) {
+      return {
+        success: false,
+        error: `Publication refusée : vous n'êtes pas l'enseignant titulaire de l'EC ${ec.code}.`,
+      };
+    }
+
+    // P69: Filter by ecId AND selectedAcademicYear
     setGrades((prev) =>
-      prev.map((g) =>
-        g.ecId === ecId ? { ...g, isPublished: true, isDraft: false, lastModifiedAt: new Date().toISOString() } : g
-      )
+      prev.map((g) => {
+        if (g.ecId === ecId && (!g.academicYear || g.academicYear === selectedAcademicYear)) {
+          const updated = { ...g, isPublished: true, isDraft: false, lastModifiedAt: new Date().toISOString() };
+          syncDocToFirestore('grades', updated);
+          return updated;
+        }
+        return g;
+      })
     );
 
-    // Notify students of this EC
-    const affectedGrades = grades.filter((g) => g.ecId === ecId);
+    // Notify students of this EC for the active academic year
+    const affectedGrades = grades.filter(
+      (g) => g.ecId === ecId && (!g.academicYear || g.academicYear === selectedAcademicYear)
+    );
     affectedGrades.forEach((g) => {
       triggerNotification({
         recipientId: g.studentId,
         recipientRole: 'STUDENT',
-        title: `📢 Notes publiées : ${ec?.code || 'EC'}`,
-        message: `Vos notes officielles pour l’élément ${ec?.title || ec?.code} sont disponibles. Note finale : ${g.finalScore !== undefined ? g.finalScore + '/20' : 'En attente'}.`,
+        title: `📢 Notes publiées : ${ec.code || 'EC'}`,
+        message: `Vos notes officielles pour l’élément ${ec.title || ec.code} sont disponibles. Note finale : ${g.finalScore !== undefined ? g.finalScore + '/20' : 'En attente'}.`,
         type: 'SUCCESS',
       });
     });
 
-    logAudit('PUBLICATION_OFFICIELLE_NOTES', `Publication officielle des notes pour l’élément ${ec?.code || ecId}`);
+    logAudit('PUBLICATION_OFFICIELLE_NOTES', `Publication officielle des notes pour l’élément ${ec.code || ecId} (${selectedAcademicYear})`);
+    return { success: true };
   };
 
   const getStudentEcGrade = (studentId: string, ecId: string): EcGrade | undefined => {
-    return grades.find((g) => g.studentId === studentId && g.ecId === ecId);
+    return (
+      grades.find(
+        (g) => g.studentId === studentId && g.ecId === ecId && g.academicYear === selectedAcademicYear
+      ) || grades.find((g) => g.studentId === studentId && g.ecId === ecId)
+    );
   };
 
   const getStudentUeSummary = (studentId: string, ueId: string) => {
@@ -2702,7 +3454,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let gradedCount = 0;
 
     const ecDetails = relatedEcs.map((ec) => {
-      const grade = grades.find((g) => g.studentId === studentId && g.ecId === ec.id);
+      const grade = getStudentEcGrade(studentId, ec.id);
       const isPassed = (grade?.finalScore ?? 0) >= 10;
       if (grade?.finalScore !== undefined) {
         weightedSum += grade.finalScore * ec.creditsEcts;
@@ -2712,9 +3464,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ec, grade, isPassed };
     });
 
-    const average = totalWeight > 0 ? Number((weightedSum / totalWeight).toFixed(2)) : 0;
-    const isPassed = average >= (ue?.validationThreshold || 10.0);
-    const totalCredits = ue?.creditsEcts || 6;
+    const rawAverage = totalWeight > 0 ? weightedSum / totalWeight : 0;
+    const average = totalWeight > 0 ? Number(rawAverage.toFixed(2)) : 0;
+    // P66: Compare unrounded rawAverage against validationThreshold so 9.996 is not rounded to 10.00 before threshold check
+    const threshold = ue?.validationThreshold || 10.0;
+    const isPassed = rawAverage >= threshold - 1e-9;
+    // P67: Sum EC credits if ue.creditsEcts is not defined
+    const sumEcCredits = relatedEcs.reduce((acc, ec) => acc + (ec.creditsEcts || 0), 0);
+    const totalCredits = ue?.creditsEcts || sumEcCredits || 6;
     const validatedCredits = isPassed ? totalCredits : 0;
 
     return {
@@ -2732,6 +3489,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (s) => s.isActive && new Date(s.expiresAt).getTime() > Date.now()
   ) || null;
 
+  const generateUniqueOtpToken = (): string => {
+    const activeTokens = new Set(
+      qrSessions
+        .filter((s) => s.isActive && new Date(s.expiresAt).getTime() > Date.now())
+        .map((s) => s.codeToken.toUpperCase())
+    );
+    let candidate = `EBM-${Math.floor(1000 + Math.random() * 9000)}`;
+    let attempts = 0;
+    while (activeTokens.has(candidate) && attempts < 25) {
+      candidate = `EBM-${Math.floor(1000 + Math.random() * 9000)}`;
+      attempts++;
+    }
+    return candidate;
+  };
+
   const generateQrSession = (
     sessionId: string,
     courseTitle: string,
@@ -2741,12 +3513,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     groupId: string,
     validityMinutes: number = 15
   ): QrAttendanceSession => {
-    const randomOtp = `EBM-${Math.floor(1000 + Math.random() * 9000)}`;
+    const randomOtp = generateUniqueOtpToken();
     const now = new Date();
     const expires = new Date(now.getTime() + validityMinutes * 60000);
 
     const newQrSession: QrAttendanceSession = {
-      id: `qr-${Date.now()}`,
+      id: generateUniqueId('qr'),
       sessionId,
       courseTitle,
       ecCode,
@@ -2761,25 +3533,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setQrSessions((prev) => [newQrSession, ...prev]);
+    syncDocToFirestore('qrSessions', newQrSession);
     logAudit('GENERATION_QR_PRESENCE', `Génération QR Code présence pour ${courseTitle} (${ecCode}) - Code: ${randomOtp} (Expire dans ${validityMinutes}min)`);
     return newQrSession;
   };
 
   const rotateQrSessionToken = (qrSessionId: string, validityMinutes: number = 15): string | undefined => {
-    const newOtp = `EBM-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newOtp = generateUniqueOtpToken();
     const now = new Date();
     const expires = new Date(now.getTime() + validityMinutes * 60000);
     setQrSessions((prev) =>
-      prev.map((s) =>
-        s.id === qrSessionId
-          ? {
-              ...s,
-              codeToken: newOtp,
-              generatedAt: now.toISOString(),
-              expiresAt: expires.toISOString(),
-            }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id !== qrSessionId) return s;
+        const updated: QrAttendanceSession = {
+          ...s,
+          codeToken: newOtp,
+          generatedAt: now.toISOString(),
+          expiresAt: expires.toISOString(),
+        };
+        syncDocToFirestore('qrSessions', updated);
+        return updated;
+      })
     );
     logAudit('RENOUVELLEMENT_QR_PRESENCE', `Renouvellement dynamique du jeton QR (${newOtp}) pour la séance ${qrSessionId}`);
     return newOtp;
@@ -2787,32 +3561,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const stopQrSession = (qrSessionId: string) => {
     setQrSessions((prev) =>
-      prev.map((s) => (s.id === qrSessionId ? { ...s, isActive: false } : s))
+      prev.map((s) => {
+        if (s.id !== qrSessionId) return s;
+        const updated = { ...s, isActive: false };
+        syncDocToFirestore('qrSessions', updated);
+        return updated;
+      })
     );
     logAudit('ARRET_QR_PRESENCE', `Clôture de la session QR Code ${qrSessionId}`);
   };
 
   const scanQrAttendance = (codeToken: string, studentId: string) => {
     const cleanToken = codeToken.trim().toUpperCase();
+    // P81: Also check expiration when matching active session
     const targetSession = qrSessions.find(
-      (s) => s.isActive && s.codeToken.toUpperCase() === cleanToken
+      (s) =>
+        s.isActive &&
+        s.codeToken.toUpperCase() === cleanToken &&
+        new Date(s.expiresAt).getTime() >= Date.now()
     );
 
     if (!targetSession) {
       return { success: false, message: 'Code QR ou OTP invalide, ou la session a été renouvelée / expirée (ACC-030).' };
     }
 
-    if (new Date(targetSession.expiresAt).getTime() < Date.now()) {
-      return { success: false, message: 'Ce QR Code de présence a expiré (ACC-030).' };
-    }
-
-    const student = users.find((u) => u.id === studentId);
+    // P82: If currentUser is a STUDENT, enforce effectiveStudentId = currentUser.id
+    const effectiveStudentId = currentUser.role === 'STUDENT' ? currentUser.id : studentId;
+    const student = users.find((u) => u.id === effectiveStudentId);
     if (!student || student.role !== 'STUDENT') {
       return { success: false, message: 'Compte étudiant introuvable ou non autorisé.' };
     }
 
-    // ACC-032: Verify student belongs to the session's group
-    if (targetSession.groupId && student.groupId && student.groupId !== targetSession.groupId) {
+    // P83 & ACC-032: Verify student belongs to the session's group (including if student has no groupId)
+    if (targetSession.groupId && (!student.groupId || student.groupId !== targetSession.groupId)) {
       logAudit(
         'POINTAGE_QR_REJETE_GROUPE',
         `Rejet pointage QR : ${student.name} (${student.matricule}) n'appartient pas au groupe ${targetSession.groupId}`
@@ -2824,32 +3605,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // ACC-031: Prevent duplicate check-in for the same session
-    const alreadyRecorded = targetSession.records.some((r) => r.studentId === studentId);
+    const alreadyRecorded = targetSession.records.some((r) => r.studentId === effectiveStudentId);
     if (alreadyRecorded) {
       return { success: false, message: 'Double pointage bloqué (ACC-031) : Votre présence a déjà été enregistrée pour cette séance !' };
     }
 
+    // P84: Determine if scan is LATE (> 15 minutes after linked timetable session startTime or QR generation)
+    let attendanceStatus: 'PRESENT' | 'LATE' = 'PRESENT';
+    const linkedTimetableSession = sessions.find((s) => s.id === targetSession.sessionId);
+    if (linkedTimetableSession && linkedTimetableSession.date && linkedTimetableSession.startTime) {
+      const sessionStartMs = new Date(`${linkedTimetableSession.date}T${linkedTimetableSession.startTime}:00+03:00`).getTime();
+      if (Number.isFinite(sessionStartMs) && Date.now() - sessionStartMs > 15 * 60 * 1000) {
+        attendanceStatus = 'LATE';
+      }
+    }
+
     const newRecord: AttendanceRecord = {
-      id: `rec-${Date.now()}`,
-      studentId,
+      id: generateUniqueId('rec'),
+      studentId: effectiveStudentId,
       studentName: student.name || 'Étudiant',
       matricule: student.matricule || 'N/A',
       scannedAt: new Date().toISOString(),
-      status: 'PRESENT',
+      status: attendanceStatus,
     };
 
     setQrSessions((prev) =>
-      prev.map((s) =>
-        s.id === targetSession.id
-          ? { ...s, records: [...s.records, newRecord] }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id !== targetSession.id) return s;
+        const updated = { ...s, records: [...s.records, newRecord] };
+        syncDocToFirestore('qrSessions', updated);
+        return updated;
+      })
     );
 
-    logAudit('POINTAGE_QR_REUSSI', `Présence validée par QR/Code-barres pour ${student.name} (${student.matricule}) sur ${targetSession.courseTitle}`);
+    logAudit('POINTAGE_QR_REUSSI', `Présence (${attendanceStatus}) validée par QR/Code-barres pour ${student.name} (${student.matricule}) sur ${targetSession.courseTitle}`);
     return {
       success: true,
-      message: `Présence validée avec succès pour le cours de ${targetSession.courseTitle} !`,
+      message: `Présence (${attendanceStatus === 'LATE' ? 'Retard > 15 min' : 'À l’heure'}) validée avec succès pour le cours de ${targetSession.courseTitle} !`,
       record: newRecord,
     };
   };
@@ -2864,8 +3656,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((s) => {
         if (s.id !== qrSessionId) return s;
         const exists = s.records.some((r) => r.studentId === studentId);
+        let updated: QrAttendanceSession;
         if (exists) {
-          return {
+          updated = {
             ...s,
             records: s.records.map((r) =>
               r.studentId === studentId
@@ -2881,12 +3674,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         } else {
           const student = users.find((u) => u.id === studentId);
-          return {
+          updated = {
             ...s,
             records: [
               ...s.records,
               {
-                id: `rec-corr-${Date.now()}`,
+                id: generateUniqueId('rec-corr'),
                 studentId,
                 studentName: student?.name || 'Étudiant',
                 matricule: student?.matricule || 'N/A',
@@ -2899,6 +3692,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ],
           };
         }
+        syncDocToFirestore('qrSessions', updated);
+        return updated;
       })
     );
 
@@ -2930,7 +3725,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const newRecord: AttendanceRecord = {
-      id: `rec-adm-${Date.now()}`,
+      id: generateUniqueId('rec-adm'),
       studentId: data.studentId,
       studentName: student?.name || 'Étudiant',
       matricule: student?.matricule || 'N/A',
@@ -2942,7 +3737,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const manualSession: QrAttendanceSession = {
-      id: `qr-adm-${Date.now()}`,
+      id: generateUniqueId('qr-adm'),
       sessionId: `adm-sess-${data.date}`,
       courseTitle: data.courseTitle,
       ecCode: data.ecCode,
@@ -2957,6 +3752,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setQrSessions((prev) => [manualSession, ...prev]);
+    syncDocToFirestore('qrSessions', manualSession);
     logAudit(
       'POINTAGE_MANUEL_ADMINISTRATION',
       `Pointage manuel par ${currentUser.name} pour ${student?.name} (${student?.matricule}) : ${data.status} sur ${data.ecCode} (${data.date}). Motif : ${data.reason || 'RAS'}`
@@ -2967,7 +3763,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Messaging & Group Wall
   const sendMessage = (data: { recipientId?: string; recipientGroupId?: string; subject: string; content: string }) => {
     const newMessage: InternalMessage = {
-      id: `msg-${Date.now()}`,
+      id: generateUniqueId('msg'),
       senderId: currentUser.id,
       senderName: currentUser.name,
       senderRole: currentUser.role,
@@ -2980,6 +3776,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setInternalMessages((prev) => [newMessage, ...prev]);
+    syncDocToFirestore('internalMessages', newMessage);
 
     if (data.recipientId) {
       triggerNotification({
@@ -2995,13 +3792,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markMessageAsRead = (messageId: string) => {
     setInternalMessages((prev) =>
-      prev.map((m) => (m.id === messageId ? { ...m, isRead: true } : m))
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const updated = { ...m, isRead: true };
+        syncDocToFirestore('internalMessages', updated);
+        return updated;
+      })
     );
   };
 
   const createGroupPost = (data: { groupId: string; title: string; content: string; category: GroupPost['category']; isPinned?: boolean }) => {
     const newPost: GroupPost = {
-      id: `post-${Date.now()}`,
+      id: generateUniqueId('post'),
       groupId: data.groupId,
       authorId: currentUser.id,
       authorName: currentUser.name,
@@ -3015,6 +3817,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setGroupPosts((prev) => [newPost, ...prev]);
+    syncDocToFirestore('groupPosts', newPost);
 
     // Notify all group students
     const groupStudents = users.filter((u) => u.groupId === data.groupId);
@@ -3032,7 +3835,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteGroupPost = (postId: string) => {
+    deletedDocIdsRef.current.add(postId);
     setGroupPosts((prev) => prev.filter((p) => p.id !== postId));
+    removeDocFromFirestore('groupPosts', postId);
     logAudit('SUPPRESSION_POST_GROUPE', `Suppression du post ${postId}`);
   };
 
@@ -3040,9 +3845,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addFee = (data: Omit<StudentFee, 'id'>) => {
     const newFee: StudentFee = {
       ...data,
-      id: `fee-${Date.now()}`,
+      id: generateUniqueId('fee'),
     };
     setFees((prev) => [...prev, newFee]);
+    syncDocToFirestore('fees', newFee);
     logAudit('CREATION_FRAIS', `Création d’un frais : ${newFee.title} - Montant: ${newFee.amountAr.toLocaleString()} Ar`);
   };
 
@@ -3060,7 +3866,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteFee = (id: string) => {
     const target = fees.find((f) => f.id === id);
+    deletedDocIdsRef.current.add(id);
     setFees((prev) => prev.filter((f) => f.id !== id));
+    removeDocFromFirestore('fees', id);
     logAudit('SUPPRESSION_FRAIS', `Suppression du frais "${target?.title || id}" du catalogue par ${currentUser.name}`);
   };
 
@@ -3077,6 +3885,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Frais introuvable.' };
     }
 
+    // P78: Validate finite positive amount before arithmetic
+    if (!Number.isFinite(data.amountPaidAr) || data.amountPaidAr <= 0) {
+      return { success: false, error: 'Le montant encaissé doit être un nombre valide supérieur à 0 Ar.' };
+    }
+
     const previousPaidForFee = payments
       .filter((p) => p.studentId === data.studentId && p.feeId === data.feeId && !p.isCancelled)
       .reduce((sum, p) => sum + p.amountPaidAr, 0);
@@ -3091,10 +3904,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    if (data.amountPaidAr <= 0) {
-      return { success: false, error: 'Le montant encaissé doit être supérieur à 0 Ar.' };
-    }
-
     if (data.amountPaidAr > currentRemainingAr) {
       return {
         success: false,
@@ -3105,25 +3914,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newTotalPaid = previousPaidForFee + data.amountPaidAr;
     const remainingBalanceAr = Math.max(0, fee.amountAr - newTotalPaid);
 
-    const receiptNumber = `REC-EBM-2026-${String(payments.length + 1).padStart(4, '0')}`;
+    // P76 & P77: Dynamic year and collision-free receipt number + Antananarivo local date
+    const currentYear = new Date().getFullYear();
+    const maxSeq = payments.reduce((max, p) => {
+      const m = p.receiptNumber?.match(/REC-EBM-\d{4}-(\d+)/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, payments.length);
+    const receiptNumber = `REC-EBM-${currentYear}-${String(maxSeq + 1).padStart(4, '0')}`;
+    const todayStr = getAntananarivoDateStr();
+
+    const targetStudentUser = users.find((u) => u.id === data.studentId);
     const newTransaction: PaymentTransaction = {
-      id: `pay-${Date.now()}`,
+      id: generateUniqueId('pay'),
       receiptNumber,
       studentId: data.studentId,
+      studentUid: targetStudentUser?.uid || data.studentId,
       feeId: data.feeId,
       amountPaidAr: data.amountPaidAr,
       remainingBalanceAr,
       paymentMethod: data.paymentMethod,
       referenceNumber: data.referenceNumber,
-      paymentDate: new Date().toISOString().split('T')[0],
+      paymentDate: todayStr,
       recordedBy: currentUser.name,
       notes: data.notes,
     };
 
     setPayments((prev) => [newTransaction, ...prev]);
+    syncDocToFirestore('payments', newTransaction);
 
     // Update today's cash register distinctly by payment method (Cash vs Mobile Money vs Bank)
-    const todayStr = new Date().toISOString().split('T')[0];
     setCashRegisterDays((prev) => {
       const todayRegister = prev.find((d) => d.date === todayStr);
       if (todayRegister) {
@@ -3147,10 +3966,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           totalCollectedAr: todayRegister.totalCollectedAr + data.amountPaidAr,
           theoreticalClosingAr: todayRegister.theoreticalClosingAr + data.amountPaidAr,
         };
+        syncDocToFirestore('cashDays', updated);
         return prev.map((d) => (d.date === todayStr ? updated : d));
       } else {
         const newRegister: CashRegisterDay = {
-          id: `crd-${Date.now()}`,
+          id: generateUniqueId('crd'),
           date: todayStr,
           openingBalanceAr: 500000,
           cashCollectedAr: data.paymentMethod === 'ESPECES' ? data.amountPaidAr : 0,
@@ -3165,6 +3985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isClosed: false,
           closureNotes: 'Session de caisse active.',
         };
+        syncDocToFirestore('cashDays', newRegister);
         return [newRegister, ...prev];
       }
     });
@@ -3209,18 +4030,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!targetPayment || targetPayment.isCancelled) return;
 
     setPayments((prev) =>
-      prev.map((p) =>
-        p.id === paymentId
-          ? {
-              ...p,
-              isCancelled: true,
-              cancelReason: reason,
-              cancelledBy: currentUser.name,
-              cancelledAt: new Date().toISOString(),
-              notes: `${p.notes || ''} [ANNULÉ par ${currentUser.name}: ${reason}]`.trim(),
-            }
-          : p
-      )
+      prev.map((p) => {
+        if (p.id !== paymentId) return p;
+        const updated: PaymentTransaction = {
+          ...p,
+          isCancelled: true,
+          cancelReason: reason,
+          cancelledBy: currentUser.name,
+          cancelledAt: new Date().toISOString(),
+          notes: `${p.notes || ''} [ANNULÉ par ${currentUser.name}: ${reason}]`.trim(),
+        };
+        syncDocToFirestore('payments', updated);
+        return updated;
+      })
     );
 
     // Update cash register day to reflect the voided transaction
@@ -3228,7 +4050,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((d) => {
         if (d.date !== targetPayment.paymentDate || d.isClosed) return d;
         const amt = targetPayment.amountPaidAr;
-        return {
+        const updatedRegister: CashRegisterDay = {
           ...d,
           cashCollectedAr:
             targetPayment.paymentMethod === 'ESPECES' ? Math.max(0, d.cashCollectedAr - amt) : d.cashCollectedAr,
@@ -3244,6 +4066,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           refundsAr: (d.refundsAr || 0) + amt,
           theoreticalClosingAr: Math.max(0, d.theoreticalClosingAr - amt),
         };
+        syncDocToFirestore('cashDays', updatedRegister);
+        return updatedRegister;
       })
     );
 
@@ -3265,19 +4089,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const discrepancyAr = actualClosingAr - register.theoreticalClosingAr;
 
     setCashRegisterDays((prev) =>
-      prev.map((d) =>
-        d.date === date
-          ? {
-              ...d,
-              actualClosingAr,
-              discrepancyAr,
-              isClosed: true,
-              closedBy: currentUser.name,
-              closedAt: new Date().toISOString(),
-              closureNotes: closureNotes || `Clôture journalière effectuée par ${currentUser.name}. Écart : ${discrepancyAr.toLocaleString()} Ar.`,
-            }
-          : d
-      )
+      prev.map((d) => {
+        if (d.date !== date) return d;
+        const updatedRegister: CashRegisterDay = {
+          ...d,
+          actualClosingAr,
+          discrepancyAr,
+          isClosed: true,
+          closedBy: currentUser.name,
+          closedAt: new Date().toISOString(),
+          closureNotes: closureNotes || `Clôture journalière effectuée par ${currentUser.name}. Écart : ${discrepancyAr.toLocaleString()} Ar.`,
+        };
+        syncDocToFirestore('cashDays', updatedRegister);
+        return updatedRegister;
+      })
     );
 
     logAudit(
@@ -3341,10 +4166,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createHomework = (data: Omit<HomeworkAssignment, 'id' | 'publishedAt'>) => {
     const newHw: HomeworkAssignment = {
       ...data,
-      id: `hw-${Date.now()}`,
+      id: generateUniqueId('hw'),
       publishedAt: new Date().toISOString(),
     };
     setHomework((prev) => [newHw, ...prev]);
+    syncDocToFirestore('homework', newHw);
 
     // Notify group students
     const groupStudents = users.filter((u) => u.groupId === data.groupId);
@@ -3412,9 +4238,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const newSub: HomeworkSubmission = {
-      id: `sub-${currentUser.id}-${homeworkId}-${Date.now()}`,
+      id: generateUniqueId(`sub-${currentUser.id}-${homeworkId}`),
       homeworkId,
       studentId: currentUser.id,
+      studentUid: currentUser.uid || currentUser.id,
       studentName: currentUser.name,
       submittedAt: new Date().toISOString(),
       isLate,
@@ -3431,6 +4258,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const filtered = prev.filter((s) => !(s.homeworkId === homeworkId && s.studentId === currentUser.id));
       return [newSub, ...filtered];
     });
+    syncDocToFirestore('submissions', newSub);
 
     logAudit('DEPOT_DEVOIR', `Dépôt du devoir "${hw.title}" par ${currentUser.name} (Fichier: ${fileName}, Taille: ${fileSize}, En retard: ${isLate ? 'Oui' : 'Non'})`);
     return { success: true, submission: newSub };
@@ -3438,11 +4266,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const gradeSubmission = (submissionId: string, grade: number, feedback: string) => {
     setSubmissions((prev) =>
-      prev.map((s) =>
-        s.id === submissionId
-          ? { ...s, grade, teacherFeedback: feedback, isGraded: true }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id !== submissionId) return s;
+        const updated = { ...s, grade, teacherFeedback: feedback, isGraded: true };
+        syncDocToFirestore('submissions', updated);
+        return updated;
+      })
     );
 
     const sub = submissions.find((s) => s.id === submissionId);
@@ -3488,17 +4317,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newRes: LearningResource = {
       ...data,
-      id: `res-${Date.now()}`,
+      id: generateUniqueId('res'),
       publishedAt: new Date().toISOString(),
       academicYear: data.academicYear || selectedAcademicYear,
     };
     setLearningResources((prev) => [newRes, ...prev]);
+    syncDocToFirestore('learningResources', newRes);
     logAudit('AJOUT_RESSOURCE', `Support pédagogique ajouté par ${currentUser.name} : "${data.title}" (${data.fileName})`);
     return { success: true, resource: newRes };
   };
 
   const deleteLearningResource = (id: string) => {
+    deletedDocIdsRef.current.add(id);
     setLearningResources((prev) => prev.filter((r) => r.id !== id));
+    removeDocFromFirestore('learningResources', id);
     logAudit('SUPPRESSION_RESSOURCE', `Support pédagogique supprimé ${id}`);
   };
 
@@ -3508,7 +4340,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((r) => {
         if ((!targetYear || r.academicYear === targetYear) && !r.isArchived) {
           archivedCount++;
-          return { ...r, isArchived: true };
+          const updated = { ...r, isArchived: true };
+          syncDocToFirestore('learningResources', updated);
+          return updated;
         }
         return r;
       })
@@ -3521,21 +4355,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addCustomRole = (data: Omit<CustomRoleDefinition, 'id' | 'createdAt'>): CustomRoleDefinition => {
     const created: CustomRoleDefinition = {
       ...data,
-      id: `crole-${Date.now()}`,
+      id: generateUniqueId('crole'),
       createdAt: new Date().toISOString(),
     };
     setCustomRoles((prev) => [...prev, created]);
+    syncDocToFirestore('customRoles', created);
     logAudit('CREATION_ROLE_PERSONNALISE', `Création du rôle personnalisé "${created.label}" (${created.code})`);
     return created;
   };
 
   const updateCustomRole = (id: string, updates: Partial<CustomRoleDefinition>) => {
-    setCustomRoles((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+    setCustomRoles((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const updated = { ...r, ...updates };
+        syncDocToFirestore('customRoles', updated);
+        return updated;
+      })
+    );
     logAudit('MODIFICATION_ROLE_PERSONNALISE', `Mise à jour du rôle personnalisé ${id}`);
   };
 
   const deleteCustomRole = (id: string) => {
+    deletedDocIdsRef.current.add(id);
     setCustomRoles((prev) => prev.filter((r) => r.id !== id));
+    removeDocFromFirestore('customRoles', id);
     logAudit('SUPPRESSION_ROLE_PERSONNALISE', `Suppression du rôle personnalisé ${id}`);
   };
 
@@ -3546,8 +4390,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): ProfileChangeRequest => {
     const student = users.find((u) => u.id === studentId);
     const req: ProfileChangeRequest = {
-      id: `pcreq-${Date.now()}`,
+      id: generateUniqueId('pcreq'),
       studentId,
+      studentUid: student?.uid || studentId,
       studentName: student?.name || 'Étudiant',
       matricule: student?.matricule || 'N/A',
       requestedAt: new Date().toISOString(),
@@ -3556,6 +4401,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reason,
     };
     setProfileChangeRequests((prev) => [req, ...prev]);
+    syncDocToFirestore('profileChangeRequests', req);
     logAudit(
       'DEMANDE_RECTIFICATION_ETAT_CIVIL',
       `Demande de validation administrative déposée par ${req.studentName} (${req.matricule}) : ${changes.map((c) => `${c.label}: ${c.oldValue} -> ${c.newValue}`).join(', ')}`
@@ -3572,17 +4418,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     updateUser(req.studentId, updates);
     setProfileChangeRequests((prev) =>
-      prev.map((r) =>
-        r.id === requestId
-          ? {
-              ...r,
-              status: 'APPROVED',
-              reviewedBy: currentUser.name,
-              reviewedAt: new Date().toISOString(),
-              reviewComment: comment || 'Validé par le service Scolarité.',
-            }
-          : r
-      )
+      prev.map((r) => {
+        if (r.id !== requestId) return r;
+        const updated: ProfileChangeRequest = {
+          ...r,
+          status: 'APPROVED',
+          reviewedBy: currentUser.name,
+          reviewedAt: new Date().toISOString(),
+          reviewComment: comment || 'Validé par le service Scolarité.',
+        };
+        syncDocToFirestore('profileChangeRequests', updated);
+        return updated;
+      })
     );
     triggerNotification({
       recipientId: req.studentId,
@@ -3598,17 +4445,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const req = profileChangeRequests.find((r) => r.id === requestId);
     if (!req) return;
     setProfileChangeRequests((prev) =>
-      prev.map((r) =>
-        r.id === requestId
-          ? {
-              ...r,
-              status: 'REJECTED',
-              reviewedBy: currentUser.name,
-              reviewedAt: new Date().toISOString(),
-              reviewComment: comment || 'Justificatif officiel requis.',
-            }
-          : r
-      )
+      prev.map((r) => {
+        if (r.id !== requestId) return r;
+        const updated: ProfileChangeRequest = {
+          ...r,
+          status: 'REJECTED',
+          reviewedBy: currentUser.name,
+          reviewedAt: new Date().toISOString(),
+          reviewComment: comment || 'Justificatif officiel requis.',
+        };
+        syncDocToFirestore('profileChangeRequests', updated);
+        return updated;
+      })
     );
     triggerNotification({
       recipientId: req.studentId,
@@ -3630,13 +4478,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== studentId) return u;
-        return {
+        const updated: User = {
           ...u,
           cardToken: newToken,
           cardIssueNumber: nextIssue,
-          cardIssuedAt: new Date().toISOString().split('T')[0],
+          cardIssuedAt: getAntananarivoDateStr(),
           revokedCardTokens: oldToken ? [...(u.revokedCardTokens || []), oldToken] : u.revokedCardTokens || [],
         };
+        syncDocToFirestore('users', updated);
+        return updated;
       })
     );
 
@@ -3694,7 +4544,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (u.id !== parentId) return u;
         const currentLinks = u.linkedStudentIds || [];
         if (currentLinks.includes(studentId)) return u;
-        return { ...u, linkedStudentIds: [...currentLinks, studentId] };
+        const updated = { ...u, linkedStudentIds: [...currentLinks, studentId] };
+        syncDocToFirestore('users', updated);
+        return updated;
       })
     );
     logAudit('RATTACHEMENT_PARENT_ETUDIANT', `Association du compte parent ${parentId} à l'étudiant ${studentId}`);
@@ -3704,10 +4556,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== parentId) return u;
-        return {
+        const updated = {
           ...u,
           linkedStudentIds: (u.linkedStudentIds || []).filter((id) => id !== studentId),
         };
+        syncDocToFirestore('users', updated);
+        return updated;
       })
     );
     logAudit('REVOCATION_LIEN_PARENT_ETUDIANT', `Révocation de l'accès du parent ${parentId} au dossier de l'étudiant ${studentId}`);
@@ -3880,9 +4734,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         d.semester === recordData.semester
     );
 
+    const delibStudent = users.find((u) => u.id === recordData.studentId);
     const record: DeliberationRecord = {
       ...recordData,
       id: existing?.id || recordData.id || `delib-${recordData.academicYear}-${recordData.semester}-${recordData.studentId}`,
+      studentUid: delibStudent?.uid || recordData.studentId,
       deliberatedBy: currentUser.name,
       deliberatedAt: new Date().toISOString(),
     };
@@ -3958,6 +4814,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       internalMessages,
       groupPosts,
       notifications,
+      customRoles,
+      profileChangeRequests,
       auditLogs,
     };
     const snapshot = buildSystemBackupSnapshot(collectionsMap, currentUser.name, label);
@@ -3976,9 +4834,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const restoreSystemBackup = (snapshot: SystemBackupSnapshot): { success: boolean; message: string } => {
-    if (!snapshot || !snapshot.payload) {
-      return { success: false, message: 'Fichier de sauvegarde invalide ou incomplet.' };
+    // P20 & P21: Validate checksum and schema/roles before restoring
+    const verification = verifyBackupSnapshotIntegrity(snapshot);
+    if (!verification.valid) {
+      return { success: false, message: verification.error || 'Fichier de sauvegarde invalide ou corrompu.' };
     }
+
     // Always create an automatic safety snapshot before restoring
     createSystemBackup(`Sauvegarde auto pré-restauration (${new Date().toLocaleTimeString('fr-FR')})`);
 
@@ -4004,6 +4865,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (Array.isArray(p.homework)) setHomework(p.homework as HomeworkAssignment[]);
     if (Array.isArray(p.submissions)) setSubmissions(p.submissions as HomeworkSubmission[]);
     if (Array.isArray(p.learningResources)) setLearningResources(p.learningResources as LearningResource[]);
+    // P22: Also restore internalMessages, groupPosts, notifications, customRoles, profileChangeRequests, auditLogs
+    if (Array.isArray(p.internalMessages)) setInternalMessages(p.internalMessages as InternalMessage[]);
+    if (Array.isArray(p.groupPosts)) setGroupPosts(p.groupPosts as GroupPost[]);
+    if (Array.isArray(p.notifications)) setNotifications(p.notifications as AppNotification[]);
+    if (Array.isArray(p.customRoles)) setCustomRoles(p.customRoles as CustomRoleDefinition[]);
+    if (Array.isArray(p.profileChangeRequests)) setProfileChangeRequests(p.profileChangeRequests as ProfileChangeRequest[]);
+    if (Array.isArray(p.auditLogs)) setAuditLogs(p.auditLogs as AuditLog[]);
 
     logAudit('RESTAURATION_SAUVEGARDE_SIS', `Restauration complète depuis "${snapshot.label}" (Checksum: ${snapshot.checksum})`);
     return {
@@ -4014,26 +4882,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const syncAllToCloudFirestore = async (): Promise<{ success: boolean; totalSynced: number; message: string }> => {
     setCloudSyncStatus('SYNCING');
-    // Create a local backup before cloud sync
     createSystemBackup('Sauvegarde automatique avant synchronisation Cloud Firestore');
 
-    if (!auth.currentUser) {
-      try {
-        await signInAnonymously(auth);
-      } catch {
-        // If anonymous auth is disabled, require Google Sign-In
+    let hasSession = await ensureFirebaseAuthSession(currentUser);
+    if (!hasSession) {
+      const googleRes = await loginWithGoogleFirebase();
+      if (!googleRes.success) {
+        setCloudSyncStatus('ERROR');
+        return {
+          success: false,
+          totalSynced: 0,
+          message: googleRes.message || 'Veuillez vous connecter avec votre compte Google (Firebase Auth) pour synchroniser Cloud Firestore.',
+        };
+      }
+      hasSession = await ensureFirebaseAuthSession(currentUser);
+      if (!hasSession) {
+        setCloudSyncStatus('ERROR');
+        return {
+          success: false,
+          totalSynced: 0,
+          message: 'Session Firebase Auth requise pour écrire dans Cloud Firestore.',
+        };
       }
     }
 
-    if (!auth.currentUser) {
-      setCloudSyncStatus('ERROR');
-      return {
-        success: false,
-        totalSynced: 0,
-        message: 'Veuillez vous connecter avec votre compte Google (Firebase Auth) pour écrire dans Cloud Firestore.',
-      };
-    }
+    // Flush any queued offline mutations and pull remote changes first so we never overwrite newer remote records
+    await flushPendingSyncOutbox();
+    await pullFromCloudFirestore();
 
+    // P14: Symmetric push of all 27 collections
     const batches = await Promise.all([
       syncCollectionBatch('users', users),
       syncCollectionBatch('academicYears', academicYears),
@@ -4049,18 +4926,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncCollectionBatch('grades', grades),
       syncCollectionBatch('deliberations', deliberations),
       syncCollectionBatch('sessions', sessions),
+      syncCollectionBatch('qrSessions', qrSessions),
       syncCollectionBatch('fees', fees),
       syncCollectionBatch('payments', payments),
       syncCollectionBatch('cashDays', cashRegisterDays),
+      syncCollectionBatch('homework', homework),
+      syncCollectionBatch('submissions', submissions),
+      syncCollectionBatch('learningResources', learningResources),
+      syncCollectionBatch('internalMessages', internalMessages),
+      syncCollectionBatch('groupPosts', groupPosts),
+      syncCollectionBatch('notifications', notifications),
+      syncCollectionBatch('customRoles', customRoles),
+      syncCollectionBatch('profileChangeRequests', profileChangeRequests),
       syncCollectionBatch('auditLogs', auditLogs.slice(0, 100)),
+      syncCollectionBatch('chatMessages', chatMessages),
     ]);
 
-    const firstError = batches.find((b) => b.error)?.error;
+    const errors = batches.filter((b) => b.error).map((b) => b.error);
     const totalSynced = batches.reduce((acc, b) => acc + b.syncedCount, 0);
 
-    if (firstError && totalSynced === 0) {
+    // P17: Report partial or total errors transparently
+    if (errors.length > 0 && totalSynced === 0) {
       setCloudSyncStatus('ERROR');
-      return { success: false, totalSynced: 0, message: `Erreur Firestore : ${firstError}` };
+      return { success: false, totalSynced: 0, message: `Erreur Firestore : ${errors[0]}` };
     }
 
     setLastSyncDate(new Date());
@@ -4069,12 +4957,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {
       success: true,
       totalSynced,
-      message: `${totalSynced} documents synchronisés et sécurisés dans Cloud Firestore.`,
+      message:
+        errors.length > 0
+          ? `${totalSynced} documents synchronisés (${errors.length} collection(s) avec avertissement : ${errors[0]}).`
+          : `${totalSynced} documents synchronisés et sécurisés dans Cloud Firestore.`,
     };
   };
 
   const pullFromCloudFirestore = async (): Promise<{ success: boolean; totalPulled: number; message: string }> => {
-    if (!auth.currentUser) {
+    const hasSession = await ensureFirebaseAuthSession(currentUser);
+    if (!hasSession) {
       return {
         success: false,
         totalPulled: 0,
@@ -4084,72 +4976,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCloudSyncStatus('SYNCING');
     let totalPulled = 0;
 
-    const cloudUsers = await fetchCollectionFromFirestore<User>('users');
-    if (cloudUsers && cloudUsers.length > 0) {
-      setUsers(cloudUsers);
-      totalPulled += cloudUsers.length;
-    }
-    const cloudYears = await fetchCollectionFromFirestore<AcademicYear>('academicYears');
-    if (cloudYears && cloudYears.length > 0) {
-      setAcademicYears(cloudYears);
-      totalPulled += cloudYears.length;
-    }
-    const cloudParcours = await fetchCollectionFromFirestore<Parcours>('parcours');
-    if (cloudParcours && cloudParcours.length > 0) {
-      setParcours(cloudParcours);
-      totalPulled += cloudParcours.length;
-    }
-    const cloudRules = await fetchCollectionFromFirestore<AcademicValidationRules>('academicRules');
-    if (cloudRules && cloudRules.length > 0) {
-      setAcademicRules(cloudRules);
-      totalPulled += cloudRules.length;
-    }
-    const cloudUes = await fetchCollectionFromFirestore<UniteEnseignement>('ues');
-    if (cloudUes && cloudUes.length > 0) {
-      setUes(cloudUes);
-      totalPulled += cloudUes.length;
-    }
-    const cloudEcs = await fetchCollectionFromFirestore<ElementConstitutif>('ecs');
-    if (cloudEcs && cloudEcs.length > 0) {
-      setEcs(cloudEcs);
-      totalPulled += cloudEcs.length;
-    }
-    const cloudGrades = await fetchCollectionFromFirestore<EcGrade>('grades');
-    if (cloudGrades && cloudGrades.length > 0) {
-      setGrades(cloudGrades);
-      totalPulled += cloudGrades.length;
-    }
-    const cloudDelibs = await fetchCollectionFromFirestore<DeliberationRecord>('deliberations');
-    if (cloudDelibs && cloudDelibs.length > 0) {
-      setDeliberations(cloudDelibs);
-      totalPulled += cloudDelibs.length;
-    }
-    const cloudPayments = await fetchCollectionFromFirestore<PaymentTransaction>('payments');
-    if (cloudPayments && cloudPayments.length > 0) {
-      setPayments(cloudPayments);
-      totalPulled += cloudPayments.length;
-    }
+    const remoteTombstones = await pullRemoteTombstones();
+    remoteTombstones.forEach((id) => deletedDocIdsRef.current.add(id));
+
+    // P14 & P15: Pull all 28 collections and merge by id without wiping local-only records or resurrecting tombstones
+    const pullAndMerge = async <T extends { id: string }>(
+      colName: string,
+      setter: React.Dispatch<React.SetStateAction<T[]>>
+    ) => {
+      const cloudRes = await fetchCollectionFromFirestore<T>(colName);
+      if (cloudRes.data && cloudRes.data.length > 0) {
+        const items = cloudRes.data;
+        setter((prev) => mergeCollectionById(prev, items, deletedDocIdsRef.current, colName));
+        totalPulled += items.length;
+      }
+    };
+
+    await Promise.all([
+      pullAndMerge<User>('users', setUsers),
+      pullAndMerge<AcademicYear>('academicYears', setAcademicYears),
+      pullAndMerge<Filiere>('filieres', setFilieres),
+      pullAndMerge<Parcours>('parcours', setParcours),
+      pullAndMerge<AcademicValidationRules>('academicRules', setAcademicRules),
+      pullAndMerge<StudentGroup>('groups', setGroups),
+      pullAndMerge<Room>('rooms', setRooms),
+      pullAndMerge<Course>('courses', setCourses),
+      pullAndMerge<UniteEnseignement>('ues', setUes),
+      pullAndMerge<ElementConstitutif>('ecs', setEcs),
+      pullAndMerge<StudentInscription>('inscriptions', setInscriptions),
+      pullAndMerge<EcGrade>('grades', setGrades),
+      pullAndMerge<DeliberationRecord>('deliberations', setDeliberations),
+      pullAndMerge<TimetableSession>('sessions', setSessions),
+      pullAndMerge<QrAttendanceSession>('qrSessions', setQrSessions),
+      pullAndMerge<StudentFee>('fees', setFees),
+      pullAndMerge<PaymentTransaction>('payments', setPayments),
+      pullAndMerge<CashRegisterDay>('cashDays', setCashRegisterDays),
+      pullAndMerge<HomeworkAssignment>('homework', setHomework),
+      pullAndMerge<HomeworkSubmission>('submissions', setSubmissions),
+      pullAndMerge<LearningResource>('learningResources', setLearningResources),
+      pullAndMerge<InternalMessage>('internalMessages', setInternalMessages),
+      pullAndMerge<GroupPost>('groupPosts', setGroupPosts),
+      pullAndMerge<AppNotification>('notifications', setNotifications),
+      pullAndMerge<CustomRoleDefinition>('customRoles', setCustomRoles),
+      pullAndMerge<ProfileChangeRequest>('profileChangeRequests', setProfileChangeRequests),
+      pullAndMerge<AuditLog>('auditLogs', setAuditLogs),
+      pullAndMerge<ChatMessage>('chatMessages', setChatMessages),
+    ]);
 
     setLastSyncDate(new Date());
     setCloudSyncStatus('SYNCED');
-    logAudit('CHARGEMENT_CLOUD_FIRESTORE', `Récupération de ${totalPulled} documents depuis Cloud Firestore.`);
+    logAudit('CHARGEMENT_CLOUD_FIRESTORE', `Récupération et fusion de ${totalPulled} documents depuis Cloud Firestore.`);
     return {
       success: true,
       totalPulled,
       message: totalPulled > 0
-        ? `${totalPulled} documents chargés depuis Cloud Firestore.`
+        ? `${totalPulled} documents chargés et fusionnés en temps réel depuis Cloud Firestore.`
         : 'Base Cloud Firestore connectée (aucune donnée distante supplémentaire à fusionner).',
     };
   };
 
   const resetToDefaultData = () => {
     createSystemBackup('Sauvegarde automatique avant réinitialisation');
+    deletedDocIdsRef.current.clear();
+    clearDeletedTombstones();
     setUsers(initialUsers);
     setCourses(initialCourses);
     setRooms(initialRooms);
     setGroups(initialGroups);
     setFilieres(initialFilieres);
     setParcours(initialParcours);
+    setAcademicYears(initialAcademicYears);
+    setSelectedAcademicYear('2026-2027');
     setAcademicRules(initialAcademicRules);
     setDeliberations(initialDeliberations);
     setSessions(initialSessions);
@@ -4168,7 +5065,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setHomework(initialHomework);
     setSubmissions(initialSubmissions);
     setLearningResources(initialLearningResources);
-    setCurrentUserId('user-admin');
+    setCustomRoles([]);
+    setProfileChangeRequests([]);
+    // P18: Reset auth session cleanly
+    logout();
   };
 
   return (
@@ -4177,6 +5077,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         setCurrentUser,
         switchUserRole,
+        isRealAdminSession,
         isAuthenticated,
         login,
         logout,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Home,
@@ -13,17 +13,15 @@ import {
   Users,
   Settings,
   CalendarDays,
-  ShieldCheck,
   ChevronLeft,
   ChevronRight,
   LogOut,
-  ChevronDown,
-  Sparkles,
-  Check,
-  Plus,
   Database,
   Clock,
   X,
+  FileSpreadsheet,
+  History,
+  UserCheck,
 } from 'lucide-react';
 import { canRoleAccessTab, getRoleLabel } from '../utils/rbacPermissions';
 
@@ -36,6 +34,21 @@ interface SidebarProps {
   onCloseMobile?: () => void;
   onOpenReceptionTests?: () => void;
   onOpenUserProfile?: () => void;
+}
+
+export interface NavItemConfig {
+  id: string;
+  label: string;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string | number;
+}
+
+export interface NavSectionConfig {
+  id: string;
+  label: string;
+  description: string;
+  items: NavItemConfig[];
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -53,21 +66,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
     academicYears,
     selectedAcademicYear,
     appSettings,
-    notifications,
     customRoles,
   } = useApp();
 
-  const isStaffOrAdmin = ['ADMIN', 'ADMIN_STAFF', 'SCOLARITE', 'SCHEDULER', 'ACADEMIC_HEAD'].includes(currentUser?.role || '');
-
-  const unreadCount = notifications.filter(
-    (n) => (n.recipientId === currentUser?.id || n.recipientRole === currentUser?.role || !n.recipientId) && !n.isReadWeb
-  ).length;
+  const isStaffOrAdmin = ['ADMIN', 'ADMIN_STAFF', 'SCOLARITE', 'SCHEDULER', 'ACADEMIC_HEAD'].includes(
+    currentUser?.role || ''
+  );
 
   // Filter menu items by role permissions AND appSettings.visibleMenuItems
   const isVisible = (tabId: string) => {
     if (!canRoleAccessTab(currentUser?.role, tabId, currentUser?.customPermissions, customRoles)) return false;
     if (!appSettings.visibleMenuItems || appSettings.visibleMenuItems.length === 0) return true;
-    if (tabId === 'BACKUP_SECURITY' || tabId === 'PARENT_PORTAL' || tabId === 'VOLUMES') return true;
+    if (
+      tabId === 'BACKUP_SECURITY' ||
+      tabId === 'PARENT_PORTAL' ||
+      tabId === 'VOLUMES' ||
+      tabId === 'DATA_MANAGEMENT' ||
+      tabId === 'AUDIT' ||
+      tabId === 'EXPORT_STUDENTS'
+    ) {
+      return true;
+    }
     return appSettings.visibleMenuItems.includes(tabId);
   };
 
@@ -78,9 +97,188 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const currentYearObj = academicYears.find((y) => y.code === selectedAcademicYear) || academicYears[0];
   const isVerticalDesktop = appSettings.menuLayout === 'vertical';
-
-  // On mobile (< lg), always show full labels (never collapsed to icons) when drawer is open
   const effectiveCollapsed = isCollapsed && !isMobileOpen;
+
+  // 7-Section Job-Oriented Navigation Architecture (Refonte UX/UI — Section 2, Page 3)
+  const navSections: NavSectionConfig[] = [
+    {
+      id: 'DASHBOARD',
+      label: '1. Tableau de bord',
+      description: "Vue d'ensemble, tâches à traiter, alertes, raccourcis",
+      items: [
+        {
+          id: 'HOME',
+          label: 'Tableau de bord',
+          title: "Vue d'ensemble, tâches du jour et raccourcis adaptés à votre rôle",
+          icon: Home,
+        },
+      ],
+    },
+    {
+      id: 'PLANNING_ROOMS',
+      label: '2. Planning & salles',
+      description: 'Emplois du temps, salles, disponibilités, conflits',
+      items: [
+        {
+          id: 'TIMETABLE',
+          label: currentUser?.role === 'STUDENT' ? 'Mon emploi du temps' : 'Emplois du temps',
+          title: 'Planification hebdomadaire, détection de conflits et export PDF/iCal',
+          icon: Calendar,
+        },
+        {
+          id: 'ROOMS',
+          label: 'Salles & disponibilités',
+          title: 'Occupation des salles, équipements et créneaux libres',
+          icon: Layers,
+        },
+        {
+          id: 'VOLUMES',
+          label: 'Volumes horaires',
+          title: 'Suivi des heures prévues vs réalisées et validation des séances',
+          icon: Clock,
+        },
+      ],
+    },
+    {
+      id: 'ACADEMIC_MGMT',
+      label: '3. Gestion académique',
+      description: 'Étudiants, enseignants, filières, groupes, matières',
+      items: [
+        {
+          id: 'STUDENTS',
+          label: 'Étudiants',
+          title: 'Répertoire des étudiants, dossiers académiques et suivi par groupe',
+          icon: GraduationCap,
+        },
+        {
+          id: 'TEACHERS',
+          label: currentUser?.role === 'TEACHER' ? 'Ma fiche enseignant' : 'Enseignants',
+          title: 'Corps enseignant, disponibilités hebdomadaires et charges horaires',
+          icon: UserCheck,
+        },
+        {
+          id: 'LMD_MAQUETTES',
+          label: 'Filières & maquettes LMD',
+          title: 'Parcours, Unités d’Enseignement (UE), Éléments Constitutifs (EC) et crédits',
+          icon: BookOpen,
+        },
+        {
+          id: 'DATA_MANAGEMENT',
+          label: 'Groupes, cours & référentiel',
+          title: 'Création et structuration des groupes, matières et salles',
+          icon: Layers,
+        },
+      ],
+    },
+    {
+      id: 'SCOLARITE',
+      label: '4. Scolarité',
+      description: 'Inscriptions, présences, notes, évaluations, documents',
+      items: [
+        {
+          id: 'QR_ATTENDANCE',
+          label: 'Présences & appel QR',
+          title: 'Pointage de présence par QR code dynamique, justificatifs et alertes d’assiduité',
+          icon: QrCode,
+        },
+        {
+          id: 'GRADES',
+          label: 'Notes & évaluations',
+          title: 'Saisie des notes type tableur, délibérations, PV jury et relevés PDF',
+          icon: Award,
+        },
+        {
+          id: 'HOMEWORK_RESOURCES',
+          label: 'Devoirs & documents',
+          title: 'Supports de cours, devoirs à rendre et ressources pédagogiques',
+          icon: BookOpen,
+        },
+        {
+          id: 'EXPORT_STUDENTS',
+          label: 'Listes & exports officiels',
+          title: 'Export sélectif des listes d’étudiants et fiches d’émargement',
+          icon: FileSpreadsheet,
+        },
+      ],
+    },
+    {
+      id: 'FINANCES',
+      label: '5. Finances',
+      description: 'Paiements, impayés, reçus, états financiers',
+      items: [
+        {
+          id: 'FINANCIAL',
+          label: 'Écolages, caisse & reçus',
+          title: 'Suivi des paiements en Ariary, Mobile Money, reçus PDF et relances impayés',
+          icon: DollarSign,
+        },
+      ],
+    },
+    {
+      id: 'COMMUNICATION',
+      label: '6. Communication',
+      description: 'Annonces, messagerie, notifications, rappels',
+      items: [
+        {
+          id: 'COMMUNICATION',
+          label: 'Annonces & messagerie',
+          title: 'Annonces ciblées avec accusé de lecture et messagerie interne',
+          icon: MessageSquare,
+        },
+        {
+          id: 'PARENT_PORTAL',
+          label: 'Portail Parents / Tuteurs',
+          title: 'Suivi familial de l’assiduité, des résultats et des échéances',
+          icon: Users,
+        },
+      ],
+    },
+    {
+      id: 'ADMINISTRATION',
+      label: '7. Administration',
+      description: 'Utilisateurs, rôles, paramètres, intégrations, sauvegardes',
+      items: [
+        {
+          id: 'USERS_MANAGEMENT',
+          label: 'Gestion des personnes & accès',
+          title: 'Fiches individuelles (Étudiants, Enseignants, Personnel), rôles et mots de passe',
+          icon: Users,
+        },
+        {
+          id: 'ACADEMIC_YEARS',
+          label: 'Années universitaires',
+          title: 'Configuration des sessions académiques et bascule annuelle',
+          icon: CalendarDays,
+          badge: academicYears.length,
+        },
+        {
+          id: 'SETTINGS',
+          label: 'Paramètres & configuration',
+          title: 'Général, académique, planning, accès RBAC, notifications, intégrations et sécurité',
+          icon: Settings,
+        },
+        {
+          id: 'BACKUP_SECURITY',
+          label: 'Sauvegardes & Cloud Firestore',
+          title: 'Synchronisation temps réel multi-postes, sauvegardes JSON et vérification RBAC',
+          icon: Database,
+        },
+        {
+          id: 'AUDIT',
+          label: "Journal d'audit",
+          title: 'Historique complet et filtrable des opérations sensibles',
+          icon: History,
+        },
+      ],
+    },
+  ];
+
+  const visibleSections = navSections
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((item) => isVisible(item.id)),
+    }))
+    .filter((sec) => sec.items.length > 0);
 
   return (
     <>
@@ -94,7 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`bg-slate-900 text-white flex flex-col border-r border-slate-800 transition-all duration-300 select-none flex-shrink-0
+        className={`bg-[#17345B] text-white flex flex-col border-r border-[#214575] transition-all duration-300 select-none flex-shrink-0
           fixed inset-y-0 left-0 z-50 h-dvh w-72 max-w-[85vw]
           ${isMobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
           ${
@@ -105,17 +303,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         `}
       >
         {/* 1. Header of Sidebar */}
-        <div className="p-3.5 border-b border-slate-800/80 flex items-center justify-between gap-2">
+        <div className="p-3.5 border-b border-white/10 flex items-center justify-between gap-2">
           {!effectiveCollapsed && (
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">
-              Menu Navigation
-            </span>
+            <div className="px-1">
+              <span className="text-[11px] font-black uppercase tracking-wider text-blue-200 block">
+                Navigation Métier
+              </span>
+              <span className="text-[10px] text-slate-300 block">
+                EBM Institute • Portail Intégré
+              </span>
+            </div>
           )}
           {/* Mobile Close button */}
           <button
             type="button"
             onClick={onCloseMobile}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-auto lg:hidden cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors ml-auto lg:hidden cursor-pointer"
             title="Fermer le menu"
           >
             <X className="w-5 h-5" />
@@ -125,7 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="hidden lg:inline-flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-auto cursor-pointer"
+            className="hidden lg:inline-flex p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors ml-auto cursor-pointer"
             title={effectiveCollapsed ? 'Déplier le menu' : 'Replier le menu'}
           >
             {effectiveCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -134,13 +337,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* 2. Centralized Academic Year Indicator */}
         {!effectiveCollapsed ? (
-          <div className="px-3 pt-2.5 pb-2 border-b border-slate-800/60">
-            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-800/60 border border-slate-800 text-xs">
+          <div className="px-3 pt-2.5 pb-2 border-b border-white/10">
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#102542] border border-white/10 text-xs">
               <div className="flex items-center gap-2 truncate">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#1F8A83] flex-shrink-0 ring-2 ring-[#1F8A83]/30" />
                 <div className="truncate">
-                  <span className="text-[9px] uppercase font-bold text-slate-400 block leading-none">
-                    Session Active
+                  <span className="text-[9px] uppercase font-bold text-slate-300 block leading-none">
+                    Année universitaire
                   </span>
                   <span className="font-bold text-white truncate block mt-0.5">
                     {currentYearObj?.code || selectedAcademicYear}
@@ -151,434 +354,123 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectAndClose('ACADEMIC_YEARS')}
-                  className="px-2 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-[10px] font-bold transition-colors cursor-pointer"
-                  title="Administration > Paramètres académiques"
+                  className="px-2.5 py-1 rounded-lg bg-[#2F6FED]/25 hover:bg-[#2F6FED] text-blue-100 hover:text-white text-[10px] font-bold transition-colors cursor-pointer"
+                  title="Administration > Années universitaires"
                 >
-                  Configurer
+                  Gérer
                 </button>
               )}
             </div>
           </div>
         ) : (
-          <div className="p-2 border-b border-slate-800 flex justify-center">
+          <div className="p-2 border-b border-white/10 flex justify-center">
             <button
               type="button"
               onClick={() => isStaffOrAdmin && handleSelectAndClose('ACADEMIC_YEARS')}
-              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-blue-400"
-              title={`Session active: ${selectedAcademicYear}`}
+              className="p-2 bg-[#102542] hover:bg-[#2F6FED] rounded-xl text-blue-200 hover:text-white transition-colors"
+              title={`Année universitaire active : ${selectedAcademicYear}`}
             >
               <CalendarDays className="w-5 h-5" />
             </button>
           </div>
         )}
 
-        {/* 3. Navigation Links List */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4 no-scrollbar text-xs">
-          {/* SECTION: VUE GÉNÉRALE */}
-          <div className="space-y-1">
-            {!effectiveCollapsed && (
-              <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Général
-              </span>
-            )}
-            {isVisible('HOME') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('HOME')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'HOME'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Accueil & Tableau de bord"
-              >
-                <Home className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Accueil</span>}
-              </button>
-            )}
-          </div>
-
-          {/* SECTION: PÉDAGOGIE & COURS */}
-          <div className="space-y-1">
-            {!effectiveCollapsed && (
-              <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Pédagogie & Cours
-              </span>
-            )}
-
-            {isVisible('TIMETABLE') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('TIMETABLE')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'TIMETABLE'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Emploi du Temps hebdomadaire"
-              >
-                <Calendar className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Emploi du Temps</span>}
-              </button>
-            )}
-
-            {isVisible('ROOMS') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('ROOMS')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'ROOMS'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Salles de cours & Équipements"
-              >
-                <Layers className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Salles & Équipements</span>}
-              </button>
-            )}
-
-            {isVisible('LMD_MAQUETTES') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('LMD_MAQUETTES')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'LMD_MAQUETTES'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Maquettes LMD, UEs et ECs"
-              >
-                <GraduationCap className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Maquettes LMD</span>}
-              </button>
-            )}
-
-            {isVisible('VOLUMES') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('VOLUMES')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'VOLUMES'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Suivi des Volumes Horaires & Réalisations"
-              >
-                <Clock className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Suivi Volumes Horaires</span>}
-              </button>
-            )}
-
-            {isVisible('GRADES') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('GRADES')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'GRADES'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Notes, Évaluations, Relevés et Délibérations"
-              >
-                <Award className="w-4 h-4 text-rose-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Notes & Évaluations</span>}
-              </button>
-            )}
-
-            {isVisible('HOMEWORK_RESOURCES') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('HOMEWORK_RESOURCES')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'HOMEWORK_RESOURCES'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Devoirs, exercices & supports de cours"
-              >
-                <BookOpen className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Devoirs & Cours</span>}
-              </button>
-            )}
-            {isVisible('QR_ATTENDANCE') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('QR_ATTENDANCE')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'QR_ATTENDANCE'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Pointage de présence par QR Code dynamique"
-              >
-                <QrCode className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Présence & Pointage QR</span>}
-              </button>
-            )}
-          </div>
-
-          {/* SECTION: PÔLE FINANCES & CAISSE (Séparé de Communication) */}
-          {isVisible('FINANCIAL') && (
-            <div className="space-y-1">
+        {/* 3. 7-Section Navigation List */}
+        <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-4 no-scrollbar text-xs">
+          {visibleSections.map((section) => (
+            <div key={section.id} className="space-y-1">
               {!effectiveCollapsed && (
-                <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400/90 block">
-                  Pôle Finances & Caisse
-                </span>
+                <div className="px-2.5 pb-0.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-200/80 block">
+                    {section.label}
+                  </span>
+                </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('FINANCIAL')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'FINANCIAL'
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Écolages, caisse en Ariary et reçus"
-              >
-                <DollarSign className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Finances & Caisse (Ar)</span>}
-              </button>
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectAndClose(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-[#2F6FED] text-white shadow-md ring-1 ring-blue-300/40'
+                        : 'text-slate-200 hover:text-white hover:bg-white/10'
+                    }`}
+                    title={item.title}
+                  >
+                    <Icon
+                      className={`w-4 h-4 flex-shrink-0 ${
+                        isActive ? 'text-white' : 'text-blue-200'
+                      }`}
+                    />
+                    {!effectiveCollapsed && (
+                      <div className="flex items-center justify-between w-full min-w-0">
+                        <span className="truncate">{item.label}</span>
+                        {item.badge !== undefined && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : 'bg-[#102542] text-blue-200'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          )}
+          ))}
+        </nav>
 
-          {/* SECTION: PÔLE COMMUNICATION (Séparé de Finances & Caisse) */}
-          {isVisible('COMMUNICATION') && (
-            <div className="space-y-1">
-              {!effectiveCollapsed && (
-                <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-purple-400/90 block">
-                  Pôle Communication
-                </span>
-              )}
-
+        {/* 4. Footer User Profile Card (Clickable to open Fiche Utilisateur) */}
+        {currentUser && (
+          <div className="p-3 border-t border-white/10 bg-[#102542]">
+            <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => handleSelectAndClose('COMMUNICATION')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'COMMUNICATION'
-                    ? 'bg-purple-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Mur de la promotion et messagerie"
+                onClick={() => {
+                  if (onCloseMobile) onCloseMobile();
+                  if (onOpenUserProfile) onOpenUserProfile();
+                }}
+                className="flex items-center gap-2.5 min-w-0 flex-1 text-left p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                title="Cliquer pour consulter ou modifier votre fiche utilisateur"
               >
-                <MessageSquare className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Mur & Messages</span>}
-              </button>
-            </div>
-          )}
-
-          {/* SECTION: ESPACE PARENTS / TUTEURS */}
-          {isVisible('PARENT_PORTAL') && (
-            <div className="space-y-1">
-              {!effectiveCollapsed && (
-                <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-indigo-400 block">
-                  Espace Famille
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('PARENT_PORTAL')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  currentTab === 'PARENT_PORTAL'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Espace Parents & Tuteurs (Suivi académique, assiduité, finances)"
-              >
-                <Users className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Espace Parents / Tuteurs</span>}
-              </button>
-            </div>
-          )}
-
-          {/* SECTION: ANNUAIRE & SUIVI (ÉTUDIANTS & ENSEIGNANTS) */}
-          {(isVisible('STUDENTS') || isVisible('TEACHERS')) && (
-            <div className="space-y-1">
-              {!effectiveCollapsed && (
-                <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                  Annuaire & Suivi
-                </span>
-              )}
-
-              {isVisible('STUDENTS') && (
-                <button
-                  type="button"
-                  onClick={() => handleSelectAndClose('STUDENTS')}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                    currentTab === 'STUDENTS'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                  }`}
-                  title="Répertoire des Étudiants (Notes, Impayés, Profil)"
-                >
-                  <GraduationCap className="w-4 h-4 text-sky-400 flex-shrink-0" />
-                  {!effectiveCollapsed && <span>Répertoire Étudiants</span>}
-                </button>
-              )}
-
-              {isVisible('TEACHERS') && (
-                <button
-                  type="button"
-                  onClick={() => handleSelectAndClose('TEACHERS')}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                    currentTab === 'TEACHERS'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/90'
-                  }`}
-                  title={
-                    currentUser.role === 'TEACHER'
-                      ? 'Ma Fiche Enseignant & Disponibilités'
-                      : 'Corps Enseignant & Charges Horaires'
-                  }
-                >
-                  <Users className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                  {!effectiveCollapsed && (
-                    <span>
-                      {currentUser.role === 'TEACHER' ? 'Ma Fiche Enseignant' : 'Corps Enseignant'}
-                    </span>
-                  )}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* SECTION: CONFIGURATION & ADMINISTRATION */}
-          <div className="space-y-1">
-            {!effectiveCollapsed && (
-              <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Administration & Paramètres
-              </span>
-            )}
-
-            {isVisible('USERS_MANAGEMENT') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('USERS_MANAGEMENT')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
-                  currentTab === 'USERS_MANAGEMENT'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-indigo-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Administration > Gestion des Utilisateurs, Fiches & Réinitialisation de Mot de Passe"
-              >
-                <Users className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Utilisateurs & Mots de passe</span>}
-              </button>
-            )}
-
-            {isVisible('DATA_MANAGEMENT') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('DATA_MANAGEMENT')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
-                  currentTab === 'DATA_MANAGEMENT'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-indigo-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Administration > Création des Données, Cours, Groupes & Salles"
-              >
-                <Layers className="w-4 h-4 text-teal-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Création Données & Salles</span>}
-              </button>
-            )}
-
-            {isVisible('ACADEMIC_YEARS') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('ACADEMIC_YEARS')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
-                  currentTab === 'ACADEMIC_YEARS'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-indigo-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Administration > Paramètres académiques (Années universitaires)"
-              >
-                <CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <div className="w-9 h-9 rounded-xl bg-[#2F6FED] group-hover:bg-blue-500 text-white flex items-center justify-center font-bold text-xs border border-blue-300/40 flex-shrink-0">
+                  {currentUser.name.substring(0, 2).toUpperCase()}
+                </div>
                 {!effectiveCollapsed && (
-                  <div className="flex items-center justify-between w-full">
-                    <span>Paramètres Académiques</span>
-                    <span className="text-[10px] bg-indigo-900/60 text-indigo-300 px-1.5 py-0.2 rounded font-mono">
-                      {academicYears.length}
+                  <div className="min-w-0 truncate">
+                    <span className="font-bold text-xs text-white group-hover:text-blue-200 block truncate leading-tight">
+                      {currentUser.name}
+                    </span>
+                    <span className="text-[10px] text-blue-200 font-medium block truncate">
+                      {currentUser.role === 'STUDENT'
+                        ? `Étudiant (${currentUser.matricule || currentUser.username})`
+                        : getRoleLabel(currentUser.role)}
                     </span>
                   </div>
                 )}
               </button>
-            )}
 
-            {isVisible('BACKUP_SECURITY') && (
               <button
                 type="button"
-                onClick={() => handleSelectAndClose('BACKUP_SECURITY')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
-                  currentTab === 'BACKUP_SECURITY'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-indigo-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Sauvegardes JSON, Restauration, Cloud Firestore & Rôles RBAC"
+                onClick={logout}
+                className="p-2 rounded-lg text-slate-300 hover:text-red-300 hover:bg-red-950/50 transition-colors flex-shrink-0 cursor-pointer"
+                title="Se déconnecter"
               >
-                <Database className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Sauvegardes & Cloud SIS</span>}
+                <LogOut className="w-4 h-4" />
               </button>
-            )}
-
-            {isVisible('SETTINGS') && (
-              <button
-                type="button"
-                onClick={() => handleSelectAndClose('SETTINGS')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
-                  currentTab === 'SETTINGS'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-indigo-300 hover:text-white hover:bg-slate-800/90'
-                }`}
-                title="Paramètres de l'Application (Menu, Affichage, Horaires, Rôles)"
-              >
-                <Settings className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                {!effectiveCollapsed && <span>Paramètres Système</span>}
-              </button>
-            )}
+            </div>
           </div>
-        </nav>
-
-        {/* 4. Footer User Profile Card (Clickable to open Fiche Utilisateur) */}
-        <div className="p-3 border-t border-slate-800/80 bg-slate-950/50">
-          <div className="flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (onCloseMobile) onCloseMobile();
-                if (onOpenUserProfile) onOpenUserProfile();
-              }}
-              className="flex items-center gap-2.5 min-w-0 flex-1 text-left p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors cursor-pointer group"
-              title="Cliquer pour ouvrir et modifier votre fiche utilisateur"
-            >
-              <div className="w-9 h-9 rounded-xl bg-blue-700 group-hover:bg-blue-600 text-white flex items-center justify-center font-bold text-xs border border-blue-500 flex-shrink-0">
-                {currentUser.name.substring(0, 2).toUpperCase()}
-              </div>
-              {!effectiveCollapsed && (
-                <div className="min-w-0 truncate">
-                  <span className="font-bold text-xs text-white group-hover:text-blue-300 block truncate leading-tight group-hover:underline">
-                    {currentUser.name}
-                  </span>
-                  <span className="text-[10px] text-blue-300 font-medium block truncate">
-                    {currentUser.role === 'STUDENT'
-                      ? `Étudiant (${currentUser.matricule})`
-                      : getRoleLabel(currentUser.role)}
-                  </span>
-                </div>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={logout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/40 transition-colors flex-shrink-0"
-              title="Se déconnecter"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        )}
       </aside>
     </>
   );

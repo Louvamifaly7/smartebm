@@ -17,12 +17,19 @@ import {
   Edit2,
   Trash2,
   Printer,
+  Upload,
+  Link2,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import { TimetableSession } from '../types';
 import { createGoogleCalendarUrl, downloadICSFile } from '../utils/calendarExport';
 import { getTeachersForStudent } from '../utils/studentVisibility';
 import { exportTimetableToPDF, exportTeacherScheduleToPDF } from '../utils/pdfExport';
 import { downloadCsvFile } from '../utils/csvExport';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { detectSessionConflicts } from '../utils/conflictDetector';
+import { showAppToast, requestAppConfirm } from './ToastAndConfirmCenter';
 
 interface TimetableGridProps {
   onOpenCreateModal: () => void;
@@ -47,6 +54,8 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     currentUser,
     validateSession,
     deleteSession,
+    addSession,
+    rescheduleSession,
   } = useApp();
 
   const isStudent = currentUser.role === 'STUDENT';
@@ -92,6 +101,31 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
   const [teacherPdfPeriod, setTeacherPdfPeriod] = useState<'WEEK' | 'MONTH' | 'SEMESTER'>('WEEK');
   const [showTeacherPdfPanel, setShowTeacherPdfPanel] = useState<boolean>(false);
 
+  // Drag & Drop state with live conflict preview
+  const [draggedSession, setDraggedSession] = useState<TimetableSession | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [dragConflictPreview, setDragConflictPreview] = useState<{
+    hasConflict: boolean;
+    message?: string;
+  } | null>(null);
+
+  // "Salles libres maintenant" panel state
+  const [showFreeRoomsNow, setShowFreeRoomsNow] = useState<boolean>(false);
+  const [freeRoomCheckDate, setFreeRoomCheckDate] = useState<string>(getAntananarivoDateStr());
+  const [freeRoomCheckStart, setFreeRoomCheckStart] = useState<string>('08:00');
+  const [freeRoomCheckEnd, setFreeRoomCheckEnd] = useState<string>('10:00');
+
+  // Excel / CSV Timetable Import Modal state
+  const [showImportModal, setShowImportModal] = useState<boolean>(false);
+  const [importText, setImportText] = useState<string>('');
+  const [importReport, setImportReport] = useState<{
+    imported: number;
+    errors: { line: number; raw: string; error: string }[];
+  } | null>(null);
+
+  // Calendar Subscription Modal state
+  const [showCalSubModal, setShowCalSubModal] = useState<boolean>(false);
+
   // Time grid slots (08:00 to 19:00)
   const timeSlots = [
     '08:00', '09:00', '10:00', '11:00', '12:00',
@@ -106,7 +140,7 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     const monday = new Date(now);
     monday.setDate(now.getDate() - distanceToMonday + weekOffset * 7 + dayIndex);
 
-    const dateStr = monday.toISOString().split('T')[0];
+    const dateStr = getAntananarivoDateStr(monday);
     const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
     return {
       dayIndex,
@@ -167,6 +201,188 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
 
   const handleExportICS = () => {
     downloadICSFile('EBM_Emploi_du_Temps', filteredSessions, courses, rooms, users);
+    showAppToast({
+      type: 'success',
+      title: 'Calendrier iCal (.ics) généré',
+      message: 'Vous pouvez importer ce fichier dans Google Agenda, Apple Calendar ou Outlook.',
+    });
+  };
+
+  // Drag & Drop handlers with real-time conflict check BEFORE dropping
+  const handleSessionDragStart = (e: React.DragEvent, session: TimetableSession) => {
+    if (!canManage || session.status === 'CANCELLED' || session.status === 'COMPLETED_VALIDATED') {
+      e.preventDefault();
+      return;
+    }
+    setDraggedSession(session);
+    e.dataTransfer.setData('text/plain', session.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDayDragOver = (e: React.DragEvent, targetDateStr: string) => {
+    if (!draggedSession || !canManage) return;
+    e.preventDefault();
+    if (dragOverDate !== targetDateStr) {
+      setDragOverDate(targetDateStr);
+      if (targetDateStr === draggedSession.date) {
+        setDragConflictPreview({ hasConflict: false, message: 'Même jour' });
+      } else {
+        const check = detectSessionConflicts(
+          {
+            id: draggedSession.id,
+            courseId: draggedSession.courseId,
+            teacherId: draggedSession.teacherId,
+            groupIds: draggedSession.groupIds,
+            roomId: draggedSession.roomId,
+            date: targetDateStr,
+            startTime: draggedSession.startTime,
+            endTime: draggedSession.endTime,
+          },
+          sessions,
+          rooms,
+          groups,
+          users
+        );
+        setDragConflictPreview({
+          hasConflict: check.hasConflict,
+          message: check.conflicts[0]?.message,
+        });
+      }
+    }
+    e.dataTransfer.dropEffect = dragConflictPreview?.hasConflict ? 'none' : 'move';
+  };
+
+  const handleDayDrop = (e: React.DragEvent, targetDateStr: string) => {
+    e.preventDefault();
+    const session = draggedSession;
+    setDraggedSession(null);
+    setDragOverDate(null);
+    setDragConflictPreview(null);
+
+    if (!session || !canManage || session.date === targetDateStr) return;
+
+    const prevDate = session.date;
+    const prevStart = session.startTime;
+    const prevEnd = session.endTime;
+    const prevRoom = session.roomId;
+
+    const res = rescheduleSession(
+      session.id,
+      targetDateStr,
+      session.startTime,
+      session.endTime,
+      session.roomId,
+      `Déplacement par glisser-déposer du ${prevDate} vers le ${targetDateStr}`
+    );
+
+    if (!res.success) {
+      showAppToast({
+        type: 'error',
+        title: 'Déplacement bloqué par un conflit',
+        message: res.error,
+      });
+      return;
+    }
+
+    showAppToast({
+      type: 'success',
+      title: `Séance déplacée au ${targetDateStr}`,
+      message: `Horaire conservé (${session.startTime} - ${session.endTime}). Notifications envoyées.`,
+      undoLabel: 'Annuler le déplacement',
+      onUndo: () => {
+        rescheduleSession(
+          session.id,
+          prevDate,
+          prevStart,
+          prevEnd,
+          prevRoom,
+          'Annulation du déplacement par glisser-déposer'
+        );
+      },
+    });
+  };
+
+  const handleImportExcelTimetable = (e: React.FormEvent) => {
+    e.preventDefault();
+    const lines = importText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    let imported = 0;
+    const errors: { line: number; raw: string; error: string }[] = [];
+
+    lines.forEach((rawLine, idx) => {
+      // Skip header row if present
+      if (idx === 0 && /date|cours|debut|salle/i.test(rawLine)) return;
+      const parts = rawLine.split(/[;\t,]/).map((p) => p.trim());
+      if (parts.length < 5) {
+        errors.push({
+          line: idx + 1,
+          raw: rawLine,
+          error: 'Format attendu : Date(YYYY-MM-DD);HeureDébut(HH:MM);HeureFin(HH:MM);CodeCours;NomSalle;CodeGroupe',
+        });
+        return;
+      }
+      const [dateVal, startVal, endVal, courseCode, roomCode, groupCode] = parts;
+      const courseObj =
+        courses.find(
+          (c) =>
+            c.code.toLowerCase() === courseCode.toLowerCase() ||
+            c.title.toLowerCase().includes(courseCode.toLowerCase())
+        ) || courses[0];
+      const roomObj =
+        rooms.find(
+          (r) =>
+            r.name.toLowerCase().includes(roomCode.toLowerCase()) ||
+            r.id.toLowerCase() === roomCode.toLowerCase()
+        ) || rooms[0];
+      const groupObj = groupCode
+        ? groups.find(
+            (g) =>
+              g.code.toLowerCase() === groupCode.toLowerCase() ||
+              g.id.toLowerCase() === groupCode.toLowerCase()
+          )
+        : undefined;
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
+        errors.push({ line: idx + 1, raw: rawLine, error: `Date invalide (${dateVal}). Utilisez AAAA-MM-JJ.` });
+        return;
+      }
+
+      const [sH, sM] = startVal.split(':').map(Number);
+      const [eH, eM] = endVal.split(':').map(Number);
+      const dur = Number((((eH * 60 + eM) - (sH * 60 + sM)) / 60).toFixed(2));
+      if (!Number.isFinite(dur) || dur <= 0) {
+        errors.push({ line: idx + 1, raw: rawLine, error: `Plage horaire invalide (${startVal} - ${endVal}).` });
+        return;
+      }
+
+      const res = addSession({
+        courseId: courseObj.id,
+        teacherId: courseObj.teacherIds[0] || teachers[0]?.id || 'user-teacher-vasseur',
+        groupIds: groupObj ? [groupObj.id] : courseObj.groupIds,
+        roomId: roomObj.id,
+        date: dateVal,
+        startTime: startVal,
+        endTime: endVal,
+        durationHours: dur,
+        status: 'PUBLISHED',
+        notes: 'Import Excel/CSV',
+      });
+
+      if (!res.success) {
+        errors.push({ line: idx + 1, raw: rawLine, error: res.error || 'Conflit détecté' });
+      } else {
+        imported += 1;
+      }
+    });
+
+    setImportReport({ imported, errors });
+    showAppToast({
+      type: errors.length > 0 && imported === 0 ? 'error' : errors.length > 0 ? 'warning' : 'success',
+      title: `Import Emploi du Temps : ${imported} séance(s) créée(s)`,
+      message: errors.length > 0 ? `${errors.length} ligne(s) rejetée(s) (voir rapport détaillé).` : undefined,
+    });
   };
 
   const handleExportTimetablePDF = () => {
@@ -440,14 +656,50 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
               Exporter iCal (.ics)
             </button>
 
+            <button
+              type="button"
+              onClick={() => setShowCalSubModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold rounded-xl transition-colors border border-blue-200 cursor-pointer"
+              title="Obtenir un lien d'abonnement calendrier automatique (Google Agenda / Téléphone)"
+            >
+              <Link2 className="w-3.5 h-3.5 text-blue-700" />
+              S'abonner (Agenda Auto)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowFreeRoomsNow((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-colors border cursor-pointer ${
+                showFreeRoomsNow
+                  ? 'bg-emerald-700 text-white border-emerald-700'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
+              }`}
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              Salles libres maintenant
+            </button>
+
             {canManage && (
-              <button
-                onClick={onOpenCreateModal}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all hover:shadow-md cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Planifier Cours / Conférence / Événement
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportReport(null);
+                    setShowImportModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-xl transition-colors border border-amber-200 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5 text-amber-700" />
+                  Importer Excel
+                </button>
+                <button
+                  onClick={onOpenCreateModal}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all hover:shadow-md cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Planifier Cours / Conférence / Événement
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -538,6 +790,82 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
             </select>
           </div>
         </div>
+
+        {/* Live "Salles libres maintenant" Interactive Panel */}
+        {showFreeRoomsNow && (
+          <div className="mt-3 pt-3 border-t border-slate-200 bg-emerald-50/50 rounded-xl p-3 space-y-2.5 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-bold text-emerald-950 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                <span>Recherche instantanée de salles libres & Suggestion de créneau</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="date"
+                  value={freeRoomCheckDate}
+                  onChange={(e) => setFreeRoomCheckDate(e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-emerald-300 bg-white text-xs font-bold"
+                />
+                <input
+                  type="time"
+                  value={freeRoomCheckStart}
+                  onChange={(e) => setFreeRoomCheckStart(e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-emerald-300 bg-white text-xs font-mono font-bold"
+                />
+                <span>à</span>
+                <input
+                  type="time"
+                  value={freeRoomCheckEnd}
+                  onChange={(e) => setFreeRoomCheckEnd(e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-emerald-300 bg-white text-xs font-mono font-bold"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+              {rooms.map((rm) => {
+                const isBusy =
+                  rm.status !== 'available' ||
+                  sessions.some(
+                    (s) =>
+                      s.roomId === rm.id &&
+                      s.date === freeRoomCheckDate &&
+                      s.status !== 'CANCELLED' &&
+                      s.startTime < freeRoomCheckEnd &&
+                      s.endTime > freeRoomCheckStart
+                  );
+                return (
+                  <div
+                    key={rm.id}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                      isBusy
+                        ? 'bg-rose-50/80 border-rose-200 text-rose-900 opacity-75'
+                        : 'bg-white border-emerald-300 text-slate-900 shadow-2xs'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="font-bold truncate">{rm.name}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {rm.capacity} places · {isBusy ? 'Occupée' : 'Libre'}
+                      </div>
+                    </div>
+                    {!isBusy && canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRoomId(rm.id);
+                          onOpenCreateModal();
+                        }}
+                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] cursor-pointer shrink-0"
+                      >
+                        Réserver
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MOBILE VIEW (< md): Day Selector Pills + Vertical Day-by-Day Cards */}
@@ -741,18 +1069,50 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
                 .filter((s) => s.date === day.dateStr)
                 .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+              const isDropTarget = dragOverDate === day.dateStr && draggedSession?.date !== day.dateStr;
+              const isDropConflict = isDropTarget && dragConflictPreview?.hasConflict;
+
               return (
                 <div
                   key={day.dateStr}
-                  className={`p-2 space-y-2.5 ${
-                    day.isWeekend ? 'bg-slate-100/30' : 'bg-slate-50/30'
+                  onDragOver={(e) => handleDayDragOver(e, day.dateStr)}
+                  onDragLeave={() => {
+                    if (dragOverDate === day.dateStr) {
+                      setDragOverDate(null);
+                      setDragConflictPreview(null);
+                    }
+                  }}
+                  onDrop={(e) => handleDayDrop(e, day.dateStr)}
+                  className={`p-2 space-y-2.5 transition-colors ${
+                    isDropConflict
+                      ? 'bg-rose-100/90 ring-2 ring-inset ring-rose-600'
+                      : isDropTarget
+                      ? 'bg-emerald-50/90 ring-2 ring-inset ring-emerald-600'
+                      : day.isWeekend
+                      ? 'bg-slate-100/30'
+                      : 'bg-slate-50/30'
                   }`}
                 >
+                  {/* Live Conflict Preview Banner during Drag & Drop (Red box before releasing) */}
+                  {isDropTarget && (
+                    <div
+                      className={`p-2 rounded-xl text-[11px] font-bold border ${
+                        isDropConflict
+                          ? 'bg-rose-600 text-white border-rose-700 shadow-md'
+                          : 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                      }`}
+                    >
+                      {isDropConflict
+                        ? `Conflit : ${dragConflictPreview?.message || 'Créneau occupé'}`
+                        : `Déposer pour déplacer au ${day.name} ${day.displayDate}`}
+                    </div>
+                  )}
+
                   {daySessions.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs italic py-12">
                       <span>{day.isWeekend ? 'Week-end' : 'Aucune séance'}</span>
                       <span className="text-[10px] text-slate-300 not-italic">
-                        {day.isWeekend ? 'Libre' : ''}
+                        {canManage ? 'Glissez une séance ici' : day.isWeekend ? 'Libre' : ''}
                       </span>
                     </div>
                   ) : (
@@ -782,7 +1142,16 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
                       return (
                         <div
                           key={session.id}
+                          draggable={canManage && !isValidated && !isCancelled}
+                          onDragStart={(e) => handleSessionDragStart(e, session)}
+                          onDragEnd={() => {
+                            setDraggedSession(null);
+                            setDragOverDate(null);
+                            setDragConflictPreview(null);
+                          }}
                           className={`rounded-xl p-3 border shadow-xs transition-all hover:shadow-md text-xs relative ${
+                            canManage && !isValidated && !isCancelled ? 'cursor-grab active:cursor-grabbing' : ''
+                          } ${
                             isCancelled
                               ? 'bg-red-50/70 border-red-200 text-slate-600'
                               : isRescheduled
@@ -926,12 +1295,37 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
 
                               <button
                                 onClick={() => {
-                                  if (confirm('Supprimer cette séance ?')) {
-                                    deleteSession(session.id);
-                                  }
+                                  const snapshot = { ...session };
+                                  requestAppConfirm({
+                                    title: 'Supprimer cette séance ?',
+                                    message: `La séance "${
+                                      session.eventTitle || course?.title || 'Cours'
+                                    }" du ${session.date} (${session.startTime} - ${session.endTime}) sera retirée de l'emploi du temps.`,
+                                    confirmLabel: 'Supprimer la séance',
+                                    undoMessage: 'Séance supprimée',
+                                    onConfirm: () => deleteSession(session.id),
+                                    onUndoAfterConfirm: () => {
+                                      addSession({
+                                        courseId: snapshot.courseId,
+                                        sessionType: snapshot.sessionType,
+                                        eventTitle: snapshot.eventTitle,
+                                        eventSpeaker: snapshot.eventSpeaker,
+                                        eventCategoryLabel: snapshot.eventCategoryLabel,
+                                        teacherId: snapshot.teacherId,
+                                        groupIds: snapshot.groupIds,
+                                        roomId: snapshot.roomId,
+                                        date: snapshot.date,
+                                        startTime: snapshot.startTime,
+                                        endTime: snapshot.endTime,
+                                        durationHours: snapshot.durationHours,
+                                        status: snapshot.status,
+                                        notes: snapshot.notes,
+                                      });
+                                    },
+                                  });
                                 }}
-                                title="Supprimer définitivement"
-                                className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
+                                title="Supprimer avec possibilité d'annulation"
+                                className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -947,6 +1341,154 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal: Import Excel / CSV Timetable */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  Importer l'Emploi du Temps depuis Excel / CSV
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Collez directement vos lignes Excel ou CSV : Date ; Heure Début ; Heure Fin ; Code Cours ; Salle ; Groupe
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportModal(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleImportExcelTimetable} className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-600">
+                Exemple : 2026-11-03;08:00;10:00;INFO-101;Amphi A;L1-INFO-A
+              </div>
+              <textarea
+                rows={6}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder="2026-11-03;08:00;10:00;INFO-101;Amphi A;L1-INFO-A"
+                className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs"
+                required
+              />
+
+              {importReport && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2 max-h-44 overflow-y-auto">
+                  <div className="font-bold text-slate-900">
+                    Résultat : {importReport.imported} séance(s) importée(s) · {importReport.errors.length} erreur(s)
+                  </div>
+                  {importReport.errors.map((err, i) => (
+                    <div key={i} className="text-[11px] text-rose-700">
+                      <strong>Ligne {err.line} :</strong> {err.error} ({err.raw})
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Fermer
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
+                >
+                  Vérifier les conflits & Importer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Lien d'abonnement au calendrier (Google Agenda / Téléphone) */}
+      {showCalSubModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  Abonnement Calendrier Dynamique (Google Agenda / iOS / Android)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Synchronisation automatique sur votre téléphone lorsqu'un cours est reporté ou déplacé.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCalSubModal(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {(() => {
+              const feedTarget =
+                selectedGroupId !== 'ALL'
+                  ? `group=${selectedGroupId}`
+                  : isTeacher
+                  ? `teacher=${currentUser.id}`
+                  : `user=${currentUser.id}`;
+              const feedUrl = `${window.location.origin}/ical/ebm-schedule.ics?${feedTarget}&token=${currentUser.id}`;
+              return (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      URL d'abonnement iCal / Webcal personnel :
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={feedUrl}
+                        className="flex-1 p-2 rounded-xl bg-slate-50 border border-slate-300 font-mono text-[11px] text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(feedUrl);
+                          showAppToast({
+                            type: 'success',
+                            title: 'Lien d’abonnement copié',
+                            message: 'Collez ce lien dans Google Agenda > Autres agendas > À partir de l’URL.',
+                          });
+                        }}
+                        className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer shrink-0"
+                      >
+                        Copier le lien
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 space-y-1">
+                    <div className="font-bold text-slate-800">Comment l'ajouter sur votre téléphone :</div>
+                    <p>1. Dans Google Agenda ou Apple Calendrier, choisissez « S'abonner à partir d'une URL ».</p>
+                    <p>2. Vous pouvez aussi télécharger instantanément la version à jour (.ics) ci-dessous.</p>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleExportICS}
+                      className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                    >
+                      Télécharger le fichier .ics maintenant
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

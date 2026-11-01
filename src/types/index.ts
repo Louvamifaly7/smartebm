@@ -68,6 +68,7 @@ export interface UserModificationLog {
 export interface ProfileChangeRequest {
   id: string;
   studentId: string;
+  studentUid?: string;
   studentName: string;
   matricule: string;
   requestedAt: string;
@@ -198,6 +199,7 @@ export interface User {
   cvFileName?: string;     // Nom du fichier CV téléversé (ex: CV_Prof_Rakotoarisoa.pdf)
   cvFileUrl?: string;      // URL / DataURL du CV téléversé
   cvUploadedAt?: string;   // Date de mise à jour du CV
+  updatedAt?: string;      // Horodatage ISO pour la synchronisation temps réel Cloud
 }
 
 export interface Filiere {
@@ -249,6 +251,7 @@ export interface DeliberationRecord {
   semester: SemesterCode | 'ANNUEL';
   groupId: string;
   studentId: string;
+  studentUid?: string;
   rawAverage: number;
   juryBonusPoints: number;
   finalAverage: number;
@@ -343,6 +346,7 @@ export interface TimetableSession {
   };
   validatedAt?: string;
   validatedBy?: string;
+  updatedAt?: string;
   history: SessionHistoryItem[];
 }
 
@@ -372,7 +376,7 @@ export interface AppNotification {
 export interface ConflictResult {
   hasConflict: boolean;
   conflicts: {
-    type: 'ROOM' | 'TEACHER' | 'GROUP' | 'CAPACITY';
+    type: 'TIME' | 'ROOM' | 'TEACHER' | 'GROUP' | 'CAPACITY' | 'AVAILABILITY' | 'QUOTA';
     message: string;
     conflictingSession?: TimetableSession;
   }[];
@@ -476,6 +480,7 @@ export interface ElementConstitutif {
 export interface StudentInscription {
   id: string;
   studentId: string;
+  studentUid?: string;
   academicYear: string;    // e.g. "2026-2027"
   filiereId: string;
   parcoursId?: string;
@@ -498,6 +503,7 @@ export interface StudentInscription {
 export interface EcGrade {
   id: string;
   studentId: string;
+  studentUid?: string;
   ecId: string;
   academicYear: string;
   semester: SemesterCode;
@@ -587,6 +593,7 @@ export interface PaymentTransaction {
   id: string;
   receiptNumber: string;   // e.g. "REC-EBM-2026-0042"
   studentId: string;
+  studentUid?: string;
   feeId: string;
   amountPaidAr: number;    // Montant payé en Ariary
   remainingBalanceAr: number; // Solde restant
@@ -638,6 +645,7 @@ export interface HomeworkSubmission {
   id: string;
   homeworkId: string;
   studentId: string;
+  studentUid?: string;
   studentName: string;
   submittedAt: string;
   isLate: boolean;

@@ -52,6 +52,7 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
+  isQuotaExceeded?: boolean;
   authInfo: {
     userId: string | undefined;
     email: string | null | undefined;
@@ -72,8 +73,14 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ): FirestoreErrorInfo {
+  const rawMsg = error instanceof Error ? error.message : String(error);
+  const isQuotaExceeded =
+    rawMsg.toLowerCase().includes('quota exceeded') ||
+    rawMsg.toLowerCase().includes('resource-exhausted');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: rawMsg,
+    isQuotaExceeded,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -95,25 +102,61 @@ export function handleFirestoreError(
   return errInfo;
 }
 
-export async function testFirestoreConnection(): Promise<{ connected: boolean; message: string }> {
+/**
+ * Probes Cloud Firestore connectivity accurately without masking quota or network errors (P59).
+ */
+export async function testFirestoreConnection(): Promise<{
+  connected: boolean;
+  quotaExceeded?: boolean;
+  message: string;
+}> {
   try {
     await getDocFromServer(doc(db, 'appSettings', 'connection_probe'));
     return {
       connected: true,
-      message: `Connecté à Cloud Firestore (${firebaseConfig.projectId})`,
+      message: `Connecté en temps réel à Cloud Firestore (${firebaseConfig.projectId})`,
     };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (msg.includes('the client is offline')) {
+    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+
+    if (msg.includes('quota exceeded') || msg.includes('resource-exhausted')) {
       return {
         connected: false,
-        message: 'Le client Firestore est hors-ligne ou la configuration est invalide.',
+        quotaExceeded: true,
+        message:
+          'Quota journalier gratuit Cloud Firestore atteint (réinitialisation automatique à minuit heure du Pacifique / 10h00 heure de Madagascar). Le mode local prend le relais sans perte de données.',
       };
     }
-    // Permission denied when unauthenticated still proves Firestore network reachability
+
+    if (
+      msg.includes('the client is offline') ||
+      msg.includes('unavailable') ||
+      msg.includes('network-request-failed') ||
+      msg.includes('failed to get document')
+    ) {
+      return {
+        connected: false,
+        message: 'Le client Firestore est hors-ligne ou le réseau est indisponible.',
+      };
+    }
+
+    // When unauthenticated, a permission-denied response from the server confirms the Firestore instance is reachable
+    if (msg.includes('permission-denied') || msg.includes('missing or insufficient permissions')) {
+      if (!auth.currentUser) {
+        return {
+          connected: true,
+          message: `Base Cloud Firestore en ligne et protégée par règles de sécurité (${firebaseConfig.projectId})`,
+        };
+      }
+      return {
+        connected: false,
+        message: `Permissions Firestore insuffisantes pour le compte actuel (${firebaseConfig.projectId}).`,
+      };
+    }
+
     return {
-      connected: true,
-      message: `Base Cloud Firestore opérationnelle et protégée par règles de sécurité (${firebaseConfig.projectId})`,
+      connected: false,
+      message: `Erreur de connexion Firestore : ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { UniversalStudentSelector } from './UniversalStudentSelector';
 import { User } from '../types';
+import { getAntananarivoDateStr, generateUniqueId } from '../utils/securityAndDateUtils';
+import { showAppToast } from './ToastAndConfirmCenter';
+import { FileCheck2, BellRing } from 'lucide-react';
 
 export const QrAttendanceView: React.FC = () => {
   const {
@@ -54,7 +57,7 @@ export const QrAttendanceView: React.FC = () => {
   // Manual Administration Attendance / Absence state
   const [adminGroupId, setAdminGroupId] = useState<string>(groups[0]?.id || 'grp-l1-info-a');
   const [adminCourseId, setAdminCourseId] = useState<string>(courses[0]?.id || 'crs-1');
-  const [adminDate, setAdminDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [adminDate, setAdminDate] = useState<string>(getAntananarivoDateStr());
   const [adminNote, setAdminNote] = useState<string>('');
   const [adminFeedback, setAdminFeedback] = useState<string | null>(null);
 
@@ -68,7 +71,7 @@ export const QrAttendanceView: React.FC = () => {
   const [newCourseId, setNewCourseId] = useState(courses[0]?.id || '');
   const [newRoomId, setNewRoomId] = useState(rooms[0]?.id || '');
   const [newGroupId, setNewGroupId] = useState(groups[0]?.id || '');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(getAntananarivoDateStr());
   const [newStartTime, setNewStartTime] = useState('08:00');
   const [newEndTime, setNewEndTime] = useState('10:00');
 
@@ -83,6 +86,16 @@ export const QrAttendanceView: React.FC = () => {
   const [statSemesterFilter, setStatSemesterFilter] = useState<string>('ALL');
   const [statYearFilter, setStatYearFilter] = useState<string>(selectedAcademicYear || 'ALL');
   const [statStudentSearch, setStatStudentSearch] = useState<string>('');
+
+  // Absence Justification Modal state
+  const [showJustificationModal, setShowJustificationModal] = useState(false);
+  const [justifStudentId, setJustifStudentId] = useState<string>(
+    currentUser.role === 'STUDENT' ? currentUser.id : ''
+  );
+  const [justifCourseId, setJustifCourseId] = useState<string>(courses[0]?.id || 'crs-1');
+  const [justifDate, setJustifDate] = useState<string>(getAntananarivoDateStr());
+  const [justifReason, setJustifReason] = useState<string>('Certificat médical déposé à la Scolarité');
+  const [justifRefDoc, setJustifRefDoc] = useState<string>('CM-2026-');
 
   // Remaining seconds countdown for active session
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
@@ -130,7 +143,7 @@ export const QrAttendanceView: React.FC = () => {
     const crs = courses.find((c) => c.id === newCourseId);
     const rm = rooms.find((r) => r.id === newRoomId);
 
-    addSession({
+    const res = addSession({
       courseId: newCourseId,
       teacherId: currentUser.role === 'TEACHER' ? currentUser.id : crs?.teacherIds?.[0] || currentUser.id,
       groupIds: [newGroupId],
@@ -141,8 +154,12 @@ export const QrAttendanceView: React.FC = () => {
       durationHours: 2,
       status: 'PUBLISHED',
     });
+    if (!res.success) {
+      setScanResult({ success: false, message: res.error || 'Conflit lors de la création de la séance.' });
+      return;
+    }
 
-    const newSessId = `sess-${Date.now()}`;
+    const newSessId = generateUniqueId('sess');
     generateQrSession(
       newSessId,
       crs?.title || 'Séance de cours',
@@ -326,6 +343,242 @@ export const QrAttendanceView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* AUTOMATIC ABSENCE THRESHOLD ALERT BANNER & JUSTIFICATION TRIGGER */}
+      {(() => {
+        const studentsOverThreshold = attendanceStats.filter((s) => s.absent >= 2);
+        const myUnjustifiedAbsences = studentRecords.filter((r) => r.status === 'ABSENT').length;
+
+        if (isStudent) {
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    myUnjustifiedAbsences >= 2
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}
+                >
+                  <FileCheck2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-slate-900">
+                    {myUnjustifiedAbsences >= 2
+                      ? `Alerte Assiduité : Vous cumulez ${myUnjustifiedAbsences} absences non justifiées`
+                      : 'Justificatifs d’absence & Certificats médicaux'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Au-delà de 3 absences non justifiées par EC, l’étudiant s’expose à une pénalité d’assiduité lors du jury LMD.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setJustifStudentId(currentUser.id);
+                  setShowJustificationModal(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 self-start sm:self-auto"
+              >
+                <FileCheck2 className="w-4 h-4" />
+                Déposer un justificatif d'absence
+              </button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+                <BellRing className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-amber-950">
+                    Seuil d'alerte d'absences ({studentsOverThreshold.length} étudiant(s) avec ≥ 2 absences non justifiées)
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  {studentsOverThreshold.length > 0
+                    ? `Étudiants à surveiller : ${studentsOverThreshold
+                        .slice(0, 5)
+                        .map((s) => `${s.student.name} (${s.absent} abs.)`)
+                        .join(' · ')}`
+                    : 'Aucun étudiant ne dépasse actuellement le seuil critique de 2 absences non justifiées.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultSt =
+                    studentsOverThreshold[0]?.student.id ||
+                    users.find((u) => u.role === 'STUDENT')?.id ||
+                    '';
+                  setJustifStudentId(defaultSt);
+                  setShowJustificationModal(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileCheck2 className="w-3.5 h-3.5 text-emerald-400" />
+                Saisir un Justificatif d'absence
+              </button>
+              {studentsOverThreshold.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubTab('STATISTIQUES');
+                    showAppToast({
+                      type: 'warning',
+                      title: 'Liste des étudiants en dépassement d’absences',
+                      message: `${studentsOverThreshold.length} étudiant(s) cumulent au moins 2 absences non justifiées.`,
+                    });
+                  }}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold cursor-pointer"
+                >
+                  Voir le détail ({studentsOverThreshold.length})
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: SAISIE D'UN JUSTIFICATIF D'ABSENCE */}
+      {showJustificationModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileCheck2 className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-sm font-bold">Enregistrer un Justificatif d'Absence</h3>
+              </div>
+              <button
+                onClick={() => setShowJustificationModal(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const targetSt = users.find((u) => u.id === justifStudentId);
+                if (!targetSt) return;
+                const grpId = targetSt.groupId || groups[0]?.id || 'grp-l1-info-a';
+                const crs = courses.find((c) => c.id === justifCourseId);
+                recordManualAdminAttendance({
+                  groupId: grpId,
+                  ecCode: crs?.code || 'EC-LMD',
+                  courseTitle: crs?.title || 'Séance de cours',
+                  date: justifDate,
+                  studentId: targetSt.id,
+                  status: 'JUSTIFIED',
+                  reason: justifReason,
+                  note: `${justifReason} (Réf: ${justifRefDoc})`,
+                });
+                showAppToast({
+                  type: 'success',
+                  title: 'Absence justifiée enregistrée',
+                  message: `Le justificatif de ${targetSt.name} (${justifDate}) a été validé.`,
+                });
+                setShowJustificationModal(false);
+              }}
+              className="p-5 space-y-4 text-xs"
+            >
+              {!isStudent && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Étudiant concerné</label>
+                  <select
+                    value={justifStudentId}
+                    onChange={(e) => setJustifStudentId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-slate-50 font-bold text-slate-900"
+                    required
+                  >
+                    {users
+                      .filter((u) => u.role === 'STUDENT')
+                      .map((st) => (
+                        <option key={st.id} value={st.id}>
+                          {st.matricule} — {st.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Date de l'absence</label>
+                  <input
+                    type="date"
+                    value={justifDate}
+                    onChange={(e) => setJustifDate(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-slate-50 font-bold"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">N° Pièce / Certificat</label>
+                  <input
+                    type="text"
+                    value={justifRefDoc}
+                    onChange={(e) => setJustifRefDoc(e.target.value)}
+                    placeholder="ex: CM-2026-089"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Matière / Cours (EC)</label>
+                <select
+                  value={justifCourseId}
+                  onChange={(e) => setJustifCourseId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-slate-50 font-semibold"
+                >
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      [{c.code}] {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Motif officiel du justificatif</label>
+                <input
+                  type="text"
+                  value={justifReason}
+                  onChange={(e) => setJustifReason(e.target.value)}
+                  placeholder="Certificat médical, convocation administrative..."
+                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowJustificationModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                >
+                  Valider le Justificatif
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* STUDENT VIEW */}
       {isStudent && (

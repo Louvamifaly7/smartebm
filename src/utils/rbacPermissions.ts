@@ -13,14 +13,34 @@ export interface RoleDefinition {
 export const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Administrateur Général',
   ADMIN_STAFF: 'Personnel Administratif',
-  SCOLARITE: 'Scolarité & Planification',
-  SCHEDULER: 'Scolarité & Planning',
+  SCOLARITE: 'Service Scolarité & Inscriptions',
+  SCHEDULER: 'Responsable Planification & Salles',
   FINANCE: 'Finances & Caisse',
   ACADEMIC_HEAD: 'Responsable Pédagogique',
   TEACHER: 'Enseignant',
   STUDENT: 'Étudiant',
   PARENT: 'Parent / Tuteur',
 };
+
+const ROLE_HIERARCHY_RANK: Record<UserRole, number> = {
+  ADMIN: 100,
+  ACADEMIC_HEAD: 80,
+  SCOLARITE: 70,
+  SCHEDULER: 65,
+  FINANCE: 65,
+  ADMIN_STAFF: 60,
+  TEACHER: 40,
+  STUDENT: 20,
+  PARENT: 10,
+};
+
+export const PROTECTED_ADMIN_TABS = new Set([
+  'HOME',
+  'USERS_MANAGEMENT',
+  'SETTINGS',
+  'BACKUP_SECURITY',
+  'AUDIT',
+]);
 
 export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   ADMIN: {
@@ -75,10 +95,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
   SCOLARITE: {
     role: 'SCOLARITE',
-    label: 'Service Scolarité & Planification',
+    label: 'Service Scolarité & Inscriptions',
     shortLabel: 'Scolarité',
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
-    description: 'Gestion des inscriptions, réinscriptions, dossiers étudiants, cartes étudiantes, absences, emplois du temps et salles.',
+    description: 'Gestion officielle des inscriptions, réinscriptions, dossiers étudiants, cartes étudiantes, rectifications d’état civil, absences et relevés.',
     allowedTabs: [
       'HOME',
       'TIMETABLE',
@@ -101,10 +121,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
   SCHEDULER: {
     role: 'SCHEDULER',
-    label: 'Scolarité & Planification',
-    shortLabel: 'Scolarité / Planning',
-    badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
-    description: 'Gestion des inscriptions, réinscriptions, dossiers étudiants, absences, emplois du temps et salles.',
+    label: 'Responsable Planification & Salles',
+    shortLabel: 'Planification',
+    badgeColor: 'bg-violet-100 text-violet-800 border-violet-300',
+    description: 'Planification des emplois du temps, gestion des occupations de salles, détection des conflits, reports de séances et suivi des volumes horaires.',
     allowedTabs: [
       'HOME',
       'TIMETABLE',
@@ -112,15 +132,11 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
       'VOLUMES',
       'QR_ATTENDANCE',
       'LMD_MAQUETTES',
-      'GRADES',
       'COMMUNICATION',
       'STUDENTS',
       'TEACHERS',
-      'PARENT_PORTAL',
       'EXPORT_STUDENTS',
-      'ACADEMIC_YEARS',
       'DATA_MANAGEMENT',
-      'AUDIT',
       'SETTINGS',
     ],
     defaultOperations: ['CONSULTATION', 'CREATION', 'MODIFICATION', 'VALIDATION', 'TELECHARGEMENT', 'EXPORTATION'],
@@ -235,19 +251,30 @@ export const DEFAULT_SYSTEM_ROLE_TABS: Record<UserRole, string[]> = {
   PARENT: [...ROLE_DEFINITIONS.PARENT.allowedTabs],
 };
 
-export function syncSystemRolePermissions(overrides?: Partial<Record<UserRole, string[]>>): void {
+// Reactive in-memory copy updated alongside React state in AppContext (P12)
+let activeSystemRoleTabs: Record<UserRole, string[]> = {
+  ...DEFAULT_SYSTEM_ROLE_TABS,
+};
+
+export function syncSystemRolePermissions(overrides?: Partial<Record<UserRole, string[]>>): Record<UserRole, string[]> {
+  const next: Record<UserRole, string[]> = { ...DEFAULT_SYSTEM_ROLE_TABS };
   (Object.keys(ROLE_DEFINITIONS) as UserRole[]).forEach((role) => {
     if (role === 'ADMIN') {
+      next.ADMIN = [...DEFAULT_SYSTEM_ROLE_TABS.ADMIN];
       ROLE_DEFINITIONS.ADMIN.allowedTabs = [...DEFAULT_SYSTEM_ROLE_TABS.ADMIN];
       return;
     }
     const customTabs = overrides?.[role];
     if (Array.isArray(customTabs)) {
+      next[role] = [...customTabs];
       ROLE_DEFINITIONS[role].allowedTabs = [...customTabs];
     } else {
+      next[role] = [...DEFAULT_SYSTEM_ROLE_TABS[role]];
       ROLE_DEFINITIONS[role].allowedTabs = [...DEFAULT_SYSTEM_ROLE_TABS[role]];
     }
   });
+  activeSystemRoleTabs = next;
+  return next;
 }
 
 export const SYSTEM_ROLE_DEFINITIONS: RoleDefinition[] = Object.values(ROLE_DEFINITIONS);
@@ -268,14 +295,21 @@ export function canRoleAccessTab(
   role: UserRole | undefined,
   tabId: string,
   userOrPerms?: User | UserCustomPermissions,
-  customRoles?: CustomRoleDefinition[]
+  customRoles?: CustomRoleDefinition[],
+  roleOverrides?: Partial<Record<UserRole, string[]>>
 ): boolean {
   if (!role) return false;
+
+  // P26: Never allow an ADMIN to be locked out of critical governance modules
+  if (role === 'ADMIN' && PROTECTED_ADMIN_TABS.has(tabId)) {
+    return true;
+  }
+
   const perms: UserCustomPermissions | undefined =
     userOrPerms && 'id' in userOrPerms ? userOrPerms.customPermissions : (userOrPerms as UserCustomPermissions | undefined);
   const customRoleId = userOrPerms && 'id' in userOrPerms ? userOrPerms.customRoleId : undefined;
 
-  // Individual explicit deny takes precedence
+  // Individual explicit deny takes precedence (except protected admin tabs handled above)
   if (perms?.deniedTabs?.includes(tabId)) {
     return false;
   }
@@ -291,9 +325,9 @@ export function canRoleAccessTab(
     }
   }
   if (role === 'ADMIN') return true;
-  const def = ROLE_DEFINITIONS[role];
-  if (!def) return false;
-  return def.allowedTabs.includes(tabId);
+  const effectiveTabs = roleOverrides?.[role] || activeSystemRoleTabs[role] || ROLE_DEFINITIONS[role]?.allowedTabs;
+  if (!effectiveTabs) return false;
+  return effectiveTabs.includes(tabId);
 }
 
 export function canUserPerformOperation(
@@ -304,6 +338,10 @@ export function canUserPerformOperation(
   if (!user) return false;
   if (user.role === 'PARENT' && operation !== 'CONSULTATION' && operation !== 'TELECHARGEMENT') {
     return false; // ACC-089: Parent is strictly read-only
+  }
+  // P26: ADMIN always retains core governance operations
+  if (user.role === 'ADMIN' && (operation === 'CONSULTATION' || operation === 'MODIFICATION')) {
+    return true;
   }
   if (user.customPermissions?.deniedOperations?.includes(operation)) {
     return false;
@@ -340,16 +378,22 @@ export const RBAC = {
   canViewFinancialStatus: (role?: UserRole) =>
     role === 'ADMIN' || role === 'FINANCE' || role === 'SCOLARITE' || role === 'SCHEDULER',
   canManageBackups: (role?: UserRole) => role === 'ADMIN',
+  // P24: Enforce strict role hierarchy when editing user sheets
   canEditUserSheet: (actor?: User, target?: User) => {
     if (!actor || !target) return false;
     if (actor.role === 'PARENT') return false;
     if (actor.customPermissions?.deniedOperations?.includes('MODIFICATION')) return false;
+    if (actor.role === 'ADMIN') return true;
+    // Non-admins can never edit an ADMIN account
+    if (target.role === 'ADMIN') return false;
+    const actorRank = ROLE_HIERARCHY_RANK[actor.role] || 0;
+    const targetRank = ROLE_HIERARCHY_RANK[target.role] || 0;
     if (
-      actor.role === 'ADMIN' ||
-      actor.role === 'SCOLARITE' ||
-      actor.role === 'SCHEDULER' ||
-      actor.role === 'ADMIN_STAFF' ||
-      actor.role === 'ACADEMIC_HEAD'
+      (actor.role === 'SCOLARITE' ||
+        actor.role === 'SCHEDULER' ||
+        actor.role === 'ADMIN_STAFF' ||
+        actor.role === 'ACADEMIC_HEAD') &&
+      actorRank >= targetRank
     ) {
       return true;
     }
@@ -359,4 +403,3 @@ export const RBAC = {
     return false;
   },
 };
-

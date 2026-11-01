@@ -46,6 +46,7 @@ export const AcademicYearManagement: React.FC = () => {
   const [isCurrent, setIsCurrent] = useState(false);
   const [cloneFromPrevious, setCloneFromPrevious] = useState(true);
   const [formMsg, setFormMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [listFeedback, setListFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const isStaffOrAdmin = ['ADMIN', 'SCHEDULER', 'ACADEMIC_HEAD'].includes(currentUser?.role || '');
 
@@ -241,6 +242,19 @@ export const AcademicYearManagement: React.FC = () => {
           </div>
         </div>
 
+        {listFeedback && (
+          <div
+            className={`m-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
+              listFeedback.type === 'error'
+                ? 'bg-rose-50 text-rose-800 border-rose-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}
+          >
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{listFeedback.text}</span>
+          </div>
+        )}
+
         <div className="divide-y divide-slate-100">
           {academicYears.map((ay) => {
             const isSelected = ay.code === selectedAcademicYear;
@@ -335,9 +349,13 @@ export const AcademicYearManagement: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirm(`Confirmez-vous la suppression de l'année académique ${ay.code} ?`)) {
-                          deleteAcademicYear(ay.id);
+                        const res = deleteAcademicYear(ay.id);
+                        if (!res.success) {
+                          setListFeedback({ type: 'error', text: res.error || 'Suppression refusée.' });
+                        } else {
+                          setListFeedback({ type: 'success', text: `Année académique ${ay.code} supprimée.` });
                         }
+                        setTimeout(() => setListFeedback(null), 5000);
                       }}
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                       title="Supprimer l'année académique"

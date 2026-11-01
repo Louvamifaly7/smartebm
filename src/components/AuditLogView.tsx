@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { History, Shield, Smartphone, Monitor, Search, Filter } from 'lucide-react';
+import { History, Smartphone, Monitor, Download } from 'lucide-react';
+import { downloadCsvFile } from '../utils/csvExport';
 
 export const AuditLogView: React.FC = () => {
   const { auditLogs } = useApp();
@@ -12,6 +13,19 @@ export const AuditLogView: React.FC = () => {
     if (platformFilter !== 'ALL' && log.platform !== platformFilter) return false;
     return true;
   });
+
+  const handleExportAuditCsv = () => {
+    const headers = ['Horodatage', 'Auteur / Compte', 'Rôle', 'Action exécutée', 'Plateforme', 'Détails'];
+    const rows = filteredLogs.map((log) => [
+      new Date(log.timestamp).toLocaleString('fr-FR'),
+      log.userName,
+      log.userRole,
+      log.action,
+      log.platform,
+      log.details,
+    ]);
+    downloadCsvFile('EBM_Journal_Audit_Securite', headers, rows);
+  };
 
   return (
     <div className="space-y-4">
@@ -32,9 +46,19 @@ export const AuditLogView: React.FC = () => {
             </p>
           </div>
 
-          <span className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-800 rounded-xl border border-blue-200">
-            {auditLogs.length} événements enregistrés
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-800 rounded-xl border border-blue-200">
+              {filteredLogs.length} / {auditLogs.length} événements
+            </span>
+            <button
+              type="button"
+              onClick={handleExportAuditCsv}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Exporter CSV</span>
+            </button>
+          </div>
         </div>
       </div>
 

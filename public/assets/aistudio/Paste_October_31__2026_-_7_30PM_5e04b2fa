@@ -1,0 +1,339 @@
+Problèmes:
+
+1. Architecture et données : le plus gros problème fonctionnel
+1. L’application est en pratique mono-poste. Chaque navigateur garde sa propre copie des données dans localStorage. Il n’y a aucun onSnapshot : la synchronisation avec Firestore n’est lancée que par un bouton. Un paiement saisi à la caisse n’apparaît donc pas chez l’étudiant ni chez le parent.
+2. La synchronisation est asymétrique.
+    * L’envoi manuel pousse 18 collections.
+    * La récupération n’en lit que 9 : séances, salles, cours, groupes, frais, inscriptions et caisse ne reviennent jamais.
+    * Messages, devoirs, notifications et publications ne sont jamais synchronisés.
+    * Seules quelques collections sont envoyées au fil de l’eau : utilisateurs, journal d’audit, inscriptions, parcours, règles, frais, délibérations.
+3. La récupération écrase au lieu de fusionner. pullFromCloudFirestore remplace les données locales (setUsers(cloudUsers), etc.), alors que le message affiché parle de « fusionner ». Les modifications locales non envoyées sont perdues sans avertissement.
+4. Les suppressions ne se propagent jamais. removeDocFromFirestore n’est appelée nulle part (0 appel). Un enseignant ou un cours supprimé localement revient au prochain envoi ou à la prochaine récupération.
+5. Un envoi partiellement échoué est annoncé comme réussi. Le message « sécurisés dans Cloud Firestore » s’affiche tant qu’au moins un document est passé, même si une collection a été refusée.
+6. La réinitialisation est incomplète. resetToDefaultData oublie les années académiques, les rôles personnalisés, le chat et les demandes de profil. Elle repositionne aussi l’identité sur user-admin sans déconnecter la personne.
+7. La restauration de sauvegarde ne vérifie rien.
+    * Le checksum n’est jamais contrôlé, et aucune structure ni aucun rôle ne sont validés. Un fichier JSON fabriqué peut donc injecter un compte ADMIN.
+    * L’écran parle de sauvegardes « chiffrées », alors que ce sont des JSON en clair.
+    * La restauration ne couvre ni les notifications, ni les messages, ni le journal d’audit.
+8. Aucun test automatisé. Il y a 0 fichier de test pour environ 36 700 lignes, dont 4 355 dans un seul AppContext.tsx.
+
+2. Permissions : un affichage plus qu’une protection
+1. Les droits par opération ne sont jamais appliqués. canUserPerformOperation (CRÉATION, SUPPRESSION, VALIDATION…) n’est appelée nulle part. Seul l’accès aux onglets est filtré, et les fonctions du contexte (saveGrade, recordPayment, deleteUser…) ne vérifient pas le rôle.
+2. Pas de hiérarchie entre rôles. canEditUserSheet autorise la Scolarité, le personnel administratif et le responsable pédagogique à modifier la fiche de n’importe qui, y compris un administrateur.
+3. Un enseignant peut modifier les notes de tous les EC. C’est vrai dans l’interface comme dans les règles Firestore, qui n’ont aucun contrôle de propriété, alors que la description du rôle dit « notes de ses EC ».
+4. Verrouillage possible. Un refus d’onglet individuel (deniedTabs) prime sur tout, administrateur compris, et rien n’empêche de retirer l’accès au dernier administrateur.
+5. Les règles Firestore comparent des identifiants incompatibles. resource.data.studentId == request.auth.uid suppose que l’identifiant applicatif est l’uid Firebase, ce qui est faux (ex. user-fb-xxxx, uid anonyme aléatoire). Un étudiant ne pourra donc jamais relire ses propres notes ou paiements depuis le cloud.
+6. Messages privés lisibles par tous les utilisateurs connectés (messages, internalMessages, chatMessages).
+7. État global modifiable hors de React. syncSystemRolePermissions modifie la constante ROLE_DEFINITIONS, ce qui ne déclenche aucun nouveau rendu.
+8. Deux rôles identiques : SCOLARITE et SCHEDULER ont les mêmes onglets et opérations, ce qui est source de confusion.
+
+3. Emploi du temps et salles
+1. updateSession ne contrôle aucun conflit. Changer la salle, l’enseignant, le groupe ou l’heure d’une séance crée librement des doubles réservations.
+2. rescheduleSession non plus, alors que c’est la fonction de report. Elle notifie même EXTERNAL_SPEAKER comme s’il s’agissait d’un utilisateur.
+3. Une séance annulée peut être « ressuscitée ». updateSession force le statut MODIFIED et le report force RESCHEDULED, même sur une séance CANCELLED. L’appelant ne peut pas non plus poser un statut comme COMPLETED_VALIDATED via updateSession.
+4. durationHours n’est pas recalculée quand l’heure change dans updateSession : les volumes horaires deviennent faux.
+5. Les disponibilités des enseignants ne sont pas appliquées. Elles servent uniquement à classer les suggestions dans SessionModal. Rien ne bloque ni n’avertit pour une séance hors disponibilité.
+6. weeklyMaxHours (18 h par défaut) n’est jamais contrôlé : un enseignant peut dépasser sa charge hebdomadaire sans alerte.
+7. Salle en maintenance : la passer en maintenance ne vérifie ni ne signale les séances futures qui s’y trouvent.
+8. Notifications incohérentes. À la création d’une séance normale, seul l’enseignant est prévenu, alors que les étudiants le sont pour un événement spécial.
+9. Suppression de séance dure. deleteSession efface sans prévenir personne et laisse des sessions QR et des pointages orphelins.
+10. Volumes horaires (getCourseHourlyStats) :
+    * totalHours || 30 invente 30 h quand le volume est 0 ou absent ;
+    * le filtre ne porte que sur courseId, pas sur l’année académique ;
+    * les dépassements sont masqués par Math.max(0, …), donc aucun suivi des heures supplémentaires.
+11. Heures locales et heures UTC mélangées. Le motif toISOString().split('T')[0] apparaît 29 fois dans 14 fichiers et donne la date UTC, avec un décalage d’un jour possible à Madagascar (UTC+3) entre 00 h et 03 h.
+
+4. Intégrité des données (suppressions et doublons)
+1. Aucune intégrité référentielle. deleteCourse, deleteRoom, deleteGroup, deleteTeacher, deleteUser et deleteAcademicYear suppriment sans regarder les séances, notes, inscriptions ou paiements liés.
+2. deleteAcademicYear ne protège pas l’année courante. selectedAcademicYear peut rester sur un code supprimé.
+3. deleteUser ne bloque ni l’auto-suppression ni la suppression du dernier administrateur.
+4. Les enseignants créés peuvent avoir un identifiant en double. addTeacher fabrique username à partir du nom et ne contrôle ni l’unicité de ce nom d’utilisateur ni celle de l’e-mail. Comme login prend le premier correspondant, deux « Jean Rakoto » se confondent.
+5. Salles : pas d’unicité du code et pas de contrôle de capacité (≥ 1).
+6. Identifiants Date.now() partout (séances, salles, enseignants, historique) : collisions possibles lors de créations rapprochées ou en lot.
+
+5. Exports et impressions
+1. Injection de formule dans le CSV. downloadCsvFile n’échappe pas les cellules qui commencent par =, +, - ou @. Un nom d’étudiant ou une remarque piégés s’exécutent à l’ouverture dans Excel.
+2. Calendrier .ics non conforme.
+    * Aucun échappement des virgules, points-virgules ni retours à la ligne dans SUMMARY, LOCATION et DESCRIPTION.
+    * Pas de pliage des lignes de plus de 75 octets.
+    * X-WR-TIMEZONE:Europe/Paris au lieu d’Antananarivo (UTC+3, sans heure d’été) : les heures flottantes peuvent s’afficher décalées d’1 ou 2 h dans Google Agenda.
+    * DTSTAMP toujours à minuit, STATUS:CONFIRMED même pour une séance reportée ou modifiée.
+3. Lien Google Agenda : pas de fuseau (ctz) et les groupes affichent leurs identifiants internes au lieu des codes.
+4. Impression par document.write sans échappement HTML (reçu parent, carte étudiante) : un nom ou un libellé de frais contenant du HTML est injecté dans la page.
+5. Photo de profil en base64 dans localStorage, sans limite de taille ni de type : une seule grande image peut saturer le quota.
+6. Cinq alert() dans SessionModal et plusieurs confirm() natifs pour des suppressions irréversibles, au lieu d’un composant de confirmation.
+7. downloadICSFile libère l’URL immédiatement alors que l’export CSV attend 2 s : certains navigateurs peuvent échouer au téléchargement.
+
+6. Fonctionnalités simulées ou trompeuses
+1. La liaison Google Calendar est factice. toggleGoogleCalendar bascule un drapeau et invente username@gmail.com, sans aucun appel d’API.
+2. Le simulateur Android et les notifications « push » sont des simulations ; rien n’est réellement envoyé. Le bouton de téléchargement d’une ressource affiche un alert.
+3. testFirestoreConnection annonce une base « opérationnelle et protégée » pour presque toute erreur (déjà signalé au premier audit, mais c’est aussi un défaut d’affichage).
+4. Libellés rassurants non justifiés : « Infrastructure SIS de Production », « sauvegardes chiffrées », checksum nommé SHA alors que c’est un hash 32 bits.
+
+7. Améliorations suggérées
+* Vraie persistance : passer de localStorage à Firestore avec écoute temps réel, ou à un backend.
+* Couche de services : fonctions métier qui contrôlent les droits, la validité (début < fin, plages de notes) et les références avant toute écriture.
+* Un seul contrôle de conflits appliqué à création, modification et report.
+* Identifiants : crypto.randomUUID() à la place de Date.now().
+* Dates : manipuler des dates locales (chaîne YYYY-MM-DD et fuseau fixe Indian/Antananarivo), jamais toISOString().
+* Suppression logique (archivage) plutôt que suppression définitive, avec un composant de confirmation.
+* Découpage de AppContext.tsx en modules par domaine, et chargement paresseux des vues pour alléger le bundle de 2,3 Mo.
+* Tests d’abord sur les notes, les paiements, les conflits d’horaires et le QR.
+* Journal d’audit en écriture seule (règles Firestore), avec les rôles réellement vérifiés côté serveur.
+
+Sécurité (critique)
+1. Le mot de passe n’est jamais vérifié. login() ignore son paramètre _password. J’ai pu me connecter avec un mauvais mot de passe.
+2. La session ne repose que sur un drapeau localStorage. Après localStorage.setItem('ebm_auth_logged_in','true') et un rechargement, j’ai obtenu l’interface complète d’administration. L’identité par défaut est 'user-admin', et currentUser retombe sur users[0] si l’identifiant est introuvable.
+3. Tout compte Google devient administrateur : dans loginWithGoogleFirebase, isBootstrappedAdmin ? 'ADMIN' : 'ADMIN' donne le même rôle dans les deux cas.
+4. Règles Firestore trop ouvertes
+    * isAdmin() inclut AUTHENTICATED_PORTAL, c’est-à-dire tout utilisateur connecté sans fiche, anonymes compris. L’application appelle signInAnonymously automatiquement après la connexion, donc l’effet est que chaque visiteur est administrateur côté base (si l’authentification anonyme est activée dans la console, que je ne peux pas vérifier).
+    * La création de /users/{uid} n’interdit pas de choisir son propre role.
+    * auditLogs, appSettings et backups sont modifiables par n’importe quel utilisateur connecté, donc le journal d’audit n’est pas fiable.
+5. Mots de passe en clair : setDirectUserPassword stocke passwordHash: cleanPwd et le synchronise vers /users, lisible par tout utilisateur connecté. changePassword stocke à l’inverse un faux hash (hash-${length}-secure), sans vérifier l’ancien mot de passe et sans synchroniser.
+6. Dates et paiements (voir plus bas) : le journal et la caisse peuvent aussi être faussés par les erreurs de date.
+
+Robustesse
+1. Page blanche si localStorage est corrompu : environ 35 JSON.parse sont sans try/catch. J’ai reproduit le plantage, la page reste vide.
+2. Écritures localStorage sans gestion de quota : toutes les données y sont dupliquées à chaque changement, et les sauvegardes complètes (savedBackups) y sont stockées aussi. Le quota d’environ 5 Mo finira par être dépassé.
+3. Effets de bord dans des mises à jour d’état : syncDocToFirestore est appelé à l’intérieur de setUsers(prev => ...). Ce code doit être pur et peut s’exécuter deux fois.
+4. Identifiants fragiles : Date.now() sert d’identifiant pour les sessions QR, les pointages et les paiements, ce qui peut produire des doublons.
+5. testFirestoreConnection répond « connecté » pour toute erreur sauf « offline », y compris une clé invalide.
+6. computeBackupChecksum s’appelle EBM-SHA-... mais c’est un hash 32 bits (FNV), sensible à l’ordre des clés JSON. Il ne garantit pas l’intégrité d’une sauvegarde.
+7. Synchro setDoc(..., { merge: true }) + suppression des undefined : un champ vidé localement n’est jamais effacé dans Firestore.
+
+
+
+Fonctions qui ne marchent que sur un seul appareil
+* Pointage QR. scanQrAttendance ne modifie que l’état local. Il n’y a aucun onSnapshot, et qrSessions n’est pas écrit dans Firestore. Le téléphone d’un étudiant ne peut donc pas enregistrer sa présence sur l’écran de l’enseignant. Cela ne marche que dans le simulateur Android, qui tourne dans le même navigateur. De plus, studentId est passé en paramètre sans être lié à l’utilisateur connecté, le code est le même pour toute la séance (une photo suffit à pointer à distance), et le contrôle de groupe est ignoré si groupId est absent.
+* Emploi du temps. Les séances ne sont ni écrites au fil de l’eau ni relues depuis le cloud : seules users, parcours, academicRules, inscriptions, fees, deliberations et auditLogs sont écrites à chaque modification, et sessions n’est pas dans les collections relues. L’EDT n’est donc pas partagé entre postes.
+
+
+Calcul des notes (AppContext.tsx)
+* Note finale partielle. calculateEcFinalScore renvoie CC × 0,4 si seule la note de contrôle continu est saisie (16/20 devient 6,4), et examen × 0,6 si seul l’examen l’est. Cette valeur est stockée comme finalScore et comptée dans getStudentUeSummary. La moyenne d’UE est donc faussée, l’étudiant paraît en échec, et isComplete passe à vrai dès qu’une seule note existe. La note finale devrait rester vide tant que les deux composantes manquent, sauf pour les EC en évaluation directe.
+* Brouillons dans les moyennes. getStudentUeSummary ne filtre ni isDraft ni isPublished. Le portail parents masque la note d’un EC non publié, mais les moyennes et crédits affichés peuvent l’inclure. À vérifier à l’écran.
+* Arrondi avant le seuil. La moyenne est arrondie à 2 décimales puis comparée à 10 : 9,996 devient 10,00 et valide l’UE. Chaque EC est aussi arrondi avant la moyenne.
+1. Les EC non notés sont ignorés dans la moyenne d’UE : un étudiant validé sur un seul EC bien noté peut valider toute l’UE. Les crédits de l’UE retombent sur || 6 sans lien avec ceux des EC.
+2. saveGrade ne tient pas compte de l’année : la recherche se fait sur studentId et ecId seulement, donc un redoublant écrase la note de l’année précédente.
+3. publishGrades publie toutes les notes de l’EC, toutes années et tous brouillons confondus, et renotifie tout le monde.
+4. Aucune validation 0 à 20 sur les notes saisies.
+
+
+Planning et conflits (conflictDetector.ts, SessionModal.tsx)
+* Une salle en maintenance ou occupied n’est jamais refusée à la saisie. Seules les suggestions filtrent sur available.
+* Si l’heure de fin précède celle de début, doIntervalsOverlap renvoie toujours faux et aucun conflit n’est détecté. Je n’ai trouvé aucune validation de ce cas dans le modal, qui force juste la durée à 0,5 h.
+* Les suggestions de créneaux ignorent la durée : durationMinutes est calculé mais jamais utilisé, donc toujours 2 h. Elles peuvent aussi tomber un dimanche ou un jour férié.
+* Si studentCount est absent ou vaut 0, l’effectif est fixé arbitrairement à 30.
+
+16. Pas de contrôle début < fin : une plage inversée n’est jamais détectée comme conflit.
+17. La détection ignore l’état de la salle (maintenance, etc.), alors que les suggestions la filtrent sur available.
+18. findAlternativeSlots calcule durationMinutes sans l’utiliser : les créneaux proposés font toujours 2 h, quelle que soit la durée demandée.
+19. Calcul de dates mélangeant heure locale et UTC (setDate puis toISOString), qui peut décaler d’un jour.
+20. Effectif par défaut de 30 quand studentCount est absent, ce qui fausse le contrôle de capacité.
+
+Exports
+* ICS. X-WR-TIMEZONE:Europe/Paris alors que l’école est à Madagascar (UTC+3), ce qui risque de décaler les heures dans Google ou Apple Agenda. Les séances annulées sont simplement omises au lieu d’être marquées STATUS:CANCELLED, donc elles restent dans les agendas déjà importés. Les virgules de LOCATION ne sont pas échappées.
+* Lien Google Agenda. Il affiche les identifiants internes des groupes au lieu de leurs noms.
+* CSV. Aucune neutralisation des cellules commençant par =, +, - ou @ : un nom ou une note saisi ainsi s’exécute comme formule dans Excel.
+
+
+Sauvegarde et robustesse
+* restoreSystemBackup ne restaure ni internalMessages, ni groupPosts, ni notifications, ni auditLogs, pourtant présents dans le snapshot.
+* Dix snapshots complets sont gardés dans le localStorage (ebm_backups_v3, limite d’environ 5 Mo), sans gestion d’erreur de quota.
+* Il y a 31 JSON.parse(saved) sans try/catch et aucun ErrorBoundary : une valeur corrompue donne une page blanche.
+
+
+Paiements
+7. Un montant NaN passe la validation : NaN <= 0 et NaN > solde valent tous deux false.
+8. Numéro de reçu payments.length + 1, avec l’année 2026 écrite en dur : doublons possibles après une suppression.
+9. Décalage de date : toISOString().split('T')[0] donne la date UTC. À Madagascar (UTC+3), un paiement entre 00h et 03h est daté de la veille, ce qui peut fausser la caisse du jour.
+
+
+Présence QR
+10. Code OTP de 4 chiffres tiré avec Math.random() (9 000 possibilités), sans contrôle d’unicité entre séances actives : deux séances peuvent avoir le même code, et find prend la première.
+11. Une session expirée reste isActive et peut masquer une session valide au même code.
+12. Un étudiant sans groupId passe le contrôle de groupe.
+13. scanQrAttendance(code, studentId) accepte n’importe quel studentId : rien ne le lie à l’utilisateur connecté, d’où un risque de pointage pour un camarade. Je n’ai pas vérifié l’appel côté interface.
+14. Contrôle anti-doublon basé sur un état périmé : deux scans très rapprochés peuvent passer avant le nouveau rendu.
+15. Le statut LATE n’est jamais attribué automatiquement.
+
+
+
+
+Plan de correction structuré — Application SIS (EBM)
+Objectif : corriger l'intégralité des défauts listés, sans omission, en respectant un ordre de priorité (critique → important → amélioration). Chaque point est numéroté pour suivi (ticket/PR).
+
+0. Méthode et pré-requis
+* 0.1 Créer un backlog unique reprenant chaque point ci-dessous avec ID (SEC-xx, ARCH-xx, PERM-xx, EDT-xx, DATA-xx, EXP-xx, SIM-xx, NOTE-xx, PAY-xx, QR-xx, ROB-xx).
+* 0.2 Mettre en place CI + tests dès le début (cf. ARCH-8), sinon les régressions reviendront.
+* 0.3 Découper AppContext.tsx (4 355 lignes) avant les corrections fonctionnelles, pour rendre les patches testables (cf. ARCH-7).
+* 0.4 Définir une source de vérité : Firestore (temps réel) + backend de règles ; localStorage devient un simple cache.
+
+1. Sécurité (CRITIQUE — à traiter en premier)
+1.1 Authentification réelle
+* SEC-1 : login() doit vérifier le mot de passe (hash + sel, jamais en clair). Supprimer l'ignorance de _password.
+* SEC-2 : Remplacer le drapeau localStorage['ebm_auth_logged_in'] par une session authentifiée Firebase Auth (ID token, refresh, expiration). Supprimer le fallback users[0] et l'identité par défaut user-admin.
+* SEC-4 : loginWithGoogleFirebase : ne jamais attribuer ADMIN par défaut. Rôle = PORTAL/AUTHENTICATED_PORTAL sauf mapping explicite validé côté serveur.
+* SEC-6 : Supprimer setDirectUserPassword (stockage passwordHash: cleanPwd). changePassword doit : vérifier l'ancien mot de passe, hasher correctement (bcrypt/argon2 côté backend), et synchroniser avec Firestore.
+1.2 Règles Firestore
+* SEC-5a : isAdmin() ne doit pas inclure AUTHENTICATED_PORTAL ni les anonymes. Interdire signInAnonymously pour les opérations d'écriture sensibles.
+* SEC-5b : Interdire à un utilisateur de choisir son propre role à la création de /users/{uid}.
+* SEC-5c : auditLogs, appSettings, backups : passage en écriture serveur uniquement (Cloud Functions / Admin SDK), lecture restreinte.
+* SEC-5d : messages, internalMessages, chatMessages : lecture limitée aux participants (expéditeur/destinataire), pas à tout utilisateur connecté (cf. PERM-6).
+* SEC-5e : Corriger la comparaison resource.data.studentId == request.auth.uid : stocker un mapping appUserId ↔ firebaseUid côté serveur, ou utiliser request.auth.token.appUserId. Sans cela, un étudiant ne peut jamais relire ses notes/paiements (cf. PERM-5).
+1.3 Journal d'audit fiable
+* SEC-5f : auditLogs en append-only (règles : create autorisé, update/delete interdits sauf admin serveur).
+
+2. Architecture et données
+* ARCH-1 : Passer localStorage → Firestore avec onSnapshot (ou backend). Un paiement caisse doit apparaître immédiatement chez l'étudiant/parent.
+* ARCH-2 : Rendre la synchro symétrique : lister explicitement les collections poussées et relues, et aligner les deux listes (18 vs 9). Inclure sessions, rooms, courses, groups, fees, enrollments, caisse, messages, homework, notifications, publications, academicYears, customRoles, chat, profileRequests.
+* ARCH-3 : pullFromCloudFirestore doit fusionner (merge par ID + updatedAt/version) et jamais écraser les modifications locales non poussées. Afficher un avertissement explicite en cas de conflit.
+* ARCH-4 : Implémenter et appeler removeDocFromFirestore dans toutes les suppressions (enseignant, cours, salle, groupe, user, année). Ajouter des tombstones (deletedAt) pour propager les suppressions.
+* ARCH-5 : pushToCloudFirestore doit retourner un rapport par collection (succès/échec). Le message « sécurisés dans Cloud Firestore » ne s'affiche que si 100 % des collections ont réussi ; sinon message d'erreur détaillé.
+* ARCH-6 : resetToDefaultData doit aussi réinitialiser : academicYears, customRoles, chat, profileRequests, et déconnecter l'utilisateur (pas de repositionnement silencieux sur user-admin).
+* ARCH-7 : Découper AppContext.tsx en modules par domaine (auth, users, grades, payments, schedule, caisse, audit, sync). Chargement paresseux des vues (bundle 2,3 Mo → objectif < 1 Mo).
+* ARCH-8 : Créer des tests automatisés : notes, paiements, conflits d'horaires, QR, sync, restauration. Cible minimale : tests unitaires sur fonctions métier + tests d'intégration sur les flux critiques.
+2.1 Restauration de sauvegarde
+* ARCH-7a : Vérifier le checksum (et remplacer le FNV 32 bits par SHA-256 réel — cf. ROB-6).
+* ARCH-7b : Valider structure et rôles du JSON avant import (schéma JSON/Zod). Interdire l'injection d'un compte ADMIN via fichier fabriqué.
+* ARCH-7c : Corriger le libellé « sauvegardes chiffrées » → soit chiffrer réellement (AES-GCM avec clé), soit retirer la mention.
+* ARCH-7d : La restauration doit couvrir notifications, messages, auditLogs (actuellement manquants — cf. ROB-8).
+
+3. Permissions
+* PERM-1 : Appliquer canUserPerformOperation (CRÉATION, SUPPRESSION, VALIDATION…) dans chaque fonction de contexte (saveGrade, recordPayment, deleteUser, etc.), pas seulement sur les onglets.
+* PERM-2 : Ajouter une hiérarchie de rôles. canEditUserSheet : interdire la modification d'un administrateur par Scolarité/personnel/responsable pédagogique.
+* PERM-3 : Restreindre un enseignant à ses EC (interface et règles Firestore avec contrôle de propriété teacherId).
+* PERM-4 : deniedTabs : ne doit pas primer sur l'administrateur. Empêcher le retrait du dernier administrateur.
+* PERM-5 : Corriger le mapping identifiants (cf. SEC-5e).
+* PERM-6 : Messages privés : lecture par participants uniquement (cf. SEC-5d).
+* PERM-7 : syncSystemRolePermissions ne doit pas muter la constante ROLE_DEFINITIONS. Utiliser un état React (useState/useReducer) ou un store immuable.
+* PERM-8 : Fusionner ou différencier clairement SCOLARITE et SCHEDULER (mêmes onglets/opérations actuellement).
+
+4. Emploi du temps et salles
+* EDT-1 : updateSession doit contrôler les conflits (salle, enseignant, groupe, horaire).
+* EDT-2 : rescheduleSession id
+
+dire probleme et correction à appliquer
+Problèmes et corrections à appliquer — SIS EBM
+Format : PROBLÈME → CORRECTION. Chaque ligne est un ticket actionnable.
+
+1. Sécurité (critique)
+P1. login() ignore _password — n'importe quel mot de passe est accepté. C1. Vérifier le mot de passe via hash (bcrypt/argon2) côté serveur ; supprimer le paramètre inutilisé.
+P2. Session basée sur localStorage['ebm_auth_logged_in'] — un simple setItem + reload donne l'admin. C2. Remplacer par Firebase Auth (ID token + refresh). Supprimer le fallback users[0] et l'identité par défaut user-admin.
+P3. Sélecteur « Tester un rôle » visible par tous + accès « 1-clic » aux 6 rôles. C3. Retirer en production (flag build), ou isoler dans un environnement de démo sans données réelles.
+P4. loginWithGoogleFirebase : isBootstrappedAdmin ? 'ADMIN' : 'ADMIN' → tout compte Google devient admin. C4. Rôle par défaut = PORTAL/AUTHENTICATED_PORTAL ; ADMIN uniquement via mapping serveur explicite.
+P5. isAdmin() inclut AUTHENTICATED_PORTAL → tout visiteur (anonymes compris) est admin côté Firestore. C5. Retirer AUTHENTICATED_PORTAL de isAdmin() ; interdire signInAnonymously pour les écritures sensibles.
+P6. /users/{uid} : l'utilisateur peut choisir son propre role à la création. C6. Règle Firestore : role non modifiable par l'utilisateur, forcé côté serveur.
+P7. auditLogs, appSettings, backups modifiables par tout utilisateur connecté. C7. Écriture serveur uniquement (Cloud Functions / Admin SDK) ; auditLogs en append-only.
+P8. setDirectUserPassword stocke passwordHash: cleanPwd (mot de passe en clair synchronisé). C8. Supprimer la fonction ; hasher côté serveur ; ne jamais écrire le mot de passe dans Firestore.
+P9. changePassword stocke hash-${length}-secure (faux hash), ne vérifie pas l'ancien mdp, ne synchronise pas. C9. Vérifier l'ancien mdp, hasher réellement, synchroniser avec /users.
+P10. Règles Firestore : resource.data.studentId == request.auth.uid — identifiants incompatibles (user-fb-xxxx ≠ uid Firebase). C10. Stocker un mapping appUserId ↔ firebaseUid côté serveur, ou utiliser request.auth.token.appUserId.
+P11. Messages privés (messages, internalMessages, chatMessages) lisibles par tous les connectés. C11. Restreindre la lecture aux participants (expéditeur/destinataire).
+P12. syncSystemRolePermissions mute la constante ROLE_DEFINITIONS (pas de re-render). C12. Passer par un état React (useState/useReducer) ou un store immuable.
+
+2. Architecture et données
+P13. Application mono-poste : chaque navigateur a sa copie localStorage, pas de onSnapshot. C13. Passer à Firestore temps réel (onSnapshot) ou backend ; localStorage = simple cache.
+P14. Synchro asymétrique : 18 collections poussées, 9 relues ; sessions, rooms, courses, groups, fees, enrollments, caisse, messages, homework, notifications, publications jamais/mal synchronisées. C14. Aligner explicitement les deux listes de collections ; ajouter les manquantes.
+P15. pullFromCloudFirestore écrase au lieu de fusionner (setUsers(cloudUsers)) → perte des modifs locales non poussées. C15. Fusion par ID + updatedAt/version ; avertir en cas de conflit ; ne jamais écraser sans confirmation.
+P16. removeDocFromFirestore jamais appelée (0 appel) → les suppressions reviennent. C16. Appeler dans toutes les suppressions (enseignant, cours, salle, groupe, user, année) + tombstones (deletedAt).
+P17. Envoi partiellement échoué annoncé comme réussi. C17. Rapport par collection ; message « sécurisés » uniquement si 100 % OK, sinon message d'erreur détaillé.
+P18. resetToDefaultData oublie academicYears, customRoles, chat, profileRequests et ne déconnecte pas. C18. Réinitialiser toutes ces collections + forcer la déconnexion.
+P19. AppContext.tsx : 4 355 lignes, bundle 2,3 Mo, 0 test pour 36 700 lignes. C19. Découper en modules par domaine + chargement paresseux + tests unitaires/intégration (notes, paiements, conflits, QR, sync, restauration).
+
+3. Restauration de sauvegarde
+P20. Checksum jamais contrôlé, structure/rôles non validés → un JSON fabriqué injecte un ADMIN. C20. Vérifier le checksum, valider le schéma (Zod/JSON Schema), interdire l'import d'un rôle ADMIN non signé.
+P21. Libellé « sauvegardes chiffrées » alors que c'est du JSON en clair. C21. Soit chiffrer réellement (AES-GCM + clé), soit retirer la mention.
+P22. Restauration ne couvre ni notifications, ni messages, ni auditLogs. C22. Inclure ces collections dans le snapshot ET dans la restauration.
+
+4. Permissions
+P23. canUserPerformOperation jamais appelée ; saveGrade, recordPayment, deleteUser ne vérifient pas le rôle. C23. Appliquer le contrôle dans chaque fonction métier du contexte.
+P24. Pas de hiérarchie : canEditUserSheet autorise Scolarité/admin/pédago à modifier un administrateur. C24. Ajouter une hiérarchie ; interdire la modification d'un admin par un rôle inférieur.
+P25. Un enseignant peut modifier les notes de tous les EC (interface + règles Firestore). C25. Restreindre à ses EC (teacherId) côté UI et règles Firestore.
+P26. deniedTabs prime sur tout, admin compris ; dernier admin peut être retiré. C26. Exempter l'admin ; bloquer le retrait du dernier admin.
+P27. SCOLARITE et SCHEDULER identiques. C27. Fusionner ou différencier clairement.
+
+5. Emploi du temps et salles
+P28. updateSession ne contrôle aucun conflit (salle, enseignant, groupe, heure). C28. Contrôle de conflits centralisé, appliqué à création/modification/report.
+P29. rescheduleSession ne contrôle pas les conflits et notifie EXTERNAL_SPEAKER comme un utilisateur. C29. Même contrôle de conflits + filtrer les destinataires valides.
+P30. Une séance CANCELLED peut être ressuscitée (MODIFIED/RESCHEDULED) ; COMPLETED_VALIDATED impossible à poser. C30. Interdire le changement de statut depuis CANCELLED ; autoriser explicitement COMPLETED_VALIDATED.
+P31. durationHours non recalculée quand l'heure change. C31. Recalculer systématiquement à chaque modification d'horaire.
+P32. Disponibilités enseignants non appliquées (seulement tri des suggestions). C32. Bloquer ou avertir pour une séance hors disponibilité.
+P33. weeklyMaxHours (18 h) jamais contrôlé. C33. Vérifier et alerter avant validation.
+P34. Passage en maintenance d'une salle ne vérifie pas les séances futures. C34. Lister/alerter les séances impactées avant de valider.
+P35. Notifications incohérentes : création séance normale → seul l'enseignant ; événement spécial → étudiants aussi. C35. Politique de notification unifiée (enseignant + groupe + étudiants selon type).
+P36. deleteSession supprime sans prévenir, laisse QR/pointages orphelins. C36. Suppression logique + notification + nettoyage (ou blocage) des QR/pointages liés.
+P37. getCourseHourlyStats : totalHours || 30 invente 30 h ; filtre sans année ; Math.max(0,…) masque les dépassements. C37. totalHours ?? 0 sans valeur inventée ; filtrer par année académique ; afficher les heures supplémentaires (pas de clamp).
+P38. toISOString().split('T')[0] (29 occurrences, 14 fichiers) → date UTC, décalage d'un jour à Madagascar (UTC+3, 00h–03h). C38. Utiliser des dates locales (YYYY-MM-DD) et le fuseau fixe Indian/Antananarivo ; bannir toISOString() pour les dates métier.
+
+6. Intégrité des données
+P39. Aucune intégrité référentielle : deleteCourse/Room/Group/Teacher/User/AcademicYear ne regardent pas les dépendances. C39. Vérifier/bloquer (ou archiver en cascade) avant suppression.
+P40. deleteAcademicYear ne protège pas l'année courante ; selectedAcademicYear peut pointer sur un code supprimé. C40. Interdire la suppression de l'année courante ; réinitialiser la sélection.
+P41. deleteUser ne bloque ni l'auto-suppression ni la suppression du dernier admin. C41. Bloquer les deux cas.
+P42. addTeacher : username dérivé du nom sans contrôle d'unicité (username/email) → deux « Jean Rakoto » se confondent. C42. Contrôler l'unicité username + email ; login doit être déterministe.
+P43. Salles : pas d'unicité du code, pas de contrôle de capacité (≥ 1). C43. Contrainte d'unicité + validation capacity >= 1.
+P44. Date.now() comme identifiant partout (séances, salles, enseignants, historique, QR, pointages, paiements) → collisions. C44. crypto.randomUUID() partout.
+
+7. Exports et impressions
+P45. CSV : pas d'échappement des cellules =, +, -, @ → injection de formule Excel. C45. Préfixer d'une apostrophe ou entourer de guillemets + neutraliser.
+P46. ICS non conforme : pas d'échappement ,;/retours ligne, pas de pliage > 75 octets, X-WR-TIMEZONE:Europe/Paris au lieu d'Antananarivo, DTSTAMP à minuit, STATUS:CONFIRMED même pour reportée/modifiée/annulée. C46. Échapper, plier les lignes, corriger le fuseau (Africa/Nairobi/Indian/Antananarivo), DTSTAMP réel, STATUS correct (CANCELLED inclus au lieu d'omettre).
+P47. Lien Google Agenda : pas de ctz, groupes affichent leurs IDs internes. C47. Ajouter ctz=Indian/Antananarivo ; afficher les noms/codes de groupe.
+P48. Impression par document.write sans échappement HTML (reçu parent, carte étudiante). C48. Échapper ou utiliser textContent/templates sûrs.
+P49. Photo de profil base64 dans localStorage sans limite taille/type. C49. Limiter taille/type, stocker en Storage (Firebase), pas en base64 local.
+P50. alert()/confirm() natifs (SessionModal, suppressions irréversibles). C50. Composant de confirmation unifié.
+P51. downloadICSFile libère l'URL immédiatement ; export CSV attend 2 s → échecs de téléchargement. C51. Libérer l'URL après le délai réel ou sur load/timeout cohérent.
+
+8. Fonctionnalités simulées / trompeuses
+P52. Liaison Google Calendar factice (toggleGoogleCalendar invente username@gmail.com). C52. Implémenter l'API réelle ou retirer la fonctionnalité et le libellé.
+P53. Simulateur Android / notifications « push » factices ; bouton de téléchargement → alert. C53. Retirer ou implémenter réellement (FCM, téléchargement effectif).
+P54. testFirestoreConnection annonce « opérationnelle et protégée » pour presque toute erreur. C54. Distinguer succès/échec ; n'annoncer OK qu'en cas de succès réel.
+P55. Libellés rassurants non justifiés (« Infrastructure SIS de Production », « sauvegardes chiffrées », checksum nommé SHA = FNV 32 bits). C55. Corriger les libellés ; renommer EBM-SHA- → EBM-FNV32- ou passer à SHA-256 réel.
+
+9. Robustesse
+P56. ~35 JSON.parse sans try/catch + aucun ErrorBoundary → page blanche si localStorage corrompu. C56. Wrapper safeParse + ErrorBoundary global.
+P57. Écritures localStorage sans gestion de quota ; sauvegardes complètes (10 snapshots) dans ebm_backups_v3 (~5 Mo). C57. Gérer QuotaExceededError ; limiter/rétention des sauvegardes ; stocker hors localStorage.
+P58. syncDocToFirestore appelé dans setUsers(prev => …) (effet de bord dans un updater, peut s'exécuter deux fois). C58. Sortir l'effet de bord de l'updater (utiliser useEffect).
+P59. testFirestoreConnection répond « connecté » pour toute erreur sauf « offline ». C59. Propager l'erreur réelle.
+P60. computeBackupChecksum = FNV 32 bits sensible à l'ordre des clés JSON, nommé SHA. C60. Utiliser SHA-256 réel + canonicalisation (tri des clés).
+P61. setDoc(..., { merge: true }) + suppression des undefined → un champ vidé n'est jamais effacé. C61. Utiliser FieldValue.delete() pour les champs vidés.
+
+10. Fonctions mono-appareil
+P62. Pointage QR : scanQrAttendance ne modifie que l'état local, qrSessions non écrit dans Firestore → ne fonctionne que dans le même navigateur. C62. Écrire/lire qrSessions dans Firestore avec onSnapshot ; lier studentId à l'utilisateur connecté ; code unique par séance (pas partagé) ; vérifier groupId même absent.
+P63. EDT non partagé : sessions ni écrit au fil de l'eau ni relu. C63. Inclure sessions dans les collections synchronisées (push + pull temps réel).
+
+11. Calcul des notes
+P64. calculateEcFinalScore renvoie CC×0,4 (ou examen×0,6) si une seule composante existe → moyenne faussée, isComplete vrai trop tôt. C64. Laisser finalScore vide tant que les deux composantes manquent (sauf EC en évaluation directe).
+P65. getStudentUeSummary ne filtre ni isDraft ni isPublished → brouillons inclus dans les moyennes/crédits. C65. Filtrer les brouillons/non publiés dans tous les calculs de moyenne.
+P66. Arrondi à 2 décimales avant comparaison au seuil (9,996 → 10,00 valide) ; arrondi de chaque EC avant moyenne. C66. Comparer la valeur exacte au seuil, arrondir uniquement à l'affichage.
+P67. EC non notés ignorés dans la moyenne d'UE → un seul EC bien noté valide toute l'UE ; crédits UE || 6 sans lien avec les EC. C67. Inclure les EC non notés (valeur 0 ou poids) ; crédits UE = somme des crédits EC.
+P68. saveGrade ignore l'année → un redoublant écrase la note de l'année précédente. C68. Clé (studentId, ecId, academicYear).
+P69. publishGrades publie toutes les années + brouillons et renotifie tout le monde. C69. Filtrer par EC + année + statut ; notifier uniquement les concernés.
+P70. Aucune validation 0–20 sur les notes saisies. C70. Valider 0 <= note <= 20 à la saisie.
+
+12. Planning et conflits
+P71. Salle en maintenance/occupied jamais refusée à la saisie (seules les suggestions filtrent available). C71. Refuser à la saisie toute salle non available.
+P72. doIntervalsOverlap renvoie faux si fin < début → aucun conflit détecté ; modal force la durée à 0,5 h. C72. Valider début < fin avant tout contrôle ; interdire les plages inversées.
+P73. findAlternativeSlots calcule durationMinutes sans l'utiliser (toujours 2 h) ; peut proposer dimanche/jour férié. C73. Utiliser la durée réelle ; exclure dimanches/jours fériés.
+P74. studentCount absent/0 → effectif fixé à 30 arbitrairement. C74. Traiter 0/absent comme inconnu (pas de capacité inventée) ou exiger la valeur.
+P75. setDate + toISOString mélange local/UTC → décalage d'un jour. C75. Utiliser uniquement des dates locales (YYYY-MM-DD, Indian/Antananarivo).
+
+13. Paiements
+P76. NaN passe la validation (NaN <= 0 et NaN > solde sont false). C76. Valider Number.isFinite(montant) && montant > 0 && montant <= solde.
+P77. Numéro de reçu payments.length + 1 + année 2026 en dur → doublons après suppression. C77. Compteur persistant/séquence serveur + année dynamique.
+P78. toISOString().split('T')[0] → paiement daté de la veille entre 00h et 03h (UTC+3). C78. Date locale YYYY-MM-DD via Indian/Antananarivo.
+
+14. Présence QR
+P79. OTP 4 chiffres via Math.random() (9 000 combinaisons), pas d'unicité entre séances actives ; find prend la première. C79. crypto.randomInt + vérification d'unicité parmi les séances actives.
+P80. Session expirée reste isActive et masque une session valide au même code. C80. Filtrer sur isActive && !expired.
+P81. Étudiant sans groupId passe le contrôle de groupe. C81. Refuser si groupId absent.
+P82. scanQrAttendance(code, studentId) accepte n'importe quel studentId → pointage pour un camarade. C82. Lier au studentId de l'utilisateur connecté (côté serveur).
+P83. Contrôle anti-doublon basé sur un état périmé → deux scans rapprochés passent. C83. Vérification côté serveur (transaction/unicité (sessionId, studentId)).
+P84. Statut LATE jamais attribué. C84. Calculer et attribuer LATE selon l'heure de scan.
+
+15. Ordre de mise en œuvre recommandé
+1. Sécurité (P1–P12) — bloquant.
+2. Règles Firestore (P5–P11) — bloquant côté serveur.
+3. Architecture/sync (P13–P18) — socle temps réel.
+4. Intégrité + permissions (P23–P44).
+5. Notes, paiements, EDT, QR (P28–P38, P62–P84).
+6. Exports, robustesse, libellés (P45–P61).
+7. Tests + découpage (P19) en continu.
+

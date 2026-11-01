@@ -590,8 +590,10 @@ export const DataManagementHub: React.FC = () => {
                     </div>
                     <button
                       onClick={() => {
-                        if (confirm(`Supprimer le cours "${c.title}" ?`)) {
-                          deleteCourse(c.id);
+                        const res = deleteCourse(c.id);
+                        if (!res.success) {
+                          showNotification(res.error || 'Suppression refusée.', true);
+                        } else {
                           showNotification(`Cours "${c.title}" supprimé.`);
                         }
                       }}
@@ -851,8 +853,10 @@ export const DataManagementHub: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirm(`Supprimer la salle "${r.name}" ?`)) {
-                          deleteRoom(r.id);
+                        const res = deleteRoom(r.id);
+                        if (!res.success) {
+                          showNotification(res.error || 'Suppression refusée.', true);
+                        } else {
                           showNotification(`Salle "${r.name}" supprimée.`);
                         }
                       }}
@@ -986,10 +990,8 @@ export const DataManagementHub: React.FC = () => {
                   </div>
                   <button
                     onClick={() => {
-                      if (confirm(`Supprimer l'enseignant "${t.name}" ?`)) {
-                        deleteTeacher(t.id);
-                        showNotification(`Enseignant "${t.name}" supprimé.`);
-                      }
+                      deleteTeacher(t.id);
+                      showNotification(`Enseignant "${t.name}" supprimé.`);
                     }}
                     className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
                   >
@@ -1141,8 +1143,10 @@ export const DataManagementHub: React.FC = () => {
                   </div>
                   <button
                     onClick={() => {
-                      if (confirm(`Supprimer le groupe "${g.code}" ?`)) {
-                        deleteGroup(g.id);
+                      const res = deleteGroup(g.id);
+                      if (!res.success) {
+                        showNotification(res.error || 'Suppression refusée.', true);
+                      } else {
                         showNotification(`Groupe "${g.code}" supprimé.`);
                       }
                     }}

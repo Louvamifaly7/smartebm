@@ -139,7 +139,7 @@ export const LoginPage: React.FC = () => {
               onClick={() => {
                 setActiveTab('STAFF');
                 setIdentifier('andry.rakotomalala@ebm-institute.edu');
-                setPassword('••••••••');
+                setPassword('ebm2026');
                 setErrorMessage(null);
               }}
               className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
@@ -236,7 +236,7 @@ export const LoginPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-1.5 text-xs">
               <button
                 type="button"
-                onClick={() => handleQuickLogin('andry.rakotomalala@ebm-institute.edu')}
+                onClick={() => handleQuickLogin('andry.rakotomalala@ebm-institute.edu', 'ebm2026')}
                 className="p-2 rounded-xl text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-all cursor-pointer"
               >
                 <span className="font-bold block text-slate-900 truncate">Andry Rakotomalala</span>
@@ -245,7 +245,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('scolarite@ebm-institute.edu')}
+                onClick={() => handleQuickLogin('scolarite@ebm-institute.edu', 'ebm2026')}
                 className="p-2 rounded-xl text-left bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 transition-all cursor-pointer"
               >
                 <span className="font-bold block text-slate-900 truncate">Fanja Rakotoarisoa</span>
@@ -254,7 +254,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('ravaka.finance@ebm-institute.edu')}
+                onClick={() => handleQuickLogin('ravaka.finance@ebm-institute.edu', 'ebm2026')}
                 className="p-2 rounded-xl text-left bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer"
               >
                 <span className="font-bold block text-slate-900 truncate">Ravaka Andrianaivo</span>
@@ -263,7 +263,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('tiana.rabemananjara@ebm-institute.edu')}
+                onClick={() => handleQuickLogin('tiana.rabemananjara@ebm-institute.edu', 'ebm2026')}
                 className="p-2 rounded-xl text-left bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer"
               >
                 <span className="font-bold block text-slate-900 truncate">Dr. Tiana Rabemananjara</span>
@@ -272,7 +272,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('hery.andriamalala@ebm-institute.edu')}
+                onClick={() => handleQuickLogin('hery.andriamalala@ebm-institute.edu', 'ebm2026')}
                 className="p-2 rounded-xl text-left bg-slate-50 hover:bg-teal-50 border border-slate-200 hover:border-teal-300 transition-all cursor-pointer"
               >
                 <span className="font-bold block text-slate-900 truncate">Dr. Hery Andriamalala</span>

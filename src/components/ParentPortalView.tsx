@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { RBAC } from '../utils/rbacPermissions';
+import { escapeHtml, getAntananarivoDateStr } from '../utils/securityAndDateUtils';
 import {
   Users,
   GraduationCap,
@@ -164,17 +165,17 @@ export const ParentPortalView: React.FC = () => {
     if (!win) return;
     win.document.write(`
       <html>
-        <head><title>Reçu ${pay.receiptNumber}</title></head>
+        <head><title>Reçu ${escapeHtml(pay.receiptNumber)}</title></head>
         <body style="font-family:Arial,sans-serif;padding:28px;color:#0f172a;">
           <h2 style="margin:0;">EBM INSTITUTE MADAGASCAR — REÇU OFFICIEL</h2>
-          <p style="color:#475569;font-size:13px;">Portail Parents / Tuteurs • N° Reçu : <strong>${pay.receiptNumber}</strong></p>
+          <p style="color:#475569;font-size:13px;">Portail Parents / Tuteurs • N° Reçu : <strong>${escapeHtml(pay.receiptNumber)}</strong></p>
           <hr/>
-          <p><strong>Étudiant :</strong> ${selectedChild.name} (${selectedChild.matricule})</p>
-          <p><strong>Motif / Frais :</strong> ${fee?.title || 'Frais académiques'}</p>
-          <p><strong>Montant réglé :</strong> ${pay.amountPaidAr.toLocaleString()} Ar</p>
-          <p><strong>Solde restant :</strong> ${pay.remainingBalanceAr.toLocaleString()} Ar</p>
-          <p><strong>Mode de règlement :</strong> ${pay.paymentMethod} (${pay.referenceNumber || 'Standard'})</p>
-          <p><strong>Date :</strong> ${pay.paymentDate}</p>
+          <p><strong>Étudiant :</strong> ${escapeHtml(selectedChild.name)} (${escapeHtml(selectedChild.matricule)})</p>
+          <p><strong>Motif / Frais :</strong> ${escapeHtml(fee?.title || 'Frais académiques')}</p>
+          <p><strong>Montant réglé :</strong> ${escapeHtml(pay.amountPaidAr.toLocaleString())} Ar</p>
+          <p><strong>Solde restant :</strong> ${escapeHtml(pay.remainingBalanceAr.toLocaleString())} Ar</p>
+          <p><strong>Mode de règlement :</strong> ${escapeHtml(pay.paymentMethod)} (${escapeHtml(pay.referenceNumber || 'Standard')})</p>
+          <p><strong>Date :</strong> ${escapeHtml(pay.paymentDate)}</p>
           <script>window.onload = () => window.print();</script>
         </body>
       </html>
@@ -537,7 +538,7 @@ export const ParentPortalView: React.FC = () => {
                         const distanceToMonday = (currentDay + 6) % 7;
                         const monday = new Date(now);
                         monday.setDate(now.getDate() - distanceToMonday + parentWeekOffset * 7 + dayIdx);
-                        const dateStr = monday.toISOString().split('T')[0];
+                        const dateStr = getAntananarivoDateStr(monday);
                         const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
                         return {
                           dayIdx,

@@ -1,4 +1,5 @@
 import { TimetableSession, Course, Room, User, StudentGroup, StudentFee } from '../types';
+import { escapeHtml, getAntananarivoDateStr } from './securityAndDateUtils';
 
 /**
  * Triggers a clean, styled print / Save-as-PDF dialog using a hidden iframe
@@ -45,12 +46,14 @@ function triggerHiddenIframePrint(htmlDocument: string, fallbackFileName: string
 
 function downloadPrintableHtmlFallback(htmlDocument: string, fallbackFileName: string) {
   const blob = new Blob([htmlDocument], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `${fallbackFileName}.html`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 const COMMON_PDF_STYLES = `
@@ -278,15 +281,15 @@ export function exportTimetableToPDF(params: {
 
             return `
               <tr>
-                <td style="font-weight:700; text-transform:capitalize;">${dateFormatted}</td>
-                <td style="font-family:monospace; font-weight:700; color:#1e3a8a;">${s.startTime} - ${s.endTime} (${s.durationHours}h)</td>
+                <td style="font-weight:700; text-transform:capitalize;">${escapeHtml(dateFormatted)}</td>
+                <td style="font-family:monospace; font-weight:700; color:#1e3a8a;">${escapeHtml(s.startTime)} - ${escapeHtml(s.endTime)} (${escapeHtml(s.durationHours)}h)</td>
                 <td>
-                  <div style="font-weight:800; color:#0f172a;">${s.eventTitle || course?.title || 'Séance'}</div>
-                  <div style="font-size:9px; color:#64748b;">${course?.code ? `Code EC : ${course.code} • ` : ''}${typeLabel}</div>
+                  <div style="font-weight:800; color:#0f172a;">${escapeHtml(s.eventTitle || course?.title || 'Séance')}</div>
+                  <div style="font-size:9px; color:#64748b;">${course?.code ? `Code EC : ${escapeHtml(course.code)} • ` : ''}${escapeHtml(typeLabel)}</div>
                 </td>
-                <td style="font-weight:700;">${s.eventSpeaker || teacher?.name || 'Intervenant EBM'}</td>
-                <td><span class="badge badge-purple">${groupNames || 'Tous groupes'}</span></td>
-                <td style="font-weight:700; color:#0f766e;">${room?.name || s.roomId}</td>
+                <td style="font-weight:700;">${escapeHtml(s.eventSpeaker || teacher?.name || 'Intervenant EBM')}</td>
+                <td><span class="badge badge-purple">${escapeHtml(groupNames || 'Tous groupes')}</span></td>
+                <td style="font-weight:700; color:#0f766e;">${escapeHtml(room?.name || s.roomId)}</td>
                 <td>${statusLabel}</td>
               </tr>
             `;
@@ -298,7 +301,7 @@ export function exportTimetableToPDF(params: {
     <html lang="fr">
     <head>
       <meta charset="UTF-8" />
-      <title>${title} - EBM Institute</title>
+      <title>${escapeHtml(title)} - EBM Institute</title>
       <style>${COMMON_PDF_STYLES}</style>
     </head>
     <body>
@@ -312,15 +315,15 @@ export function exportTimetableToPDF(params: {
         </div>
         <div class="doc-meta">
           <span class="doc-badge">Document Officiel Emploi du Temps</span>
-          <h2 class="doc-title">${title}</h2>
-          <p class="doc-subtitle">${subtitle} • ${weekLabel}</p>
+          <h2 class="doc-title">${escapeHtml(title)}</h2>
+          <p class="doc-subtitle">${escapeHtml(subtitle)} • ${escapeHtml(weekLabel)}</p>
         </div>
       </div>
 
       <div class="kpi-row">
         <div class="kpi-card">
           <span class="kpi-label">Période / Semaine</span>
-          <div class="kpi-val">${weekLabel}</div>
+          <div class="kpi-val">${escapeHtml(weekLabel)}</div>
         </div>
         <div class="kpi-card">
           <span class="kpi-label">Nombre de Séances</span>
@@ -370,7 +373,7 @@ export function exportTimetableToPDF(params: {
     </html>
   `;
 
-  triggerHiddenIframePrint(html, `Emploi_du_Temps_EBM_${new Date().toISOString().slice(0, 10)}`);
+  triggerHiddenIframePrint(html, `Emploi_du_Temps_EBM_${getAntananarivoDateStr()}`);
 }
 
 /**
@@ -430,20 +433,20 @@ export function exportTeacherScheduleToPDF(params: {
 
             return `
               <tr>
-                <td style="font-weight:700;">${new Date(s.date).toLocaleDateString('fr-FR', {
+                <td style="font-weight:700;">${escapeHtml(new Date(s.date).toLocaleDateString('fr-FR', {
                   weekday: 'short',
                   day: '2-digit',
                   month: 'short',
                   year: 'numeric',
-                })}</td>
-                <td style="font-family:monospace; font-weight:700; color:#1e3a8a;">${s.startTime} - ${s.endTime}</td>
-                <td style="text-align:center; font-weight:800;">${s.durationHours}h</td>
+                }))}</td>
+                <td style="font-family:monospace; font-weight:700; color:#1e3a8a;">${escapeHtml(s.startTime)} - ${escapeHtml(s.endTime)}</td>
+                <td style="text-align:center; font-weight:800;">${escapeHtml(s.durationHours)}h</td>
                 <td>
-                  <div style="font-weight:800;">${s.eventTitle || course?.title || 'Cours'}</div>
-                  <div style="font-size:9px; color:#64748b;">${course?.code || s.sessionType || 'EC'}</div>
+                  <div style="font-weight:800;">${escapeHtml(s.eventTitle || course?.title || 'Cours')}</div>
+                  <div style="font-size:9px; color:#64748b;">${escapeHtml(course?.code || s.sessionType || 'EC')}</div>
                 </td>
-                <td><span class="badge badge-purple">${groupNames}</span></td>
-                <td style="font-weight:700; color:#0f766e;">${room?.name || s.roomId}</td>
+                <td><span class="badge badge-purple">${escapeHtml(groupNames)}</span></td>
+                <td style="font-weight:700; color:#0f766e;">${escapeHtml(room?.name || s.roomId)}</td>
                 <td>${statusBadge}</td>
               </tr>
             `;
@@ -455,7 +458,7 @@ export function exportTeacherScheduleToPDF(params: {
     <html lang="fr">
     <head>
       <meta charset="UTF-8" />
-      <title>${periodTitle} - ${teacher.name}</title>
+      <title>${escapeHtml(periodTitle)} - ${escapeHtml(teacher.name)}</title>
       <style>${COMMON_PDF_STYLES}</style>
     </head>
     <body>
@@ -468,21 +471,21 @@ export function exportTeacherScheduleToPDF(params: {
           </div>
         </div>
         <div class="doc-meta">
-          <span class="doc-badge">${periodTitle}</span>
-          <h2 class="doc-title">${teacher.civilite ? `${teacher.civilite} ` : ''}${teacher.name}</h2>
-          <p class="doc-subtitle">${teacher.academicRank || 'Enseignant Universitaire'} • ${teacher.highestDiploma || 'Diplôme Supérieur'} • Période : ${periodLabel}</p>
+          <span class="doc-badge">${escapeHtml(periodTitle)}</span>
+          <h2 class="doc-title">${teacher.civilite ? `${escapeHtml(teacher.civilite)} ` : ''}${escapeHtml(teacher.name)}</h2>
+          <p class="doc-subtitle">${escapeHtml(teacher.academicRank || 'Enseignant Universitaire')} • ${escapeHtml(teacher.highestDiploma || 'Diplôme Supérieur')} • Période : ${escapeHtml(periodLabel)}</p>
         </div>
       </div>
 
       <div class="kpi-row">
         <div class="kpi-card">
           <span class="kpi-label">Enseignant & Grade</span>
-          <div class="kpi-val">${teacher.name}</div>
-          <div style="font-size:10px; color:#475569;">${teacher.email} • ${teacher.phone || ''}</div>
+          <div class="kpi-val">${escapeHtml(teacher.name)}</div>
+          <div style="font-size:10px; color:#475569;">${escapeHtml(teacher.email)} • ${escapeHtml(teacher.phone || '')}</div>
         </div>
         <div class="kpi-card">
           <span class="kpi-label">Période Sélectionnée</span>
-          <div class="kpi-val">${periodLabel}</div>
+          <div class="kpi-val">${escapeHtml(periodLabel)}</div>
           <div style="font-size:10px; color:#475569;">${activeSessions.length} séance(s) active(s)</div>
         </div>
         <div class="kpi-card">
@@ -564,7 +567,7 @@ export function exportFinancialStateToPDF(params: {
   const feeHeadersHtml = fees
     .map(
       (f) =>
-        `<th style="text-align:right; font-size:9px;">${f.title}<br/><span style="font-weight:400; color:#cbd5e1;">(${f.amountAr.toLocaleString()} Ar)</span></th>`
+        `<th style="text-align:right; font-size:9px;">${escapeHtml(f.title)}<br/><span style="font-weight:400; color:#cbd5e1;">(${f.amountAr.toLocaleString()} Ar)</span></th>`
     )
     .join('');
 
@@ -600,9 +603,9 @@ export function exportFinancialStateToPDF(params: {
 
             return `
               <tr>
-                <td style="font-family:monospace; font-weight:700;">${r.matricule}</td>
-                <td style="font-weight:700;">${r.studentName}</td>
-                <td><span class="badge badge-blue">${r.groupCode}</span></td>
+                <td style="font-family:monospace; font-weight:700;">${escapeHtml(r.matricule)}</td>
+                <td style="font-weight:700;">${escapeHtml(r.studentName)}</td>
+                <td><span class="badge badge-blue">${escapeHtml(r.groupCode)}</span></td>
                 ${feeCols}
                 <td style="text-align:right; font-weight:700;">${r.totalFeesAr.toLocaleString()} Ar</td>
                 <td style="text-align:right; font-weight:800; color:#15803d;">${r.totalPaidAr.toLocaleString()} Ar</td>
@@ -618,7 +621,7 @@ export function exportFinancialStateToPDF(params: {
     <html lang="fr">
     <head>
       <meta charset="UTF-8" />
-      <title>${title} - Pôle Finance EBM</title>
+      <title>${escapeHtml(title)} - Pôle Finance EBM</title>
       <style>${COMMON_PDF_STYLES}</style>
     </head>
     <body>
@@ -632,8 +635,8 @@ export function exportFinancialStateToPDF(params: {
         </div>
         <div class="doc-meta">
           <span class="doc-badge">État Financier & Recouvrement</span>
-          <h2 class="doc-title">${title}</h2>
-          <p class="doc-subtitle">Promotion : ${groupLabel} • Filtre : ${statusFilterLabel} • Année ${academicYear}</p>
+          <h2 class="doc-title">${escapeHtml(title)}</h2>
+          <p class="doc-subtitle">Promotion : ${escapeHtml(groupLabel)} • Filtre : ${escapeHtml(statusFilterLabel)} • Année ${escapeHtml(academicYear)}</p>
         </div>
       </div>
 

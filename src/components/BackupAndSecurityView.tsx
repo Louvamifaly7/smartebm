@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { ROLE_DEFINITIONS } from '../utils/rbacPermissions';
+import { runSecurityAndSyncVerificationSuite } from '../utils/securityAndSyncVerifier';
 import { SystemBackupSnapshot } from '../types';
 import {
   ShieldCheck,
@@ -43,6 +44,7 @@ export const BackupAndSecurityView: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<{ type: 'SUCCESS' | 'ERROR'; text: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const verificationSuite = useMemo(() => runSecurityAndSyncVerificationSuite(), []);
 
   const showMessage = (type: 'SUCCESS' | 'ERROR', text: string) => {
     setStatusMessage({ type, text });
@@ -86,7 +88,7 @@ export const BackupAndSecurityView: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
 
     showMessage(
       'SUCCESS',
@@ -103,7 +105,7 @@ export const BackupAndSecurityView: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
 
   const handleImportBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,7 +146,7 @@ export const BackupAndSecurityView: React.FC = () => {
             Base de Données Cloud, Sauvegardes & Sécurité SIS
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1">
-            Synchronisation Cloud Firestore, sauvegardes JSON chiffrées avec somme de contrôle, restauration sécurisée et matrice des 6 rôles EBM Institute.
+            Synchronisation Cloud Firestore temps réel (`onSnapshot`), sauvegardes JSON canoniques avec vérification d'intégrité (`EBM-CHK`) et matrice des 6 rôles EBM Institute.
           </p>
         </div>
 
@@ -153,7 +155,7 @@ export const BackupAndSecurityView: React.FC = () => {
             <span className="text-slate-300 block text-[10px] uppercase font-bold">Statut Cloud Firestore</span>
             <span className="font-bold flex items-center gap-1.5 text-emerald-300 mt-0.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              {isCloudConnected ? 'Base Provisionnée & Sécurisée' : 'Mode Hybride Local'}
+              {isCloudConnected ? 'Base Provisionnée & Synchronisée' : 'Mode Hybride Local'}
             </span>
           </div>
 
@@ -197,7 +199,7 @@ export const BackupAndSecurityView: React.FC = () => {
                   Persistance Cloud Firestore & Authentification Firebase
                 </h2>
                 <p className="text-[11px] text-slate-500">
-                  Synchronisation non-destructive avec sauvegarde automatique préalable
+                  Synchronisation bidirectionnelle non-destructive avec fusion par identifiant
                 </p>
               </div>
             </div>
@@ -288,7 +290,7 @@ export const BackupAndSecurityView: React.FC = () => {
                   Sauvegarde & Restauration Intégrale (Snapshot JSON)
                 </h2>
                 <p className="text-[11px] text-slate-500">
-                  Protection contre toute perte de données avec somme de contrôle SHA
+                  Protection contre toute perte de données avec somme de contrôle canonique (`EBM-CHK`)
                 </p>
               </div>
             </div>
@@ -407,7 +409,7 @@ export const BackupAndSecurityView: React.FC = () => {
                 Matrice Officielle des 6 Rôles & Permissions SIS — EBM Institute
               </h2>
               <p className="text-[11px] text-slate-500">
-                Droits d'accès appliqués simultanément sur l'interface (menus et tableaux de bord) et dans `firestore.rules`
+                Droits d'accès appliqués simultanément sur l'interface (menus et tableaux de bord) et dans `firestore.rules` (v5.0 Zero-Trust)
               </p>
             </div>
           </div>
@@ -437,6 +439,53 @@ export const BackupAndSecurityView: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* 4. Automated Security & Multi-Device Sync Verification Suite */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-xl">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-bold text-sm text-slate-900">
+                Audit Automatisé des Règles Firestore (v5.0) & Cohérence de Synchronisation
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                Vérification anti-escalade de privilèges (aucune connexion anonyme, attribution stricte des rôles par Admin) et tests de concurrence / hors-ligne.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {verificationSuite.results.filter((r) => r.passed).length}/{verificationSuite.results.length} contrôles validés
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {verificationSuite.results.map((chk) => (
+            <div
+              key={chk.id}
+              className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+                chk.passed ? 'bg-emerald-50/40 border-emerald-200/80' : 'bg-red-50 border-red-200'
+              }`}
+            >
+              <CheckCircle2
+                className={`w-4 h-4 shrink-0 mt-0.5 ${chk.passed ? 'text-emerald-600' : 'text-red-600'}`}
+              />
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">
+                    {chk.id}
+                  </span>
+                  <span className="text-xs font-bold text-slate-900">{chk.title}</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">{chk.details}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -29,6 +29,8 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { createGoogleCalendarUrl } from '../utils/calendarExport';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HomePageProps {
   onNavigateTab: (tab: string) => void;
@@ -51,6 +53,10 @@ export const HomePage: React.FC<HomePageProps> = ({
     users,
     groups,
     notifications,
+    homework,
+    qrSessions,
+    fees,
+    getStudentFinancialSummary,
     toggleAndroidView,
     getCourseHourlyStats,
     getTeacherHourlyStats,
@@ -58,7 +64,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   if (!currentUser) return null;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getAntananarivoDateStr();
 
   // Filter sessions according to role
   const userSessions = sessions.filter((session) => {
@@ -134,6 +140,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
           {/* Quick Dual Mode Action on Banner */}
           <div className="flex flex-col sm:flex-row md:flex-col gap-2 flex-shrink-0">
+            <PWAInstallButton />
             <button
               onClick={onOpenUserProfile}
               className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
@@ -237,6 +244,317 @@ export const HomePage: React.FC<HomePageProps> = ({
           </p>
         </div>
       </div>
+
+      {/* 3b. Role-Tailored Priority Cockpit & Pilotage Dashboard */}
+      {(() => {
+        const nowHour = new Date().getHours();
+        const currentSlotStr = `${String(Math.max(8, Math.min(18, nowHour))).padStart(2, '0')}:00`;
+        const occupiedRoomIdsNow = new Set(
+          sessions
+            .filter(
+              (s) =>
+                s.date === todayStr &&
+                s.status !== 'CANCELLED' &&
+                s.startTime <= currentSlotStr &&
+                s.endTime > currentSlotStr
+            )
+            .map((s) => s.roomId)
+        );
+        const freeRoomsNow = rooms.filter(
+          (r) => r.status === 'available' && !occupiedRoomIdsNow.has(r.id)
+        );
+
+        // Total hours completed vs planned across all courses
+        const totalPlannedHours = courses.reduce((acc, c) => acc + c.totalHours, 0);
+        const totalCompletedHours = courses.reduce(
+          (acc, c) => acc + getCourseHourlyStats(c.id).completedHours,
+          0
+        );
+        const globalCompletionPct =
+          totalPlannedHours > 0 ? Math.round((totalCompletedHours / totalPlannedHours) * 100) : 0;
+
+        // Students at risk (absences >= 2 or unpaid > 500 000 Ar)
+        const allStudents = users.filter((u) => u.role === 'STUDENT');
+        const atRiskStudents = allStudents
+          .map((st) => {
+            let absences = 0;
+            qrSessions.forEach((qs) => {
+              const rec = qs.records.find((r) => r.studentId === st.id);
+              if (rec && rec.status === 'ABSENT') absences += 1;
+            });
+            const fin = getStudentFinancialSummary(st.id);
+            return {
+              student: st,
+              absences,
+              unpaidAr: fin.balanceDueAr,
+              isAtRisk: absences >= 2 || fin.balanceDueAr >= 500000,
+            };
+          })
+          .filter((item) => item.isAtRisk);
+
+        if (currentUser.role === 'TEACHER') {
+          const tStats = getTeacherHourlyStats(currentUser.id);
+          const weeklyMax = currentUser.weeklyMaxHours || 18;
+          const hourlyRate = currentUser.hourlyRateAr || 40000;
+          const overtimeHours = Math.max(0, tStats.totalCompleted - weeklyMax);
+          const overtimePayAr = overtimeHours * hourlyRate;
+          const earnedAmountAr = tStats.totalCompleted * hourlyRate;
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">
+                    Mon Espace Enseignant — Prochains Cours & Charge Horaire
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Suivi en direct de vos séances, de votre quota hebdomadaire ({weeklyMax}h/sem) et de vos vacations.
+                  </p>
+                </div>
+                <button
+                  onClick={() => onNavigateTab('TEACHERS')}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer self-start"
+                >
+                  Ma Fiche & Heures Sup.
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Heures Réalisées / Planifiées</div>
+                  <div className="text-xl font-black text-slate-900 tabular-nums">
+                    {tStats.totalCompleted}h / {tStats.totalScheduled}h
+                  </div>
+                  <div className="text-[11px] text-emerald-700 font-semibold">
+                    Rémunération validée : {earnedAmountAr.toLocaleString('fr-FR')} Ar
+                  </div>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Heures Supplémentaires à payer</div>
+                  <div className="text-xl font-black text-amber-700 tabular-nums">{overtimeHours}h sup.</div>
+                  <div className="text-[11px] text-slate-600">
+                    Montant estimé : <strong>{overtimePayAr.toLocaleString('fr-FR')} Ar</strong>
+                  </div>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Salles libres maintenant ({currentSlotStr})</div>
+                  <div className="text-xl font-black text-emerald-700 tabular-nums">
+                    {freeRoomsNow.length} / {rooms.length} libres
+                  </div>
+                  <div className="text-[11px] text-slate-600 truncate">
+                    {freeRoomsNow.map((r) => r.name).join(' · ') || 'Aucune salle libre'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        if (currentUser.role === 'STUDENT') {
+          const fin = getStudentFinancialSummary(currentUser.id);
+          const myHomeworks = homework
+            .filter((h) => !currentUser.groupId || h.groupId === currentUser.groupId)
+            .slice(0, 3);
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">
+                    Mon Espace Étudiant — Cours du Jour & Échéances Proches
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Emploi du temps consultable hors ligne, devoirs à remettre et situation financière.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onNavigateTab('HOMEWORK_RESOURCES')}
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                  >
+                    Mes Devoirs ({myHomeworks.length})
+                  </button>
+                  <button
+                    onClick={() => onNavigateTab('FINANCIAL')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                  >
+                    Mes Frais (Ar)
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Cours prévus aujourd'hui</div>
+                  <div className="text-xl font-black text-slate-900 tabular-nums">{todaySessions.length} séance(s)</div>
+                  <div className="text-[11px] text-slate-600">
+                    {todaySessions[0]
+                      ? `Prochain : ${todaySessions[0].startTime} - ${todaySessions[0].endTime}`
+                      : 'Journée libre'}
+                  </div>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Devoirs & Travaux à rendre</div>
+                  <div className="text-xl font-black text-indigo-700 tabular-nums">{myHomeworks.length}</div>
+                  <div className="text-[11px] text-slate-600 truncate">
+                    {myHomeworks[0] ? `À rendre : ${myHomeworks[0].title} (${myHomeworks[0].dueDate})` : 'Aucun devoir en attente'}
+                  </div>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Solde Écolage & Frais</div>
+                  <div
+                    className={`text-xl font-black tabular-nums ${
+                      fin.balanceDueAr > 0 ? 'text-amber-700' : 'text-emerald-700'
+                    }`}
+                  >
+                    {fin.balanceDueAr > 0
+                      ? `${fin.balanceDueAr.toLocaleString('fr-FR')} Ar à régler`
+                      : '100% Soldé'}
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    Payé : {fin.totalPaidAr.toLocaleString('fr-FR')} Ar
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        if (currentUser.role === 'FINANCE') {
+          const totalUnpaidAll = allStudents.reduce(
+            (acc, st) => acc + getStudentFinancialSummary(st.id).balanceDueAr,
+            0
+          );
+          const overdueFeesCount = fees.filter((f) => f.dueDate <= todayStr).length;
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">
+                    Pilotage Caisse & Finances — Impayés du Jour & Mobile Money
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Suivi des échéances dépassées, relances WhatsApp/SMS et rapprochement MVola / Orange Money / Airtel Money.
+                  </p>
+                </div>
+                <button
+                  onClick={() => onNavigateTab('FINANCIAL')}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer self-start"
+                >
+                  Ouvrir la Caisse & Rapprochement Mobile Money
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Reste à recouvrer global</div>
+                  <div className="text-xl font-black text-rose-700 tabular-nums">
+                    {totalUnpaidAll.toLocaleString('fr-FR')} Ar
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    Sur {allStudents.length} dossiers étudiants actifs
+                  </div>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Étudiants avec impayés critiques</div>
+                  <div className="text-xl font-black text-amber-700 tabular-nums">
+                    {atRiskStudents.filter((s) => s.unpaidAr > 0).length} étudiant(s)
+                  </div>
+                  <div className="text-[11px] text-slate-600">Relance WhatsApp / SMS directe disponible</div>
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="text-slate-500 font-semibold">Échéances échues ou du jour</div>
+                  <div className="text-xl font-black text-slate-900 tabular-nums">{overdueFeesCount} tranche(s)</div>
+                  <div className="text-[11px] text-slate-600">Reçu PDF automatique avec QR de contrôle</div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Default for ADMIN / SCOLARITE / SCHEDULER / ACADEMIC_HEAD / ADMIN_STAFF: Executive Pilotage Dashboard
+        const roomOccupancyRate =
+          rooms.length > 0 ? Math.round((occupiedRoomIdsNow.size / rooms.length) * 100) : 0;
+
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-sm font-black text-slate-900">
+                  Tableau de Bord de Pilotage Direction & Scolarité
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Indicateurs temps réel : taux d'occupation des salles, heures réalisées contre prévues, et étudiants à risque.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => onNavigateTab('ROOMS')}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  Salles libres ({freeRoomsNow.length})
+                </button>
+                <button
+                  onClick={() => onNavigateTab('VOLUMES')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  Volumes Horaires ({globalCompletionPct}%)
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between text-slate-500 font-semibold">
+                  <span>Occupation des salles ({currentSlotStr})</span>
+                  <span className="font-mono font-bold text-slate-900 tabular-nums">{roomOccupancyRate}%</span>
+                </div>
+                <div className="text-lg font-black text-emerald-700 tabular-nums">
+                  {freeRoomsNow.length} salle(s) libre(s) maintenant
+                </div>
+                <div className="text-[11px] text-slate-600 truncate">
+                  Libres : {freeRoomsNow.map((r) => r.name).join(' · ') || 'Toutes occupées'}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between text-slate-500 font-semibold">
+                  <span>Heures réalisées contre prévues</span>
+                  <span className="font-mono font-bold text-blue-700 tabular-nums">{globalCompletionPct}%</span>
+                </div>
+                <div className="text-lg font-black text-slate-900 tabular-nums">
+                  {totalCompletedHours}h réalisées / {totalPlannedHours}h prévues
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 rounded-full"
+                    style={{ width: `${Math.min(100, globalCompletionPct)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between text-slate-500 font-semibold">
+                  <span>Étudiants à risque (Assiduité / Écolage)</span>
+                  <button
+                    onClick={() => onNavigateTab('STUDENTS')}
+                    className="text-blue-600 hover:underline font-bold cursor-pointer"
+                  >
+                    Voir la liste
+                  </button>
+                </div>
+                <div className="text-lg font-black text-rose-700 tabular-nums">
+                  {atRiskStudents.length} étudiant(s) signalé(s)
+                </div>
+                <div className="text-[11px] text-slate-600 truncate">
+                  {atRiskStudents
+                    .slice(0, 2)
+                    .map(
+                      (a) =>
+                        `${a.student.name} (${a.absences} abs., ${(a.unpaidAr / 1000).toFixed(0)}k Ar impayé)`
+                    )
+                    .join(' · ') || 'Aucun étudiant en situation critique'}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 4. Structured Role-Based Workspace Hub (Conforme Cahier des Charges Complémentaire Section 17) */}
       <div className="space-y-6">

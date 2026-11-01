@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { User } from '../types';
+import { escapeHtml } from '../utils/securityAndDateUtils';
 import {
   X,
   Printer,
@@ -57,7 +58,7 @@ export const StudentCardModal: React.FC<StudentCardModalProps> = ({ student: ini
       <html lang="fr">
       <head>
         <meta charset="UTF-8" />
-        <title>Carte Étudiante Officielle - ${student.matricule}</title>
+        <title>Carte Étudiante Officielle - ${escapeHtml(student.matricule)}</title>
         <style>
           body { font-family: 'Inter', Arial, sans-serif; background: #f8fafc; padding: 32px; color: #0f172a; }
           .card { width: 440px; border: 2px solid #1e293b; border-radius: 18px; overflow: hidden; background: #ffffff; box-shadow: 0 10px 25px rgba(0,0,0,0.08); margin: 0 auto; }
@@ -76,28 +77,28 @@ export const StudentCardModal: React.FC<StudentCardModalProps> = ({ student: ini
           <div class="header">
             <div>
               <div style="font-weight:900;font-size:15px;">EBM INSTITUTE MADAGASCAR</div>
-              <div style="font-size:11px;opacity:0.85;">CARTE D'ÉTUDIANT OFFICIELLE • ${selectedAcademicYear}</div>
+              <div style="font-size:11px;opacity:0.85;">CARTE D'ÉTUDIANT OFFICIELLE • ${escapeHtml(selectedAcademicYear)}</div>
             </div>
             <div style="font-family:monospace;font-size:12px;background:#dc2626;padding:4px 8px;border-radius:6px;font-weight:bold;">
-              ÉD. #${student.cardIssueNumber || 1}
+              ÉD. #${escapeHtml(student.cardIssueNumber || 1)}
             </div>
           </div>
           <div class="body">
             <div class="info" style="flex:1;">
-              <h2>${student.name}</h2>
-              <p><strong>Matricule :</strong> ${student.matricule}</p>
-              <p><strong>Domaine :</strong> ${filiere?.domaine || 'Sciences & Technologies'}</p>
-              <p><strong>Mention :</strong> ${filiere?.name || 'Informatique'}</p>
-              <p><strong>Parcours / Niveau :</strong> ${studentParcours?.code || 'Tronc Commun'} • ${group?.level || 'L1'} (${group?.code || ''})</p>
+              <h2>${escapeHtml(student.name)}</h2>
+              <p><strong>Matricule :</strong> ${escapeHtml(student.matricule)}</p>
+              <p><strong>Domaine :</strong> ${escapeHtml(filiere?.domaine || 'Sciences & Technologies')}</p>
+              <p><strong>Mention :</strong> ${escapeHtml(filiere?.name || 'Informatique')}</p>
+              <p><strong>Parcours / Niveau :</strong> ${escapeHtml(studentParcours?.code || 'Tronc Commun')} • ${escapeHtml(group?.level || 'L1')} (${escapeHtml(group?.code || '')})</p>
             </div>
           </div>
           <div class="codes">
             <div style="width:65%;">
               <div class="bars"></div>
-              <div class="barcode">${cardToken}</div>
+              <div class="barcode">${escapeHtml(cardToken)}</div>
             </div>
             <div style="text-align:right;font-family:monospace;font-size:10px;color:#475569;">
-              QR TOKEN SÉCURISÉ<br/><strong>${cardToken}</strong>
+              QR TOKEN SÉCURISÉ<br/><strong>${escapeHtml(cardToken)}</strong>
             </div>
           </div>
         </div>

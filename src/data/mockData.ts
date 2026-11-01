@@ -5,6 +5,7 @@ import {
   CashRegisterDay, HomeworkAssignment, HomeworkSubmission, LearningResource,
   Parcours, AcademicValidationRules, DeliberationRecord
 } from '../types';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
 
 export const initialFilieres: Filiere[] = [
   { id: 'fil-1', code: 'INFO', name: 'Informatique & Génie Logiciel', department: 'Pôle Technologies Numériques', domaine: 'Sciences et Technologies', etablissement: 'EBM Institute' },
@@ -154,7 +155,7 @@ export const initialUsers: User[] = [
     isActive: true,
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     googleCalendarLinked: true,
-    googleEmail: 'andry.rakotomalala.ebm@gmail.com',
+    googleEmail: 'louvamifaly@gmail.com',
   },
   // 1b. Personnel Administratif
   {
@@ -689,7 +690,7 @@ function getOffsetDate(dayOffset: number): string {
   
   const targetDate = new Date(monday);
   targetDate.setDate(monday.getDate() + dayOffset);
-  return targetDate.toISOString().split('T')[0];
+  return getAntananarivoDateStr(targetDate);
 }
 
 export const initialSessions: TimetableSession[] = [
@@ -1703,7 +1704,7 @@ export const initialPayments: PaymentTransaction[] = [
 export const initialCashRegisterDays: CashRegisterDay[] = [
   {
     id: 'crd-today',
-    date: new Date().toISOString().split('T')[0],
+    date: getAntananarivoDateStr(),
     openingBalanceAr: 500000,
     cashCollectedAr: 1200000,
     mobileMoneyCollectedAr: 1200000,
@@ -1716,7 +1717,7 @@ export const initialCashRegisterDays: CashRegisterDay[] = [
   },
   {
     id: 'crd-yesterday',
-    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    date: getAntananarivoDateStr(new Date(Date.now() - 86400000)),
     openingBalanceAr: 500000,
     cashCollectedAr: 850000,
     mobileMoneyCollectedAr: 2400000,

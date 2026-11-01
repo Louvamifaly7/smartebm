@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Download, ShieldCheck, FileSpreadsheet, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Download, ShieldCheck, FileSpreadsheet, X, CheckCircle2 } from 'lucide-react';
+import { downloadCsvFile } from '../utils/csvExport';
 
 interface StudentExportModalProps {
   isOpen: boolean;
@@ -23,25 +24,15 @@ export const StudentExportModal: React.FC<StudentExportModalProps> = ({ isOpen, 
   );
 
   const handleDownloadCsv = () => {
-    // Generate CSV content with semicolon separator for French Excel compatibility
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [
-        exportData.headers.join(';'),
-        ...exportData.rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(';')),
-      ].join('\n');
+    const groupSuffix =
+      selectedGroupId === 'ALL'
+        ? 'Tous_Groupes'
+        : groups.find((g) => g.id === selectedGroupId)?.code || selectedGroupId;
+    const fileName = isTeacher
+      ? `EBM_Liste_Etudiants_Pedagogique_${groupSuffix}`
+      : `EBM_Export_Etudiants_${groupSuffix}`;
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    const fileName =
-      isTeacher
-        ? `EBM_Liste_Etudiants_Pedagogique_${Date.now()}.csv`
-        : `EBM_Export_Administratif_Complet_${Date.now()}.csv`;
-    link.setAttribute('download', fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCsvFile(fileName, exportData.headers, exportData.rows);
 
     setDownloadSuccessNotice(true);
     setTimeout(() => setDownloadSuccessNotice(false), 3000);

@@ -46,6 +46,7 @@ import {
 import { createGoogleCalendarUrl } from '../utils/calendarExport';
 import { TimetableSession, SemesterCode, GroupPost, HomeworkAssignment } from '../types';
 import { getTeachersForStudent } from '../utils/studentVisibility';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
 
 export const AndroidSimulator: React.FC = () => {
   const {
@@ -92,7 +93,7 @@ export const AndroidSimulator: React.FC = () => {
   // Android Device Authentication state
   const [isDeviceLoggedIn, setIsDeviceLoggedIn] = useState<boolean>(true);
   const [loginIdentifier, setLoginIdentifier] = useState<string>('EBM-2026-0042');
-  const [loginPassword, setLoginPassword] = useState<string>('etudiant123');
+  const [loginPassword, setLoginPassword] = useState<string>('2005-04-14');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isBiometricScanning, setIsBiometricScanning] = useState<boolean>(false);
@@ -171,7 +172,7 @@ export const AndroidSimulator: React.FC = () => {
     const distanceToMonday = (currentDay + 6) % 7;
     const monday = new Date(now);
     monday.setDate(now.getDate() - distanceToMonday + offset);
-    return monday.toISOString().split('T')[0];
+    return getAntananarivoDateStr(monday);
   };
 
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -339,10 +340,11 @@ export const AndroidSimulator: React.FC = () => {
     }
   };
 
-  const handleQuickDemoLogin = (identifier: string) => {
+  const handleQuickDemoLogin = (identifier: string, demoPwd = 'ebm2026') => {
     setLoginError(null);
     setLoginIdentifier(identifier);
-    const result = login(identifier);
+    setLoginPassword(demoPwd);
+    const result = login(identifier, demoPwd);
     if (result.success) {
       setIsDeviceLoggedIn(true);
       setActiveTab('AGENDA');
@@ -358,13 +360,14 @@ export const AndroidSimulator: React.FC = () => {
     setTimeout(() => {
       setIsBiometricScanning(false);
       const idToUse = loginIdentifier.trim() || 'EBM-2026-0042';
-      const result = login(idToUse);
+      const pwdToUse = loginPassword.trim() || (idToUse.toUpperCase().startsWith('EBM-') ? '2005-04-14' : 'ebm2026');
+      const result = login(idToUse, pwdToUse);
       if (result.success) {
         setIsDeviceLoggedIn(true);
         setActiveTab('AGENDA');
         setLoginError(null);
       } else {
-        setLoginError('Empreinte biométrique reconnue mais compte inactif ou introuvable.');
+        setLoginError(result.error || 'Authentification biométrique refusée : identifiants invalides.');
       }
     }, 700);
   };
@@ -496,12 +499,12 @@ export const AndroidSimulator: React.FC = () => {
                   <div className="grid grid-cols-1 gap-1">
                     <button
                       type="button"
-                      onClick={() => handleQuickDemoLogin('EBM-2026-0042')}
+                      onClick={() => handleQuickDemoLogin('EBM-2026-0042', '2005-04-14')}
                       className="w-full p-1.5 bg-blue-950/60 hover:bg-blue-900/60 border border-blue-500/30 rounded-lg text-left flex items-center justify-between text-xs transition-colors cursor-pointer"
                     >
                       <div>
-                        <span className="font-bold text-blue-200 block text-[10px]">Laurent Randria (Étudiant L1)</span>
-                        <span className="text-[9px] text-slate-400 font-mono">EBM-2026-0042 • L1-INFO-G1</span>
+                        <span className="font-bold text-blue-200 block text-[10px]">Toky Andriantsoa (Étudiant L1)</span>
+                        <span className="text-[9px] text-slate-400 font-mono">EBM-2026-0042 • L1-INFO-A</span>
                       </div>
                       <span className="text-[8px] bg-blue-500/30 text-blue-300 font-bold px-1.5 py-0.5 rounded">
                         Étudiant
@@ -510,12 +513,12 @@ export const AndroidSimulator: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleQuickDemoLogin('hery.rakoto@ebm.mg')}
+                      onClick={() => handleQuickDemoLogin('hery.andriamalala@ebm-institute.edu', 'ebm2026')}
                       className="w-full p-1.5 bg-purple-950/60 hover:bg-purple-900/60 border border-purple-500/30 rounded-lg text-left flex items-center justify-between text-xs transition-colors cursor-pointer"
                     >
                       <div>
-                        <span className="font-bold text-purple-200 block text-[10px]">Dr. Hery Rakoto (Enseignant)</span>
-                        <span className="text-[9px] text-slate-400 font-mono">hery.rakoto@ebm.mg</span>
+                        <span className="font-bold text-purple-200 block text-[10px]">Dr. Hery Andriamalala (Enseignant)</span>
+                        <span className="text-[9px] text-slate-400 font-mono">hery.andriamalala@ebm-institute.edu</span>
                       </div>
                       <span className="text-[8px] bg-purple-500/30 text-purple-300 font-bold px-1.5 py-0.5 rounded">
                         Enseignant
@@ -524,12 +527,12 @@ export const AndroidSimulator: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleQuickDemoLogin('admin@ebm.mg')}
+                      onClick={() => handleQuickDemoLogin('andry.rakotomalala@ebm-institute.edu', 'ebm2026')}
                       className="w-full p-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/30 rounded-lg text-left flex items-center justify-between text-xs transition-colors cursor-pointer"
                     >
                       <div>
-                        <span className="font-bold text-emerald-200 block text-[10px]">Dr. Razafy (Administration)</span>
-                        <span className="text-[9px] text-slate-400 font-mono">admin@ebm.mg • Responsable</span>
+                        <span className="font-bold text-emerald-200 block text-[10px]">Andry Rakotomalala (Administration)</span>
+                        <span className="text-[9px] text-slate-400 font-mono">andry.rakotomalala@ebm-institute.edu</span>
                       </div>
                       <span className="text-[8px] bg-emerald-500/30 text-emerald-300 font-bold px-1.5 py-0.5 rounded">
                         Admin

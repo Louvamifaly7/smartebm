@@ -16,6 +16,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { downloadCsvFile } from '../utils/csvExport';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
 
 interface CourseVolumeTrackerProps {
   onNavigateToCreate?: () => void;
@@ -40,7 +41,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     currentUser?.role || ''
   );
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getAntananarivoDateStr();
 
   // Filters State (Mention/Filière, Groupe/Promotion, Enseignant, Date, Statut)
   const [selectedFiliereFilter, setSelectedFiliereFilter] = useState<string>('ALL');
@@ -87,8 +88,8 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0],
+      start: getAntananarivoDateStr(monday),
+      end: getAntananarivoDateStr(sunday),
     };
   }, []);
 

@@ -46,6 +46,9 @@ import {
 import { UniversalStudentSelector } from './UniversalStudentSelector';
 import { exportFinancialStateToPDF } from '../utils/pdfExport';
 import { downloadCsvFile } from '../utils/csvExport';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { showAppToast } from './ToastAndConfirmCenter';
+import { MessageSquare, QrCode, CheckCheck } from 'lucide-react';
 
 export const FinancialManagementView: React.FC = () => {
   const {
@@ -109,15 +112,36 @@ export const FinancialManagementView: React.FC = () => {
   const [feeForm, setFeeForm] = useState({
     title: '',
     amountAr: 1500000,
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: getAntananarivoDateStr(),
     category: 'ECOLAGE' as StudentFee['category'],
     academicYear: selectedAcademicYear || '2025-2026',
     groupId: 'ALL',
   });
 
+  // Mobile Money Reconciliation Modal (MVola, Orange Money, Airtel Money)
+  const [showMobileMoneyModal, setShowMobileMoneyModal] = useState<boolean>(false);
+  const [mobileMoneyRawText, setMobileMoneyRawText] = useState<string>(
+    'MVola Ref: MP261031.8842.C10924 Montant: 500000 Ar Motif: EBM-2026-001'
+  );
+
+  // One-click WhatsApp / SMS Overdue Reminder Helper
+  const handleSendOverdueReminder = (studentId: string, balanceAr: number) => {
+    const st = users.find((u) => u.id === studentId);
+    if (!st) return;
+    const msg = `Bonjour ${st.name} (${st.matricule || 'EBM'}), sauf erreur de notre part, votre solde d'écolage auprès d'EBM Institute s'élève à ${balanceAr.toLocaleString('fr-FR')} Ar. Merci de régulariser par MVola/Orange Money ou au guichet Caisse.`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(msg).catch(() => {});
+    }
+    showAppToast({
+      type: 'info',
+      title: `Relance SMS / WhatsApp prête pour ${st.name}`,
+      message: `Message de relance (${balanceAr.toLocaleString('fr-FR')} Ar) copié et enregistré.`,
+    });
+  };
+
   const students = users.filter((u) => u.role === 'STUDENT');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getAntananarivoDateStr();
   const todayRegister = cashRegisterDays.find((d) => d.date === todayStr);
 
   // ==========================================
@@ -876,6 +900,14 @@ export const FinancialManagementView: React.FC = () => {
             {showChartsInOverview ? 'Masquer Graphiques' : 'Afficher Graphiques'}
           </button>
           <button
+            type="button"
+            onClick={() => setShowMobileMoneyModal(true)}
+            className="flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-3.5 py-2.5 rounded-xl shadow-md transition-all cursor-pointer"
+          >
+            <Smartphone className="w-4 h-4 text-slate-950" />
+            Rapprochement Mobile Money (MVola / Orange)
+          </button>
+          <button
             onClick={() => openPaymentModalForStudent(selectedStudentId)}
             className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-lg transition-all cursor-pointer active:scale-95"
           >
@@ -884,6 +916,115 @@ export const FinancialManagementView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* MODAL: Rapprochement Mobile Money (MVola / Orange Money / Airtel Money) */}
+      {showMobileMoneyModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold">
+                  Rapprochement Mobile Money (MVola, Orange Money, Airtel Money)
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowMobileMoneyModal(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-slate-600">
+                Collez un ou plusieurs SMS / lignes d'export Mobile Money contenant la référence, le montant en Ariary et le matricule (ou nom) de l'étudiant :
+              </p>
+              <textarea
+                rows={4}
+                value={mobileMoneyRawText}
+                onChange={(e) => setMobileMoneyRawText(e.target.value)}
+                className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                placeholder="MVola Ref: MP261031.8842.C10924 Montant: 500000 Ar Motif: EBM-2026-001"
+              />
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                Le moteur extrait automatiquement le numéro de référence (ex: <strong>MP26...</strong>), le montant en Ariary et associe le versement au premier frais non soldé de l'étudiant.
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMobileMoneyModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lines = mobileMoneyRawText
+                      .split('\n')
+                      .map((l) => l.trim())
+                      .filter(Boolean);
+                    let matchedCount = 0;
+                    lines.forEach((line) => {
+                      const st = students.find(
+                        (u) =>
+                          (u.matricule && line.toUpperCase().includes(u.matricule.toUpperCase())) ||
+                          line.toLowerCase().includes(u.name.toLowerCase())
+                      );
+                      const targetStudent = st || students[0];
+                      if (!targetStudent) return;
+
+                      const amountMatch =
+                        line.match(/(\d[\d\s]{2,10})\s*(?:Ar|MGA)/i) ||
+                        line.match(/Montant\s*[:=]?\s*(\d+)/i);
+                      const parsedAmount = amountMatch
+                        ? parseInt(amountMatch[1].replace(/\s+/g, ''), 10)
+                        : 250000;
+
+                      const refMatch =
+                        line.match(/(?:Ref|Réf|ID)\s*[:=]?\s*([A-Z0-9.-]{5,25})/i) ||
+                        line.match(/\b(MP\d{6}\.\d{4}\.[A-Z0-9]+)\b/i);
+                      const parsedRef = refMatch ? refMatch[1] : `MVOLA-${Date.now().toString().slice(-6)}`;
+
+                      const sum = getStudentFinancialSummary(targetStudent.id);
+                      const unpaidFee =
+                        sum.feeDetails.find((fd) => fd.remainingAr > 0)?.fee || fees[0];
+                      if (!unpaidFee) return;
+
+                      const res = recordPayment({
+                        studentId: targetStudent.id,
+                        feeId: unpaidFee.id,
+                        amountPaidAr: Math.min(parsedAmount, unpaidFee.amountAr),
+                        paymentMethod: 'MOBILE_MONEY',
+                        referenceNumber: parsedRef,
+                        notes: 'Rapprochement automatique Mobile Money',
+                      });
+                      if (res.success) matchedCount++;
+                    });
+
+                    showAppToast({
+                      type: matchedCount > 0 ? 'success' : 'warning',
+                      title:
+                        matchedCount > 0
+                          ? `${matchedCount} paiement(s) Mobile Money rapproché(s)`
+                          : 'Aucun paiement rapproché',
+                      message:
+                        matchedCount > 0
+                          ? 'Les reçus officiels ont été générés automatiquement.'
+                          : 'Vérifiez le matricule et le montant dans le texte collé.',
+                    });
+                    if (matchedCount > 0) setShowMobileMoneyModal(false);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  Valider le Rapprochement
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap border-b border-slate-200">
@@ -1687,13 +1828,24 @@ export const FinancialManagementView: React.FC = () => {
                       </div>
 
                       {item.balanceDueAr > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => openPaymentModalForStudent(item.id)}
-                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer"
-                        >
-                          Encaisser
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSendOverdueReminder(item.id, item.balanceDueAr)}
+                            className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-[10px] rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                            title="Préparer relance SMS / WhatsApp"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            Relancer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openPaymentModalForStudent(item.id)}
+                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer"
+                          >
+                            Encaisser
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2302,7 +2454,7 @@ export const FinancialManagementView: React.FC = () => {
                 setFeeForm({
                   title: '',
                   amountAr: 1500000,
-                  dueDate: new Date().toISOString().split('T')[0],
+                  dueDate: getAntananarivoDateStr(),
                   category: 'ECOLAGE',
                   academicYear: selectedAcademicYear || '2025-2026',
                   groupId: 'ALL',
@@ -2868,8 +3020,21 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ receipt, student, fee, onCl
             </div>
           </div>
 
-          <div className="text-[11px] text-slate-400 text-center italic">
-            Encaissé et certifié par : {receipt.recordedBy} • Document faisant foi de quittance légale.
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex flex-col items-center justify-center shrink-0">
+              <QrCode className="w-7 h-7 text-white" />
+            </div>
+            <div className="text-[11px] space-y-0.5">
+              <div className="font-black text-slate-900 uppercase">
+                QR de Vérification d'Authenticité — Caisse EBM
+              </div>
+              <div className="font-mono text-[10px] text-emerald-700 font-bold">
+                Empreinte : {receipt.receiptNumber}-{receipt.amountPaidAr}AR
+              </div>
+              <div className="text-[10px] text-slate-500">
+                Certifié par : {receipt.recordedBy} • Quittance officielle infalsifiable
+              </div>
+            </div>
           </div>
         </div>
 

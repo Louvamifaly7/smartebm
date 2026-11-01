@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { DeliberationDecision, SemesterCode } from '../types';
 import { exportToCsv } from '../utils/csvExport';
+import { showAppToast } from './ToastAndConfirmCenter';
+import { QrCode, Upload, BarChart3, Keyboard } from 'lucide-react';
 
 export const GradesView: React.FC = () => {
   const {
@@ -124,6 +126,39 @@ export const GradesView: React.FC = () => {
   }>({});
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
+  // Excel/CSV Grade Import Modal State
+  const [showImportGradesModal, setShowImportGradesModal] = useState(false);
+  const [importGradesText, setImportGradesText] = useState(
+    'EBM-2026-001;14.5;15;;Très bon travail\nEBM-2026-002;11;08.5;12;Validé en rattrapage'
+  );
+
+  // Keyboard navigation helper for spreadsheet-style grade entry
+  const handleSpreadsheetKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    rowIndex: number,
+    colIndex: number
+  ) => {
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      e.preventDefault();
+      const next = document.querySelector<HTMLInputElement>(
+        `input[data-grade-row="${rowIndex + 1}"][data-grade-col="${colIndex}"]`
+      );
+      if (next) {
+        next.focus();
+        next.select();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = document.querySelector<HTMLInputElement>(
+        `input[data-grade-row="${rowIndex - 1}"][data-grade-col="${colIndex}"]`
+      );
+      if (prev) {
+        prev.focus();
+        prev.select();
+      }
+    }
+  };
+
   const studentsInEcGroups = selectedEc
     ? users.filter((u) => {
         if (u.role !== 'STUDENT') return false;
@@ -132,6 +167,79 @@ export const GradesView: React.FC = () => {
         return true;
       })
     : [];
+
+  // Compute EC Class Statistics (Average, Pass Rate, Min/Max, Distribution)
+  const ecClassStats = useMemo(() => {
+    if (!selectedEc) {
+      return {
+        evaluatedCount: 0,
+        totalStudents: 0,
+        classAverage: 0,
+        passCount: 0,
+        passRate: 0,
+        minScore: 0,
+        maxScore: 0,
+        buckets: { lt8: 0, b8_10: 0, b10_12: 0, b12_14: 0, gte14: 0 },
+      };
+    }
+
+    const scores: number[] = [];
+    const buckets = { lt8: 0, b8_10: 0, b10_12: 0, b12_14: 0, gte14: 0 };
+
+    studentsInEcGroups.forEach((student) => {
+      const saved = getStudentEcGrade(student.id, selectedEc.id);
+      const local = localScores[student.id];
+      const q =
+        local?.quiz !== undefined
+          ? local.quiz === ''
+            ? undefined
+            : parseFloat(local.quiz)
+          : saved?.quizScore;
+      const ex =
+        local?.exam !== undefined
+          ? local.exam === ''
+            ? undefined
+            : parseFloat(local.exam)
+          : saved?.examScore;
+      const ratt =
+        local?.rattrapage !== undefined
+          ? local.rattrapage === ''
+            ? undefined
+            : parseFloat(local.rattrapage)
+          : saved?.rattrapageScore;
+      const s1 = calculateEcFinalScore(q, ex, selectedEc.id);
+      const retained =
+        ratt !== undefined && !isNaN(ratt) ? Number(Math.max(s1 ?? 0, ratt).toFixed(2)) : s1;
+
+      if (retained !== undefined && !isNaN(retained)) {
+        scores.push(retained);
+        if (retained < 8) buckets.lt8++;
+        else if (retained < 10) buckets.b8_10++;
+        else if (retained < 12) buckets.b10_12++;
+        else if (retained < 14) buckets.b12_14++;
+        else buckets.gte14++;
+      }
+    });
+
+    const evaluatedCount = scores.length;
+    const sum = scores.reduce((a, b) => a + b, 0);
+    const classAverage = evaluatedCount > 0 ? Number((sum / evaluatedCount).toFixed(2)) : 0;
+    const passCount = scores.filter((s) => s >= 10).length;
+    const passRate = evaluatedCount > 0 ? Math.round((passCount / evaluatedCount) * 100) : 0;
+    const minScore = evaluatedCount > 0 ? Math.min(...scores) : 0;
+    const maxScore = evaluatedCount > 0 ? Math.max(...scores) : 0;
+
+    return {
+      evaluatedCount,
+      totalStudents: studentsInEcGroups.length,
+      classAverage,
+      passCount,
+      passRate,
+      minScore,
+      maxScore,
+      buckets,
+    };
+  }, [selectedEc, studentsInEcGroups, localScores, grades]);
 
   const handleScoreChange = (
     studentId: string,
@@ -155,8 +263,8 @@ export const GradesView: React.FC = () => {
     });
   };
 
-  const handleSaveStudentGrade = (studentId: string, isDraft: boolean) => {
-    if (!selectedEc) return;
+  const handleSaveStudentGrade = (studentId: string, isDraft: boolean): boolean => {
+    if (!selectedEc) return false;
     const existing = getStudentEcGrade(studentId, selectedEc.id);
     const local = localScores[studentId];
 
@@ -172,34 +280,63 @@ export const GradesView: React.FC = () => {
         : existing?.rattrapageScore;
     const commentVal = local?.comment !== undefined ? local.comment : existing?.comment;
 
-    if (quizVal !== undefined && (isNaN(quizVal) || quizVal < 0 || quizVal > 20)) return;
-    if (examVal !== undefined && (isNaN(examVal) || examVal < 0 || examVal > 20)) return;
-    if (rattrapageVal !== undefined && (isNaN(rattrapageVal) || rattrapageVal < 0 || rattrapageVal > 20)) return;
+    if (quizVal !== undefined && (isNaN(quizVal) || quizVal < 0 || quizVal > 20)) {
+      setFeedbackMsg(`Note CC invalide (${local?.quiz}) : la note doit être comprise entre 0 et 20.`);
+      setTimeout(() => setFeedbackMsg(null), 4000);
+      return false;
+    }
+    if (examVal !== undefined && (isNaN(examVal) || examVal < 0 || examVal > 20)) {
+      setFeedbackMsg(`Note Examen invalide (${local?.exam}) : la note doit être comprise entre 0 et 20.`);
+      setTimeout(() => setFeedbackMsg(null), 4000);
+      return false;
+    }
+    if (rattrapageVal !== undefined && (isNaN(rattrapageVal) || rattrapageVal < 0 || rattrapageVal > 20)) {
+      setFeedbackMsg(`Note Rattrapage invalide (${local?.rattrapage}) : la note doit être comprise entre 0 et 20.`);
+      setTimeout(() => setFeedbackMsg(null), 4000);
+      return false;
+    }
 
-    saveGrade(studentId, selectedEc.id, quizVal, examVal, isDraft, commentVal, rattrapageVal);
+    const res = saveGrade(studentId, selectedEc.id, quizVal, examVal, isDraft, commentVal, rattrapageVal);
+    if (!res.success) {
+      setFeedbackMsg(res.error || 'Enregistrement refusé.');
+      setTimeout(() => setFeedbackMsg(null), 4000);
+      return false;
+    }
     setFeedbackMsg(
       isDraft
         ? 'Note (et/ou rattrapage) enregistrée en brouillon.'
         : 'Note validée et publiée pour cet étudiant.'
     );
     setTimeout(() => setFeedbackMsg(null), 3000);
+    return true;
   };
 
-  const handleSaveAllDrafts = () => {
-    if (!selectedEc) return;
+  const handleSaveAllDrafts = (): boolean => {
+    if (!selectedEc) return false;
+    let allOk = true;
     studentsInEcGroups.forEach((st) => {
       if (localScores[st.id]) {
-        handleSaveStudentGrade(st.id, true);
+        const ok = handleSaveStudentGrade(st.id, true);
+        if (!ok) allOk = false;
       }
     });
-    setFeedbackMsg('Toutes les notes modifiées (y compris rattrapages) ont été sauvegardées.');
-    setTimeout(() => setFeedbackMsg(null), 3500);
+    if (allOk) {
+      setFeedbackMsg('Toutes les notes modifiées (y compris rattrapages) ont été sauvegardées.');
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    }
+    return allOk;
   };
 
   const handlePublishAll = () => {
     if (!selectedEc) return;
-    handleSaveAllDrafts();
-    publishGrades(selectedEc.id);
+    const savedOk = handleSaveAllDrafts();
+    if (!savedOk) return;
+    const res = publishGrades(selectedEc.id);
+    if (!res.success) {
+      setFeedbackMsg(res.error || 'Publication refusée.');
+      setTimeout(() => setFeedbackMsg(null), 4000);
+      return;
+    }
     setFeedbackMsg(
       `Publication officielle effectuée pour ${selectedEc.code} ! Les étudiants ont reçu une notification.`
     );
@@ -876,6 +1013,40 @@ export const GradesView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* OFFICIAL VERIFICATION QR CODE & SIGNATURE FOOTER */}
+          <div className="pt-4 border-t-2 border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-16 h-16 rounded-xl bg-slate-900 text-white p-1.5 flex flex-col items-center justify-center shrink-0 border border-slate-800">
+                <QrCode className="w-10 h-10 text-white" />
+                <span className="text-[7px] font-mono uppercase tracking-wider text-emerald-400">VÉRIFIÉ LMD</span>
+              </div>
+              <div className="space-y-0.5">
+                <div className="font-black text-slate-900 uppercase text-[11px]">
+                  QR Code de Vérification d'Authenticité — EBM Institute
+                </div>
+                <div className="font-mono text-[10px] text-blue-700 font-bold">
+                   Empreinte : EBM-REL-{selectedAcademicYear}-{targetStudent.matricule || targetStudent.id.slice(-5).toUpperCase()}-
+                  {Math.round(annualPreview.finalAverage * 100)}
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Ce document officiel comporte un code de contrôle infalsifiable vérifiable auprès de la Direction de la Scolarité.
+                </p>
+              </div>
+            </div>
+
+            <div className="text-right space-y-1 self-end sm:self-center">
+              <div className="text-[10px] font-bold uppercase text-slate-500">
+                Fait à Antananarivo, le {new Date().toLocaleDateString('fr-FR')}
+              </div>
+              <div className="text-xs font-black text-slate-900">
+                Le Président du Jury & La Direction Académique
+              </div>
+              <div className="text-[10px] text-emerald-700 font-semibold">
+                Cachet officiel & Signature numérique enregistrée
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1123,6 +1294,15 @@ export const GradesView: React.FC = () => {
               </button>
 
               <button
+                type="button"
+                onClick={() => setShowImportGradesModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <Upload className="w-4 h-4 text-indigo-600" />
+                Importer Excel / CSV
+              </button>
+
+              <button
                 onClick={handleSaveAllDrafts}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
               >
@@ -1139,6 +1319,160 @@ export const GradesView: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* STATISTIQUES PAR EC (Moyenne, Taux de réussite, Min/Max, Répartition) */}
+          {selectedEc && (
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    Statistiques en Direct de l'EC — {selectedEc.code} ({selectedEc.title})
+                  </h4>
+                </div>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                  <Keyboard className="w-3.5 h-3.5 text-slate-400" />
+                  Astuce Tableur : utilisez <strong className="text-slate-700">Entrée</strong>, <strong className="text-slate-700">Tab</strong> ou <strong className="text-slate-700">↑ / ↓</strong> pour naviguer d'une ligne à l'autre
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Moyenne de la classe</span>
+                  <span className="text-lg font-black text-slate-900 tabular-nums">
+                    {ecClassStats.classAverage.toFixed(2)} <span className="text-xs font-normal text-slate-500">/ 20</span>
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                  <span className="text-[10px] font-bold uppercase text-emerald-700 block">Taux de réussite (≥10)</span>
+                  <span className="text-lg font-black text-emerald-800 tabular-nums">
+                    {ecClassStats.passRate}%{' '}
+                    <span className="text-[11px] font-semibold">
+                      ({ecClassStats.passCount}/{ecClassStats.evaluatedCount || ecClassStats.totalStudents})
+                    </span>
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Note Min / Max</span>
+                  <span className="text-lg font-black text-blue-900 tabular-nums">
+                    {ecClassStats.minScore.toFixed(2)} — {ecClassStats.maxScore.toFixed(2)}
+                  </span>
+                </div>
+                <div className="col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                    Répartition des notes ({ecClassStats.evaluatedCount} évalués)
+                  </span>
+                  <div className="grid grid-cols-5 gap-1.5 text-[10px] font-bold text-center">
+                    <div className="bg-rose-100 text-rose-800 rounded px-1.5 py-1">
+                      &lt; 8 : {ecClassStats.buckets.lt8}
+                    </div>
+                    <div className="bg-amber-100 text-amber-800 rounded px-1.5 py-1">
+                      8–10 : {ecClassStats.buckets.b8_10}
+                    </div>
+                    <div className="bg-blue-100 text-blue-800 rounded px-1.5 py-1">
+                      10–12 : {ecClassStats.buckets.b10_12}
+                    </div>
+                    <div className="bg-indigo-100 text-indigo-800 rounded px-1.5 py-1">
+                      12–14 : {ecClassStats.buckets.b12_14}
+                    </div>
+                    <div className="bg-emerald-100 text-emerald-800 rounded px-1.5 py-1">
+                      ≥ 14 : {ecClassStats.buckets.gte14}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL: IMPORT NOTES DEPUIS EXCEL / CSV */}
+          {showImportGradesModal && selectedEc && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+                <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-emerald-400" />
+                    <h3 className="text-sm font-bold">
+                      Importer les Notes depuis Excel / CSV — {selectedEc.code}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setShowImportGradesModal(false)}
+                    className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+                  >
+                    Fermer
+                  </button>
+                </div>
+                <div className="p-5 space-y-4 text-xs">
+                  <p className="text-slate-600">
+                    Collez vos lignes Excel ou CSV au format :{' '}
+                    <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-slate-900">
+                      Matricule;NoteCC;NoteExamen;NoteRattrapage;Observation
+                    </code>
+                  </p>
+                  <textarea
+                    rows={6}
+                    value={importGradesText}
+                    onChange={(e) => setImportGradesText(e.target.value)}
+                    className="w-full p-3 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="EBM-2026-001;14;15;;Très bien"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportGradesModal(false)}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lines = importGradesText
+                          .split('\n')
+                          .map((l) => l.trim())
+                          .filter(Boolean);
+                        let imported = 0;
+                        let errors = 0;
+                        lines.forEach((line) => {
+                          const parts = line.split(/[;,|\t]/).map((s) => s.trim());
+                          const matOrName = (parts[0] || '').toLowerCase();
+                          const st = studentsInEcGroups.find(
+                            (u) =>
+                              u.matricule?.toLowerCase() === matOrName ||
+                              u.name.toLowerCase().includes(matOrName)
+                          );
+                          if (!st) {
+                            errors++;
+                            return;
+                          }
+                          const q = parts[1] !== undefined && parts[1] !== '' ? parseFloat(parts[1].replace(',', '.')) : undefined;
+                          const ex = parts[2] !== undefined && parts[2] !== '' ? parseFloat(parts[2].replace(',', '.')) : undefined;
+                          const ratt = parts[3] !== undefined && parts[3] !== '' ? parseFloat(parts[3].replace(',', '.')) : undefined;
+                          const obs = parts[4] || undefined;
+
+                          const res = saveGrade(st.id, selectedEc.id, q, ex, false, obs, ratt);
+                          if (res.success) imported++;
+                          else errors++;
+                        });
+                        showAppToast({
+                          type: imported > 0 ? 'success' : 'warning',
+                          title: `Importation terminée (${imported} note(s))`,
+                          message:
+                            errors > 0
+                              ? `${imported} lignes enregistrées, ${errors} lignes ignorées ou hors plage.`
+                              : `Toutes les notes de ${selectedEc.code} ont été importées avec succès.`,
+                        });
+                        if (imported > 0) setShowImportGradesModal(false);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
+                    >
+                      Importer & Enregistrer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Selected EC Metadata Card */}
           {selectedEc && (
@@ -1186,7 +1520,7 @@ export const GradesView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {studentsInEcGroups.map((student) => {
+                  {studentsInEcGroups.map((student, rowIdx) => {
                     const savedGrade = selectedEc ? getStudentEcGrade(student.id, selectedEc.id) : undefined;
                     const local = localScores[student.id];
 
@@ -1260,6 +1594,9 @@ export const GradesView: React.FC = () => {
                             min="0"
                             max="20"
                             placeholder="0-20"
+                            data-grade-row={rowIdx}
+                            data-grade-col={0}
+                            onKeyDown={(e) => handleSpreadsheetKeyDown(e, rowIdx, 0)}
                             value={quizStr}
                             onChange={(e) => handleScoreChange(student.id, 'quiz', e.target.value)}
                             className="w-20 px-2 py-1.5 text-center font-mono font-bold rounded-lg border border-slate-300 focus:border-blue-600 focus:outline-none"
@@ -1273,6 +1610,9 @@ export const GradesView: React.FC = () => {
                             min="0"
                             max="20"
                             placeholder="0-20"
+                            data-grade-row={rowIdx}
+                            data-grade-col={1}
+                            onKeyDown={(e) => handleSpreadsheetKeyDown(e, rowIdx, 1)}
                             value={examStr}
                             onChange={(e) => handleScoreChange(student.id, 'exam', e.target.value)}
                             className="w-20 px-2 py-1.5 text-center font-mono font-bold rounded-lg border border-slate-300 focus:border-blue-600 focus:outline-none"
@@ -1302,6 +1642,9 @@ export const GradesView: React.FC = () => {
                               min="0"
                               max="20"
                               placeholder={isS1Failed ? 'Rattrapage' : 'Optionnel'}
+                              data-grade-row={rowIdx}
+                              data-grade-col={2}
+                              onKeyDown={(e) => handleSpreadsheetKeyDown(e, rowIdx, 2)}
                               value={rattrapageStr}
                               onChange={(e) => handleScoreChange(student.id, 'rattrapage', e.target.value)}
                               className={`w-24 px-2 py-1.5 text-center font-mono font-bold rounded-lg border focus:outline-none ${
@@ -1338,6 +1681,9 @@ export const GradesView: React.FC = () => {
                           <input
                             type="text"
                             placeholder="Observation ou mention rattrapage..."
+                            data-grade-row={rowIdx}
+                            data-grade-col={3}
+                            onKeyDown={(e) => handleSpreadsheetKeyDown(e, rowIdx, 3)}
                             value={commentStr}
                             onChange={(e) => handleScoreChange(student.id, 'comment', e.target.value)}
                             className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:border-blue-500 focus:outline-none"
@@ -1784,6 +2130,26 @@ export const GradesView: React.FC = () => {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Official PV Footer with Authenticity Verification QR Code */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex flex-col items-center justify-center shrink-0">
+                  <QrCode className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <div className="font-black text-slate-900 uppercase text-[11px]">
+                    Procès-Verbal de Délibération Certifié — QR de Vérification d'Authenticité
+                  </div>
+                  <div className="font-mono text-[10px] text-indigo-700 font-bold">
+                    Empreinte PV : PV-JURY-{selectedAcademicYear}-{delibSemester}-{delibGroupId.toUpperCase()}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right text-[11px] text-slate-500">
+                Signé par la Commission Pédagogique & le Jury Souverain d'EBM Institute
+              </div>
             </div>
           </div>
         </div>

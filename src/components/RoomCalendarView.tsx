@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Room } from '../types';
 import { downloadCsvFile } from '../utils/csvExport';
+import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
 
 interface RoomCalendarViewProps {
   onNavigateToCreate?: () => void;
@@ -102,7 +103,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
     const distanceToMonday = (currentDay + 6) % 7;
     const monday = new Date(now);
     monday.setDate(now.getDate() - distanceToMonday);
-    return monday.toISOString().split('T')[0];
+    return getAntananarivoDateStr(monday);
   });
   const [assistStartTime, setAssistStartTime] = useState<string>(scheduleConfig.dayStartTime || '07:00');
   const [assistEndTime, setAssistEndTime] = useState<string>('09:00');
@@ -208,7 +209,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
     monday.setDate(now.getDate() - distanceToMonday + weekOffset * 7 + offset);
     return {
       offset,
-      dateStr: monday.toISOString().split('T')[0],
+      dateStr: getAntananarivoDateStr(monday),
       display: monday.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }),
       isWeekend: offset >= 5,
     };
@@ -383,9 +384,13 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
             const handleAssignRoom = (room: Room) => {
               const [sH, sM] = assistStartTime.split(':').map(Number);
               const [eH, eM] = assistEndTime.split(':').map(Number);
-              const duration = Math.max(0.5, Number((((eH * 60 + eM) - (sH * 60 + sM)) / 60).toFixed(1)));
+              const duration = Number((((eH * 60 + eM) - (sH * 60 + sM)) / 60).toFixed(1));
+              if (!Number.isFinite(duration) || duration <= 0) {
+                showNotification('Plage horaire invalide : l’heure de fin doit être postérieure à l’heure de début.');
+                return;
+              }
 
-              addSession({
+              const res = addSession({
                 courseId: selectedCrs.id,
                 teacherId: teacher?.id || 'user-teacher-vasseur',
                 groupIds: [selectedGrp.id],
@@ -397,6 +402,11 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                 status: 'PUBLISHED',
                 notes: `Affecté via l'Assistant Intelligent Salle (${requiredSeats} étudiants)`,
               });
+
+              if (!res.success) {
+                showNotification(`Conflit détecté : ${res.error}`);
+                return;
+              }
 
               setSelectedRoomId(room.id);
               showNotification(
@@ -991,15 +1001,21 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                                             const newRoomId = e.target.value;
                                             if (newRoomId && newRoomId !== session.roomId) {
                                               const targetRoom = rooms.find((r) => r.id === newRoomId);
-                                              updateSession(
+                                              const res = updateSession(
                                                 session.id,
                                                 { roomId: newRoomId },
                                                 `Déplacement vers ${targetRoom?.name || newRoomId}`
                                               );
-                                              setFeedbackMsg(
-                                                `Séance "${session.eventTitle || course?.title}" déplacée vers ${targetRoom?.name || newRoomId} !`
-                                              );
-                                              setTimeout(() => setFeedbackMsg(null), 4000);
+                                              if (!res.success) {
+                                                setFeedbackMsg(
+                                                  `Déplacement refusé vers ${targetRoom?.name || newRoomId} : ${res.error}`
+                                                );
+                                              } else {
+                                                setFeedbackMsg(
+                                                  `Séance "${session.eventTitle || course?.title}" déplacée vers ${targetRoom?.name || newRoomId} !`
+                                                );
+                                              }
+                                              setTimeout(() => setFeedbackMsg(null), 5000);
                                             }
                                           }}
                                           className="w-full py-1 px-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-bold text-slate-700 cursor-pointer"
@@ -1092,14 +1108,16 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                                             onClick={() => {
                                               const [sH, sM] = editRoomSessionForm.startTime.split(':').map(Number);
                                               const [eH, eM] = editRoomSessionForm.endTime.split(':').map(Number);
-                                              const durationHours = Math.max(
-                                                0.5,
-                                                (eH * 60 + eM - (sH * 60 + sM)) / 60
-                                              );
+                                              const durationHours = Number((((eH * 60 + eM) - (sH * 60 + sM)) / 60).toFixed(2));
+                                              if (!Number.isFinite(durationHours) || durationHours <= 0) {
+                                                setFeedbackMsg('Modification refusée : plage horaire invalide.');
+                                                setTimeout(() => setFeedbackMsg(null), 4000);
+                                                return;
+                                              }
                                               const targetRoom = rooms.find(
                                                 (r) => r.id === editRoomSessionForm.roomId
                                               );
-                                              updateSession(
+                                              const res = updateSession(
                                                 session.id,
                                                 {
                                                   date: editRoomSessionForm.date,
@@ -1111,6 +1129,11 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                                                 },
                                                 'Modification directe depuis le planning de salle'
                                               );
+                                              if (!res.success) {
+                                                setFeedbackMsg(`Modification refusée : ${res.error}`);
+                                                setTimeout(() => setFeedbackMsg(null), 5000);
+                                                return;
+                                              }
                                               setEditingRoomSessionId(null);
                                               setFeedbackMsg(
                                                 `Planning modifié avec succès (${editRoomSessionForm.date} ${editRoomSessionForm.startTime}-${editRoomSessionForm.endTime} en salle ${targetRoom?.name || ''}).`

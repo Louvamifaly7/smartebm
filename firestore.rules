@@ -3,17 +3,31 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===============================================================
-    // EBM INSTITUTE SIS — STRICT ROLE-BASED SECURITY RULES
-    // ZERO PUBLIC ACCESS: All operations require authentication.
+    // EBM INSTITUTE SIS — ZERO-TRUST ROLE-BASED SECURITY RULES (v5.0)
+    //
+    // SECURITY INVARIANTS:
+    // 1. Real, verified authentication required (NO anonymous auth).
+    // 2. Users can NEVER determine or escalate their own security role.
+    // 3. Roles are assigned exclusively by trusted administrators
+    //    (ADMIN, or SCOLARITE strictly for STUDENT/PARENT profiles).
+    // 4. Default deny on all unmatched paths.
     // ===============================================================
 
-    function isAuthenticated() {
-      return request.auth != null;
+    // Default deny safety net
+    match /{document=**} {
+      allow read, write: if false;
     }
 
+    // Require real authenticated session — strictly reject anonymous accounts
+    function isAuthenticated() {
+      return request.auth != null &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Bootstrapped institutional super-admin (verified Google account)
     function isBootstrappedAdmin() {
       return isAuthenticated() &&
-        request.auth.token.email == "louvamifaly@gmail.com" &&
+        request.auth.token.email == 'louvamifaly@gmail.com' &&
         request.auth.token.email_verified == true;
     }
 
@@ -22,223 +36,380 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAccountActive() {
+      return isBootstrappedAdmin() || (
+        userDocExists() &&
+        getUserData().get('isActive', true) == true
+      );
+    }
+
     function getUserRole() {
       return isBootstrappedAdmin()
         ? 'ADMIN'
-        : (userDocExists()
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-            : 'AUTHENTICATED_PORTAL');
+        : (userDocExists() && getUserData().get('isActive', true) == true
+            ? getUserData().get('role', 'NONE')
+            : 'NONE');
+    }
+
+    function getSisUserId() {
+      return userDocExists()
+        ? getUserData().get('sisUserId', request.auth.uid)
+        : request.auth.uid;
     }
 
     function isAdmin() {
-      return isBootstrappedAdmin() || getUserRole() == 'ADMIN' || getUserRole() == 'AUTHENTICATED_PORTAL';
+      return isAccountActive() && getUserRole() == 'ADMIN';
     }
 
     function isScolarite() {
-      return isAdmin() || getUserRole() in ['SCOLARITE', 'SCHEDULER', 'ADMIN_STAFF'];
+      return isAccountActive() && (
+        isAdmin() ||
+        getUserRole() in ['SCOLARITE', 'SCHEDULER', 'ADMIN_STAFF']
+      );
     }
 
     function isFinance() {
-      return isAdmin() || getUserRole() == 'FINANCE';
+      return isAccountActive() && (
+        isAdmin() ||
+        getUserRole() == 'FINANCE'
+      );
     }
 
     function isAcademicHead() {
-      return isAdmin() || getUserRole() == 'ACADEMIC_HEAD';
+      return isAccountActive() && (
+        isAdmin() ||
+        getUserRole() == 'ACADEMIC_HEAD'
+      );
     }
 
     function isTeacher() {
-      return isAdmin() || isAcademicHead() || getUserRole() == 'TEACHER';
+      return isAccountActive() && (
+        isAdmin() ||
+        isAcademicHead() ||
+        getUserRole() == 'TEACHER'
+      );
     }
 
     function isStaff() {
       return isAdmin() || isScolarite() || isFinance() || isAcademicHead() || isTeacher();
     }
 
-    // 1. Users Collection (Accounts & RBAC Profiles)
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isAdmin() || isScolarite() || request.auth.uid == userId);
-      allow update: if isAuthenticated() && (
-        isAdmin() ||
-        isScolarite() ||
-        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])))
+    function isValidRole(role) {
+      return role in [
+        'ADMIN',
+        'SCOLARITE',
+        'SCHEDULER',
+        'ADMIN_STAFF',
+        'FINANCE',
+        'ACADEMIC_HEAD',
+        'TEACHER',
+        'STUDENT',
+        'PARENT'
+      ];
+    }
+
+    function hasNoSecretFields() {
+      return !request.resource.data.keys().hasAny(['passwordHash']);
+    }
+
+    function isOwnerStudent(resourceData) {
+      return isAuthenticated() && isAccountActive() && (
+        resourceData.get('studentId', '') == request.auth.uid ||
+        resourceData.get('studentUid', '') == request.auth.uid ||
+        resourceData.get('studentId', '') == getSisUserId() ||
+        resourceData.get('studentUid', '') == getSisUserId()
       );
+    }
+
+    // ---------------------------------------------------------------
+    // 1. Users Collection (Accounts & RBAC Profiles)
+    //    - NEVER allow a user to choose their own role (FINANCE, SCOLARITE, ADMIN, etc.).
+    //    - Only ADMIN can create/assign staff roles.
+    //    - SCOLARITE can only create/update STUDENT and PARENT profiles.
+    //    - Bootstrapped super-admin can initialize their own ADMIN profile.
+    //    - Self-updates by an existing user CANNOT modify role, isActive,
+    //      matricule, sisUserId, customRoleId, or customPermissions.
+    // ---------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isAuthenticated() && isAccountActive() && (
+        isStaff() ||
+        request.auth.uid == userId ||
+        userId == getSisUserId()
+      );
+
+      allow create: if isAuthenticated() &&
+        hasNoSecretFields() &&
+        isValidRole(request.resource.data.get('role', '')) && (
+          // 1. Trusted Admin can provision any valid role
+          isAdmin() ||
+          // 2. Trusted Scolarite can only provision STUDENT or PARENT accounts
+          (isScolarite() && request.resource.data.get('role', '') in ['STUDENT', 'PARENT']) ||
+          // 3. Verified bootstrapped super-admin can initialize their own ADMIN profile
+          (isBootstrappedAdmin() && request.auth.uid == userId && request.resource.data.get('role', '') == 'ADMIN')
+        );
+
+      allow update: if isAuthenticated() &&
+        hasNoSecretFields() &&
+        isValidRole(request.resource.data.get('role', '')) && (
+          // 1. Trusted Admin can update user profiles & roles
+          isAdmin() ||
+          // 2. Scolarite can update STUDENT/PARENT profiles but cannot escalate them to staff roles
+          (isScolarite() &&
+            resource.data.get('role', 'STUDENT') in ['STUDENT', 'PARENT'] &&
+            request.resource.data.get('role', 'STUDENT') in ['STUDENT', 'PARENT'] &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['customRoleId', 'customPermissions'])) ||
+          // 3. Authenticated user can update their own non-security contact fields ONLY
+          (request.auth.uid == userId &&
+            isAccountActive() &&
+            request.resource.data.get('role', '') == resource.data.get('role', '') &&
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'role',
+              'isActive',
+              'matricule',
+              'sisUserId',
+              'customRoleId',
+              'customPermissions'
+            ]))
+        );
+
       allow delete: if isAdmin();
     }
 
-    // 2. Academic Configuration (Academic Years, Filieres, Parcours, Rules, UEs, ECs, Groups, Rooms, Courses)
+    // ---------------------------------------------------------------
+    // 2. Academic Configuration
+    // ---------------------------------------------------------------
     match /academicYears/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /filieres/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /parcours/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /academicRules/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead();
     }
 
     match /ues/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /ecs/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite() || isTeacher();
     }
 
     match /groups/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /rooms/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isScolarite() || isAcademicHead();
     }
 
     match /courses/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
+    // ---------------------------------------------------------------
     // 3. Timetable Sessions & QR Attendance
+    // ---------------------------------------------------------------
     match /sessions/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher();
     }
 
     match /qrSessions/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
+      allow create, delete: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher();
+      allow update: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher() || (
+        isAuthenticated() &&
+        isAccountActive() &&
+        getUserRole() == 'STUDENT' &&
+        resource.data.get('isActive', false) == true &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['records', 'updatedAt'])
+      );
     }
 
+    // ---------------------------------------------------------------
     // 4. Student Inscriptions & Re-inscriptions
+    // ---------------------------------------------------------------
     match /inscriptions/{docId} {
-      allow read: if isAuthenticated() && (isStaff() || resource.data.studentId == request.auth.uid);
+      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
       allow write: if isAdmin() || isScolarite() || isAcademicHead();
     }
 
+    // ---------------------------------------------------------------
     // 5. Grades & Jury Deliberations
+    // ---------------------------------------------------------------
     match /grades/{docId} {
-      allow read: if isAuthenticated() && (isStaff() || resource.data.studentId == request.auth.uid);
+      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
       allow write: if isAdmin() || isAcademicHead() || isScolarite() || isTeacher();
     }
 
     match /deliberations/{docId} {
-      allow read: if isAuthenticated() && (isStaff() || resource.data.studentId == request.auth.uid);
+      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
       allow write: if isAdmin() || isAcademicHead();
     }
 
+    // ---------------------------------------------------------------
     // 6. Financial Management (Fees, Payments, Cash Register Days)
+    // ---------------------------------------------------------------
     match /fees/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isFinance() || isScolarite();
     }
 
     match /payments/{docId} {
-      allow read: if isAuthenticated() && (isFinance() || isAdmin() || isScolarite() || resource.data.studentId == request.auth.uid);
+      allow read: if isAuthenticated() && isAccountActive() && (
+        isFinance() || isAdmin() || isScolarite() || isOwnerStudent(resource.data)
+      );
       allow create, update: if isAdmin() || isFinance();
       allow delete: if isAdmin();
     }
 
     match /cashDays/{docId} {
-      allow read: if isAdmin() || isFinance();
+      allow read: if isAdmin() || isFinance() || isScolarite();
       allow write: if isAdmin() || isFinance();
     }
 
-    // 7. Pedagogy & Communication (Homework, Submissions, Resources, Messages, Posts, Notifications, Chat)
+    // ---------------------------------------------------------------
+    // 7. Pedagogy & Communication
+    // ---------------------------------------------------------------
     match /homework/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher() || isScolarite();
+      allow read: if isAuthenticated() && isAccountActive();
+      allow write: if isTeacher() || isScolarite() || isAdmin();
     }
 
     match /submissions/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow create, update: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(request.resource.data));
+      allow delete: if isAdmin() || isTeacher();
     }
 
     match /resources/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher() || isScolarite();
+      allow read: if isAuthenticated() && isAccountActive();
+      allow write: if isTeacher() || isScolarite() || isAdmin();
+    }
+
+    match /learningResources/{docId} {
+      allow read: if isAuthenticated() && isAccountActive();
+      allow write: if isTeacher() || isScolarite() || isAdmin();
     }
 
     match /messages/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive() && (
+        isStaff() ||
+        resource.data.get('senderId', '') == request.auth.uid ||
+        resource.data.get('recipientId', '') == request.auth.uid ||
+        resource.data.get('senderId', '') == getSisUserId() ||
+        resource.data.get('recipientId', '') == getSisUserId() ||
+        resource.data.get('recipientGroupId', null) != null
+      );
+      allow create, update: if isAuthenticated() && isAccountActive();
+      allow delete: if isAdmin();
+    }
+
+    match /internalMessages/{docId} {
+      allow read: if isAuthenticated() && isAccountActive() && (
+        isStaff() ||
+        resource.data.get('senderId', '') == request.auth.uid ||
+        resource.data.get('recipientId', '') == request.auth.uid ||
+        resource.data.get('senderId', '') == getSisUserId() ||
+        resource.data.get('recipientId', '') == getSisUserId() ||
+        resource.data.get('recipientGroupId', null) != null
+      );
+      allow create, update: if isAuthenticated() && isAccountActive();
+      allow delete: if isAdmin();
     }
 
     match /posts/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
+      allow create, update: if isAuthenticated() && isAccountActive();
+      allow delete: if isAdmin() || isStaff();
+    }
+
+    match /groupPosts/{docId} {
+      allow read: if isAuthenticated() && isAccountActive();
+      allow create, update: if isAuthenticated() && isAccountActive();
+      allow delete: if isAdmin() || isStaff();
     }
 
     match /notifications/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive() && (
+        isStaff() ||
+        resource.data.get('recipientId', '') == request.auth.uid ||
+        resource.data.get('recipientId', '') == getSisUserId()
+      );
+      allow create, update: if isAuthenticated() && isAccountActive();
+      allow delete: if isAdmin();
     }
 
     match /chatMessages/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive() && (
+        isStaff() ||
+        resource.data.get('senderId', '') == request.auth.uid ||
+        resource.data.get('recipientId', '') == request.auth.uid ||
+        resource.data.get('senderId', '') == getSisUserId() ||
+        resource.data.get('recipientId', '') == getSisUserId()
+      );
+      allow create, update: if isAuthenticated() && isAccountActive();
+      allow delete: if isAdmin();
     }
 
+    // ---------------------------------------------------------------
     // 8. System Settings, Custom Roles, Profile Requests & Backups
+    // ---------------------------------------------------------------
     match /appSettings/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
+      allow write: if isAdmin() || isScolarite() || isAcademicHead() || (docId == 'deleted_tombstones' && isStaff());
     }
 
     match /customRoles/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin();
     }
 
     match /profileChangeRequests/{docId} {
-      allow read, create, update: if isAuthenticated();
-      allow delete: if isAdmin() || isScolarite();
+      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow create: if isAuthenticated() && isAccountActive() && isOwnerStudent(request.resource.data);
+      allow update, delete: if isAdmin() || isScolarite();
     }
 
     match /domaines/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
-    }
-
-    match /learningResources/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isTeacher() || isScolarite();
-    }
-
-    match /internalMessages/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-    }
-
-    match /groupPosts/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
     }
 
     match /backups/{docId} {
       allow read: if isAdmin() || isAcademicHead() || isScolarite();
-      allow create, update: if isAuthenticated();
+      allow create, update: if isAdmin() || isAcademicHead() || isScolarite();
       allow delete: if isAdmin();
     }
 
-    // 9. Audit Logs (Append & Idempotent Cloud Sync — Only Admin Can Delete)
+    // ---------------------------------------------------------------
+    // 9. Audit Logs — Strictly Append-Only
+    // ---------------------------------------------------------------
     match /auditLogs/{logId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
+      allow read: if isStaff();
+      allow create: if isAuthenticated() && isAccountActive();
+      allow update: if isAdmin() && request.resource.data.get('action', '') == resource.data.get('action', '');
       allow delete: if isAdmin();
     }
   }
