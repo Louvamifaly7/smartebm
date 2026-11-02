@@ -109,18 +109,20 @@ export const PWAInstallButton: React.FC<{ compact?: boolean }> = ({ compact = fa
 export const OfflineAndSyncIndicator: React.FC = () => {
   const isOnline = useOnlineStatus();
   const {
+    currentUser,
     firebaseUser,
     isCloudConnected,
     cloudSyncStatus,
     lastSyncDate,
-    loginWithGoogleFirebase,
+    toggleInstitutionalCloudBridge,
     syncAllToCloudFirestore,
     pullFromCloudFirestore,
   } = useApp();
   const { supported, permission, requestPermission, sendBrowserNotification } = useBrowserNotifications();
   const [showDetails, setShowDetails] = useState(false);
 
-  const isRealtimeActive = Boolean(isOnline && isCloudConnected && firebaseUser);
+  const isRealtimeActive = Boolean(isOnline && isCloudConnected);
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   return (
     <>
@@ -166,7 +168,7 @@ export const OfflineAndSyncIndicator: React.FC = () => {
           ) : (
             <>
               <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden md:inline">Activer Synchro Cloud</span>
+              <span className="hidden md:inline">Synchro en pause</span>
             </>
           )}
         </button>
@@ -185,8 +187,8 @@ export const OfflineAndSyncIndicator: React.FC = () => {
                 {!isOnline
                   ? 'Mode Hors-Ligne Actif'
                   : isRealtimeActive
-                  ? 'Cloud Firestore Temps Réel Actif'
-                  : 'Mode Local — Connectez Cloud Firestore'}
+                  ? 'Base Cloud Connectée (Tous les postes)'
+                  : 'Synchronisation Cloud en pause'}
               </span>
               <button
                 type="button"
@@ -201,27 +203,33 @@ export const OfflineAndSyncIndicator: React.FC = () => {
               {!isOnline
                 ? "L'emploi du temps, les notes et les listes restent consultables hors ligne. Vos modifications locales seront synchronisées automatiquement dès le retour de la connexion."
                 : isRealtimeActive
-                ? `Synchronisation multi-ordinateurs active en temps réel (28 collections Firestore • ${firebaseUser?.email}).${
-                    lastSyncDate ? ` Dernière synchro : ${lastSyncDate.toLocaleTimeString('fr-FR')}.` : ''
-                  }`
-                : 'Pour que les cours planifiés et les modifications apparaissent en direct sur tous les ordinateurs, connectez votre session Google Cloud (ex: louvamifaly@gmail.com).'}
+                ? `Synchronisation temps réel active sur tous les navigateurs et ordinateurs (28 collections Firestore${
+                    firebaseUser?.email ? ` • ${firebaseUser.email}` : ' • Pont Cloud Institutionnel EBM'
+                  }).${lastSyncDate ? ` Dernière synchro : ${lastSyncDate.toLocaleTimeString('fr-FR')}.` : ''}`
+                : "La synchronisation Cloud a été mise en pause par l'administrateur. Les modifications restent locales jusqu'à la reconnexion."}
             </p>
 
-            {!firebaseUser && isOnline && (
+            {isAdmin && isOnline && (
               <button
                 type="button"
                 onClick={async () => {
-                  const res = await loginWithGoogleFirebase();
+                  const res = await toggleInstitutionalCloudBridge(!isCloudConnected);
                   showAppToast({
-                    type: res.success ? 'success' : 'error',
-                    title: res.success ? 'Cloud Firestore connecté' : 'Connexion Google Cloud',
+                    type: isCloudConnected ? 'info' : 'success',
+                    title: isCloudConnected ? 'Base Cloud déconnectée' : 'Base Cloud connectée',
                     message: res.message,
                   });
                 }}
-                className="w-full py-2 px-3 rounded-xl bg-[#2F6FED] hover:bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-colors ${
+                  isCloudConnected
+                    ? 'bg-slate-800 hover:bg-rose-950/60 text-rose-300 border border-rose-500/30'
+                    : 'bg-[#2F6FED] hover:bg-blue-600 text-white'
+                }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Connecter Google Cloud (Temps Réel)
+                {isCloudConnected
+                  ? 'Déconnecter la base Cloud (tous les postes)'
+                  : 'Connecter la base Cloud (tous les postes)'}
               </button>
             )}
 

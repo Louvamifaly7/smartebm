@@ -298,8 +298,14 @@ export interface Room {
   floor: string;
   capacity: number;
   equipment: string[];    // e.g. 'Vidéoprojecteur 4K', 'Postes informatiques (30)', 'Micro HF', 'Caméra visio'
-  status: 'available' | 'maintenance' | 'occupied';
+  defectiveEquipment?: string[]; // Équipements signalés défectueux / hors service
+  status: 'available' | 'maintenance' | 'occupied' | 'unavailable';
+  maintenanceReason?: string;
+  maintenanceStartDate?: string; // Date de début de maintenance (YYYY-MM-DD)
+  maintenanceEndDate?: string;   // Date de fin de maintenance (YYYY-MM-DD)
+  blockedUntil?: string;
   colorCode: string;
+  updatedAt?: string;
 }
 
 export interface Course {
@@ -376,7 +382,7 @@ export interface AppNotification {
 export interface ConflictResult {
   hasConflict: boolean;
   conflicts: {
-    type: 'TIME' | 'ROOM' | 'TEACHER' | 'GROUP' | 'CAPACITY' | 'AVAILABILITY' | 'QUOTA';
+    type: 'TIME' | 'ROOM' | 'TEACHER' | 'GROUP' | 'CAPACITY' | 'AVAILABILITY' | 'QUOTA' | 'HOLIDAY';
     message: string;
     conflictingSession?: TimetableSession;
   }[];
@@ -713,4 +719,124 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isRead: boolean;
+  updatedAt?: string;
 }
+
+// ==========================================
+// REFONTE MESSAGERIE INSTANTANÉE & PRÉSENCE TEMPS RÉEL (EBM INSTITUTE)
+// ==========================================
+
+export type PresenceStatus = 'ONLINE' | 'IDLE' | 'DND' | 'OFFLINE';
+
+export interface UserPresenceConnection {
+  connectionId: string;
+  status: PresenceStatus;
+  updatedAt: string;
+  deviceLabel: string;
+}
+
+export interface UserPresenceRecord {
+  id: string; // sisUserId
+  sisUserId: string;
+  status: PresenceStatus;
+  manualStatus?: 'ONLINE' | 'IDLE' | 'DND';
+  lastSeenAt: string;
+  connections: Record<string, UserPresenceConnection>;
+  updatedAt: string;
+}
+
+export type ChatSoundTone = 'CRISTAL' | 'INSTITUTIONNEL' | 'DISCRET' | 'MODERNE';
+
+export interface ChatNotificationPreferences {
+  id: string; // userId
+  userId: string;
+  soundEnabled: boolean;
+  soundVolume: number; // 0.0 to 1.0
+  soundTone: ChatSoundTone;
+  privateSoundEnabled: boolean;
+  groupSoundEnabled: boolean;
+  announcementSoundEnabled: boolean;
+  muteActiveConversation: boolean;
+  visualNotificationsEnabled: boolean;
+  pushNotificationsEnabled: boolean;
+  fcmTokens?: string[];
+  updatedAt: string;
+}
+
+export type ChatConversationType = 'private' | 'group' | 'announcement';
+
+export interface ChatAttachment {
+  name: string;
+  url: string;
+  mimeType: string;
+  extension: string;
+  sizeBytes: number;
+  sizeFormatted: string;
+  storagePath?: string;
+}
+
+export interface ChatConversationMessage {
+  id: string;
+  conversationId: string;
+  senderId: string; // SIS user.id
+  senderName: string;
+  senderRole: UserRole;
+  text: string;
+  type: 'text' | 'attachment' | 'image' | 'file' | 'announcement' | 'system';
+  attachment?: ChatAttachment;
+  replyToMessageId?: string;
+  replyPreview?: {
+    id: string;
+    senderId: string;
+    senderName: string;
+    text: string;
+  };
+  replyToPreview?: {
+    senderName: string;
+    text: string;
+  };
+  createdAt: string;
+  editedAt?: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  deliveredTo: Record<string, string>; // sisUserId -> ISO timestamp
+  readBy: Record<string, string>;      // sisUserId -> ISO timestamp
+  updatedAt?: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  type: ChatConversationType;
+  title: string;
+  participantIds: string[]; // SIS user.id[] or ['ALL'] for general announcements
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  lastMessage?: {
+    id: string;
+    text: string;
+    senderId: string;
+    senderName: string;
+    createdAt: string;
+    type?: 'text' | 'attachment' | 'image' | 'file' | 'announcement' | 'system';
+  };
+  lastMessageAt?: string;
+  metadata?: {
+    groupId?: string;
+    filiereId?: string;
+    level?: string;
+    courseId?: string;
+    allowReplies?: boolean;
+    isOfficialAnnouncement?: boolean;
+    description?: string;
+    adminIds?: string[];
+  };
+}
+
+export interface TypingIndicatorEntry {
+  userId: string;
+  userName: string;
+  conversationId: string;
+  timestamp: number;
+}
+

@@ -5,7 +5,7 @@ import {
   CashRegisterDay, HomeworkAssignment, HomeworkSubmission, LearningResource,
   Parcours, AcademicValidationRules, DeliberationRecord
 } from '../types';
-import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { getAntananarivoDateStr, getAcademicWeekMondayDate } from '../utils/securityAndDateUtils';
 
 export const initialFilieres: Filiere[] = [
   { id: 'fil-1', code: 'INFO', name: 'Informatique & Génie Logiciel', department: 'Pôle Technologies Numériques', domaine: 'Sciences et Technologies', etablissement: 'EBM Institute' },
@@ -680,194 +680,16 @@ export const initialCourses: Course[] = [
   },
 ];
 
-// Helper to format date offset from reference Monday of current week
+// Helper to format date offset from reference Monday of active academic week
 function getOffsetDate(dayOffset: number): string {
-  const now = new Date();
-  const currentDay = now.getDay(); // 0 is Sunday, 1 is Monday
-  const distanceToMonday = (currentDay + 6) % 7; // days since last Monday
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - distanceToMonday);
-  
+  const monday = getAcademicWeekMondayDate();
   const targetDate = new Date(monday);
   targetDate.setDate(monday.getDate() + dayOffset);
   return getAntananarivoDateStr(targetDate);
 }
 
-export const initialSessions: TimetableSession[] = [
-  // Lundi : 08h30 - 10h30 (Algorithmique en Amphi A) -> Validé & Réalisé
-  {
-    id: 'sess-101',
-    courseId: 'crs-algo-30h',
-    teacherId: 'user-teacher-vasseur',
-    groupIds: ['grp-l1-info-a'],
-    roomId: 'room-amphi-a',
-    date: getOffsetDate(0), // Lundi
-    startTime: '08:30',
-    endTime: '10:30',
-    durationHours: 2.0,
-    status: 'COMPLETED_VALIDATED',
-    notes: 'Introduction aux arbres AVL et équilibrage',
-    validatedAt: '2026-10-26T11:00:00Z',
-    validatedBy: 'Dr. Tiana Rabemananjara (Responsable pédagogique)',
-    history: [
-      { id: 'h1', timestamp: '2026-10-20T09:00:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Séance créée et publiée' },
-      { id: 'h2', timestamp: '2026-10-26T11:00:00Z', authorName: 'Dr. Tiana Rabemananjara', action: 'VALIDATION', details: 'Séance validée comme réalisée (2h comptabilisées)' },
-    ],
-  },
-  // Lundi : 10h45 - 12h45 (Bases de Données en Labo 1) -> Validé & Réalisé
-  {
-    id: 'sess-102',
-    courseId: 'crs-bdd-30h',
-    teacherId: 'user-teacher-martin',
-    groupIds: ['grp-l1-info-a'],
-    subGroupId: 'sub-l1-info-a1',
-    roomId: 'room-lab-01',
-    date: getOffsetDate(0), // Lundi
-    startTime: '10:45',
-    endTime: '12:45',
-    durationHours: 2.0,
-    status: 'COMPLETED_VALIDATED',
-    notes: 'TP 01 : Requêtes SELECT avec jointures multiples',
-    validatedAt: '2026-10-26T13:00:00Z',
-    validatedBy: 'Dr. Tiana Rabemananjara',
-    history: [
-      { id: 'h3', timestamp: '2026-10-20T09:05:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Création initiale' },
-      { id: 'h4', timestamp: '2026-10-26T13:00:00Z', authorName: 'Dr. Tiana Rabemananjara', action: 'VALIDATION', details: 'Séance TP validée (2h)' },
-    ],
-  },
-  // Mardi : 08h30 - 11h30 (Réseaux 3h) -> Publié
-  {
-    id: 'sess-103',
-    courseId: 'crs-reseaux-30h',
-    teacherId: 'user-teacher-leroy',
-    groupIds: ['grp-l1-info-a'],
-    roomId: 'room-b102',
-    date: getOffsetDate(1), // Mardi
-    startTime: '08:30',
-    endTime: '11:30',
-    durationHours: 3.0,
-    status: 'PUBLISHED',
-    notes: 'Calcul des masques de sous-réseaux et routage statique',
-    history: [
-      { id: 'h5', timestamp: '2026-10-21T10:00:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Séance planifiée et validée pour diffusion' },
-    ],
-  },
-  // Mardi : 14h00 - 16h00 (Web Moderne) -> Reporté
-  {
-    id: 'sess-104',
-    courseId: 'crs-web-24h',
-    teacherId: 'user-teacher-vasseur',
-    groupIds: ['grp-l1-info-a'],
-    roomId: 'room-lab-02',
-    date: getOffsetDate(3), // Déplacé à Jeudi
-    startTime: '14:00',
-    endTime: '16:00',
-    durationHours: 2.0,
-    status: 'RESCHEDULED',
-    rescheduledFrom: {
-      originalDate: getOffsetDate(1), // Mardi
-      originalStartTime: '14:00',
-      originalEndTime: '16:00',
-      originalRoomId: 'room-lab-02',
-    },
-    notes: 'Reporté à jeudi pour cause de jury de thèse de l’enseignant',
-    history: [
-      { id: 'h6', timestamp: '2026-10-22T11:00:00Z', authorName: 'Haingo Razafindrakoto', action: 'REPORT', details: 'Cours reporté du mardi au jeudi 14h00. Notifications envoyées aux étudiants.', reason: 'Indisponibilité enseignant (jury académique)' },
-    ],
-  },
-  // Mercredi : 09h00 - 12h00 (Algorithmique TP) -> Annulé (Exemple d'annulation avec motif obligatoire RG-14)
-  {
-    id: 'sess-105',
-    courseId: 'crs-algo-30h',
-    teacherId: 'user-teacher-vasseur',
-    groupIds: ['grp-l1-info-a'],
-    subGroupId: 'sub-l1-info-a2',
-    roomId: 'room-lab-01',
-    date: getOffsetDate(2), // Mercredi
-    startTime: '09:00',
-    endTime: '11:00',
-    durationHours: 2.0,
-    status: 'CANCELLED',
-    cancellationReason: 'Panne électrique générale et maintenance du serveur de labo',
-    cancellationDate: '2026-10-27T08:15:00Z',
-    notes: 'Séance à reprogrammer ultérieurement. Non comptabilisée dans les heures réalisées.',
-    history: [
-      { id: 'h7', timestamp: '2026-10-21T14:00:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Séance créée' },
-      { id: 'h8', timestamp: '2026-10-27T08:15:00Z', authorName: 'Dr. Tiana Rabemananjara', action: 'ANNULATION', details: 'Séance annulée. Alerte push et web déclenchée.', reason: 'Panne électrique du bâtiment' },
-    ],
-  },
-  // Mercredi : 14h00 - 16h00 (Conférence Inaugurale IA & Transformation Digitale à Madagascar)
-  {
-    id: 'sess-conf-109',
-    courseId: 'CUSTOM_EVENT',
-    sessionType: 'CONFERENCE',
-    eventTitle: 'Conférence : IA Générative & Transformation Digitale à Madagascar',
-    eventSpeaker: 'Dr. Hery Andriamalala & Invités Tech Madagascar',
-    teacherId: 'user-teacher-vasseur',
-    groupIds: ['grp-l1-info-a', 'grp-l1-info-b', 'grp-m1-data-a'],
-    roomId: 'room-amphi-a',
-    date: getOffsetDate(2), // Mercredi
-    startTime: '14:00',
-    endTime: '16:00',
-    durationHours: 2.0,
-    status: 'PUBLISHED',
-    notes: 'Conférence ouverte à toutes les promotions Informatique & Data Science en Amphithéâtre Alan Turing.',
-    history: [
-      { id: 'h-conf-1', timestamp: '2026-10-24T09:00:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Conférence planifiée et insérée dans l’emploi du temps des étudiants' },
-    ],
-  },
-  // Jeudi : 08h30 - 10h30 (Bases de Données en Amphi Turing) -> En attente de validation
-  {
-    id: 'sess-106',
-    courseId: 'crs-bdd-30h',
-    teacherId: 'user-teacher-martin',
-    groupIds: ['grp-l1-info-a', 'grp-l1-info-b'], // Cours partagé
-    roomId: 'room-amphi-a',
-    date: getOffsetDate(3), // Jeudi
-    startTime: '08:30',
-    endTime: '10:30',
-    durationHours: 2.0,
-    status: 'PENDING_APPROVAL',
-    notes: 'Cours magistral commun : normalisation 3FN et BCNF',
-    history: [
-      { id: 'h9', timestamp: '2026-10-25T15:30:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Proposé à validation pédagogique' },
-    ],
-  },
-  // Vendredi : 10h00 - 12h00 (Architecture Réseaux en Salle B204) -> Publié
-  {
-    id: 'sess-107',
-    courseId: 'crs-reseaux-30h',
-    teacherId: 'user-teacher-leroy',
-    groupIds: ['grp-l1-info-a'],
-    roomId: 'room-b204',
-    date: getOffsetDate(4), // Vendredi
-    startTime: '10:00',
-    endTime: '12:00',
-    durationHours: 2.0,
-    status: 'PUBLISHED',
-    notes: 'Travaux dirigés : Configuration de routeurs Cisco virtuelles',
-    history: [
-      { id: 'h10', timestamp: '2026-10-23T16:00:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Publication validée' },
-    ],
-  },
-  // Vendredi : 14h00 - 17h00 (Algorithmique Master 1 Data) -> Publié
-  {
-    id: 'sess-108',
-    courseId: 'crs-algo-30h',
-    teacherId: 'user-teacher-vasseur',
-    groupIds: ['grp-m1-data-a'],
-    roomId: 'room-visio',
-    date: getOffsetDate(4), // Vendredi
-    startTime: '14:00',
-    endTime: '17:00',
-    durationHours: 3.0,
-    status: 'PUBLISHED',
-    notes: 'Algorithmes génétiques et optimisation méta-heuristique',
-    history: [
-      { id: 'h11', timestamp: '2026-10-23T16:30:00Z', authorName: 'Haingo Razafindrakoto', action: 'CREATION', details: 'Publication validée' },
-    ],
-  },
-];
+export const initialSessions: TimetableSession[] = [];
+
 
 export const initialNotifications: AppNotification[] = [
   {

@@ -30,6 +30,53 @@ export function getAntananarivoDateStr(date: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Retourne le Lundi de la semaine académique active (en heure locale Antananarivo).
+ * Si la date tombe un Samedi (6) ou un Dimanche (0) — par exemple le dimanche 01/11/2026 —
+ * la semaine académique Lundi–Vendredi de la semaine écoulée est déjà terminée :
+ * on positionne donc automatiquement sur le Lundi suivant (ex: lundi 02/11/2026).
+ */
+export function getAcademicWeekMondayDate(baseDate: Date = new Date()): Date {
+  const tanaStr = getAntananarivoDateStr(baseDate);
+  const [y, m, d] = tanaStr.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+  const dayOfWeek = dt.getDay(); // 0 = Dimanche, 1 = Lundi, ..., 6 = Samedi
+  if (dayOfWeek === 0) {
+    // Dimanche -> Lundi suivant (+1 jour)
+    dt.setDate(dt.getDate() + 1);
+  } else if (dayOfWeek === 6) {
+    // Samedi -> Lundi suivant (+2 jours)
+    dt.setDate(dt.getDate() + 2);
+  } else {
+    // Lundi (1) à Vendredi (5) -> Lundi de la semaine en cours
+    dt.setDate(dt.getDate() - (dayOfWeek - 1));
+  }
+  return dt;
+}
+
+/**
+ * Retourne la date YYYY-MM-DD du Lundi de la semaine académique active.
+ */
+export function getAcademicWeekMondayStr(baseDate: Date = new Date()): string {
+  return getAntananarivoDateStr(getAcademicWeekMondayDate(baseDate));
+}
+
+/**
+ * Retourne la date de planification par défaut (YYYY-MM-DD) :
+ * - Du Lundi au Vendredi : aujourd'hui
+ * - Le Samedi et le Dimanche : le Lundi de la semaine qui commence (ex: 02/11/2026 le 01/11/2026)
+ */
+export function getDefaultPlanningDateStr(baseDate: Date = new Date()): string {
+  const tanaStr = getAntananarivoDateStr(baseDate);
+  const [y, m, d] = tanaStr.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+  const dayOfWeek = dt.getDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return getAcademicWeekMondayStr(baseDate);
+  }
+  return tanaStr;
+}
+
 let idSequenceCounter = 0;
 
 /**

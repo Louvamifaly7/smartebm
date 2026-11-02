@@ -16,10 +16,13 @@ import {
   doc,
   getDocFromServer,
 } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { getDatabase, Database } from 'firebase/database';
+import { getMessaging, isSupported as isMessagingSupported, Messaging } from 'firebase/messaging';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase SDK
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // Initialize Cloud Firestore with the provisioned database ID
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -27,6 +30,39 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 // Initialize Firebase Authentication
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Initialize Firebase Storage for secure chat attachments
+export const storage: FirebaseStorage = getStorage(app);
+
+// Lazy initializer for Firebase Realtime Database (presence & typing indicators)
+let rtdbInstance: Database | null | undefined;
+export function getRealtimeDb(): Database | null {
+  if (rtdbInstance !== undefined) return rtdbInstance;
+  try {
+    const cfg = firebaseConfig as Record<string, string | undefined>;
+    const dbUrl = cfg.databaseURL;
+    if (!dbUrl) {
+      rtdbInstance = null;
+      return null;
+    }
+    rtdbInstance = getDatabase(app, dbUrl);
+    return rtdbInstance;
+  } catch {
+    rtdbInstance = null;
+    return null;
+  }
+}
+
+// Lazy initializer for Firebase Cloud Messaging (push notifications)
+let messagingPromise: Promise<Messaging | null> | null = null;
+export function getFirebaseMessaging(): Promise<Messaging | null> {
+  if (!messagingPromise) {
+    messagingPromise = isMessagingSupported()
+      .then((supported) => (supported ? getMessaging(app) : null))
+      .catch(() => null);
+  }
+  return messagingPromise;
+}
 
 export {
   signInWithPopup,

@@ -49,7 +49,13 @@ const DEFAULT_WEEK_DAYS: TeacherAvailabilitySlot['day'][] = [
   'SAMEDI',
 ];
 
-type TeacherSheetTab = 'IDENTITY' | 'CONTACT' | 'PROFESSIONAL' | 'SECURITY';
+type TeacherSheetTab =
+  | 'PROFILE'
+  | 'CONTACT'
+  | 'ACADEMIC'
+  | 'TEACHING'
+  | 'CONTRACT_PAY'
+  | 'SECURITY';
 
 export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigateToCreate }) => {
   const {
@@ -119,9 +125,10 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
   }, [baseTeachers, sessions]);
 
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
-  const [sheetTab, setSheetTab] = useState<TeacherSheetTab>('IDENTITY');
+  const [sheetTab, setSheetTab] = useState<TeacherSheetTab>('PROFILE');
   const [isEditingTeacherSheet, setIsEditingTeacherSheet] = useState<boolean>(false);
   const [isTeacherDirty, setIsTeacherDirty] = useState<boolean>(false);
+  const [showConfidentialRib, setShowConfidentialRib] = useState<boolean>(false);
 
   // Full University Teacher Sheet State — NEVER pre-filled with fake defaults
   const [editCivilite, setEditCivilite] = useState<'M.' | 'Mme' | 'Mlle' | 'Dr.' | 'Prof.'>('Dr.');
@@ -196,8 +203,9 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
   // Opens by default in CONSULTATION mode (Section 4 of PDF)
   const handleOpenTeacherModal = (teacher: User, startInEditMode = false) => {
     setSelectedTeacherId(teacher.id);
-    setSheetTab('IDENTITY');
+    setSheetTab('PROFILE');
     setIsEditingTeacherSheet(startInEditMode);
+    setShowConfidentialRib(false);
     populateTeacherForm(teacher);
   };
 
@@ -971,24 +979,24 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
               </div>
             </div>
 
-            {/* 4 Standardized Tabs Bar (Section 4 of PDF) */}
-            <div className="flex overflow-x-auto border-b border-[#DCE3EC] bg-[#F5F7FA] px-5 pt-2 text-xs font-bold gap-2">
+            {/* 6 Specialized Tabs Bar for Fiche Individuelle Enseignant */}
+            <div className="flex overflow-x-auto border-b border-[#DCE3EC] bg-[#F5F7FA] px-4 pt-2 text-xs font-bold gap-1.5">
               <button
                 type="button"
-                onClick={() => setSheetTab('IDENTITY')}
-                className={`py-2.5 px-3.5 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                  sheetTab === 'IDENTITY'
+                onClick={() => setSheetTab('PROFILE')}
+                className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  sheetTab === 'PROFILE'
                     ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
                     : 'border-transparent text-slate-600 hover:text-[#16202A]'
                 }`}
               >
                 <UserIcon className="w-3.5 h-3.5" />
-                1. Identité
+                1. Profil
               </button>
               <button
                 type="button"
                 onClick={() => setSheetTab('CONTACT')}
-                className={`py-2.5 px-3.5 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                   sheetTab === 'CONTACT'
                     ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
                     : 'border-transparent text-slate-600 hover:text-[#16202A]'
@@ -999,27 +1007,51 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
               </button>
               <button
                 type="button"
-                onClick={() => setSheetTab('PROFESSIONAL')}
-                className={`py-2.5 px-3.5 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                  sheetTab === 'PROFESSIONAL'
+                onClick={() => setSheetTab('ACADEMIC')}
+                className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  sheetTab === 'ACADEMIC'
                     ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
                     : 'border-transparent text-slate-600 hover:text-[#16202A]'
                 }`}
               >
-                <Briefcase className="w-3.5 h-3.5" />
-                3. Informations métier (Disponibilités, CV & Paie)
+                <GraduationCap className="w-3.5 h-3.5" />
+                3. Parcours académique
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheetTab('TEACHING')}
+                className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  sheetTab === 'TEACHING'
+                    ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
+                    : 'border-transparent text-slate-600 hover:text-[#16202A]'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                4. Enseignement
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheetTab('CONTRACT_PAY')}
+                className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  sheetTab === 'CONTRACT_PAY'
+                    ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
+                    : 'border-transparent text-slate-600 hover:text-[#16202A]'
+                }`}
+              >
+                <Banknote className="w-3.5 h-3.5" />
+                5. Contrat & rémunération
               </button>
               <button
                 type="button"
                 onClick={() => setSheetTab('SECURITY')}
-                className={`py-2.5 px-3.5 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                className={`py-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                   sheetTab === 'SECURITY'
                     ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
                     : 'border-transparent text-slate-600 hover:text-[#16202A]'
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                4. Compte & sécurité
+                6. Compte & sécurité
               </button>
             </div>
 
@@ -1032,13 +1064,13 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                 </div>
               )}
 
-              {/* ONGLET 1 : IDENTITÉ */}
-              {sheetTab === 'IDENTITY' && (
+              {/* ONGLET 1 : PROFIL (Identité, Photo, Statut) */}
+              {sheetTab === 'PROFILE' && (
                 <div className="space-y-4">
                   <div className="border-b border-slate-100 pb-2">
-                    <h4 className="text-sm font-black text-[#16202A]">État civil & identité universitaire</h4>
+                    <h4 className="text-sm font-black text-[#16202A]">1. Profil — Identité, photo & statut</h4>
                     <p className="text-[11px] text-slate-500">
-                      Informations personnelles officielles. Aucun champ inconnu n’est pré-rempli avec des valeurs fictives.
+                      Informations personnelles officielles de l’enseignant. Aucun champ inconnu n’est pré-rempli avec des valeurs fictives.
                     </p>
                   </div>
 
@@ -1046,10 +1078,15 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {renderReadOnlyField('Civilité', activeTeacher.civilite)}
                       {renderReadOnlyField('Nom & Prénom(s) officiels', activeTeacher.name)}
-                      {renderReadOnlyField('Grade universitaire', activeTeacher.academicRank)}
+                      {renderReadOnlyField(
+                        'Statut d’activité',
+                        activeTeacher.isActive ? 'Actif (En service)' : 'Suspendu (Inactif)'
+                      )}
                       {renderReadOnlyField('Date de naissance', activeTeacher.birthDate)}
                       {renderReadOnlyField('Lieu de naissance', activeTeacher.birthPlace)}
+                      {renderReadOnlyField('Date de prise de fonction', activeTeacher.hireDate)}
                       {!isStudent && renderReadOnlyField('Numéro CIN / Pièce d’identité', activeTeacher.cin, true)}
+                      {renderReadOnlyField('Département / Pôle EBM', activeTeacher.department)}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
@@ -1090,27 +1127,6 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
 
                       <div>
                         <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                          Grade universitaire
-                        </label>
-                        <select
-                          value={editAcademicRank}
-                          onChange={(e) => {
-                            setEditAcademicRank(e.target.value);
-                            setIsTeacherDirty(true);
-                          }}
-                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-semibold text-[#16202A]"
-                        >
-                          <option value="">-- Non renseigné --</option>
-                          <option value="Professeur Titulaire">Professeur Titulaire</option>
-                          <option value="Maître de Conférences">Maître de Conférences</option>
-                          <option value="Assistant d'Enseignement Supérieur">Assistant d'ESR</option>
-                          <option value="Enseignant-Chercheur">Enseignant-Chercheur</option>
-                          <option value="Chargé de Cours / Expert Pro">Chargé de Cours / Expert Pro</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
                           Date de naissance
                         </label>
                         <input
@@ -1140,6 +1156,21 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                         />
                       </div>
 
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                          Date de prise de fonction
+                        </label>
+                        <input
+                          type="date"
+                          value={editHireDate}
+                          onChange={(e) => {
+                            setEditHireDate(e.target.value);
+                            setIsTeacherDirty(true);
+                          }}
+                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
+                        />
+                      </div>
+
                       {!isStudent && (
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
@@ -1157,18 +1188,34 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                           />
                         </div>
                       )}
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                          Département / Pôle EBM
+                        </label>
+                        <input
+                          type="text"
+                          value={editDepartment}
+                          onChange={(e) => {
+                            setEditDepartment(e.target.value);
+                            setIsTeacherDirty(true);
+                          }}
+                          placeholder="Pôle Technologies Numériques..."
+                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* ONGLET 2 : COORDONNÉES */}
+              {/* ONGLET 2 : COORDONNÉES (Email, Téléphone, Adresse, Bureau) */}
               {sheetTab === 'CONTACT' && (
                 <div className="space-y-4">
                   <div className="border-b border-slate-100 pb-2">
-                    <h4 className="text-sm font-black text-[#16202A]">Coordonnées de contact & localisation</h4>
+                    <h4 className="text-sm font-black text-[#16202A]">2. Coordonnées — Email, téléphone, adresse & bureau</h4>
                     <p className="text-[11px] text-slate-500">
-                      Moyens de contact direct pour la scolarité, l’administration et les notifications de cours.
+                      Coordonnées séparées des informations métier pour un accès rapide et structuré.
                     </p>
                   </div>
 
@@ -1179,9 +1226,8 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                       {renderReadOnlyField('Téléphone secondaire / WhatsApp', activeTeacher.secondaryPhone)}
                       {renderReadOnlyField('Bureau / Salle des professeurs', activeTeacher.officeLocation)}
                       {renderReadOnlyField('Adresse postale', activeTeacher.address)}
-                      {renderReadOnlyField('Ville', activeTeacher.city)}
+                      {renderReadOnlyField('Ville de résidence', activeTeacher.city)}
                       {renderReadOnlyField('Contact d’urgence', activeTeacher.emergencyContact)}
-                      {renderReadOnlyField('Profil LinkedIn / ORCID', activeTeacher.linkedInUrl || activeTeacher.orcidUrl)}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
@@ -1279,9 +1325,9 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                         />
                       </div>
 
-                      <div>
+                      <div className="sm:col-span-3">
                         <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                          Contact d’urgence
+                          Contact d’urgence (Nom, lien & téléphone)
                         </label>
                         <input
                           type="text"
@@ -1294,10 +1340,109 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                           className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
                         />
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ONGLET 3 : PARCOURS ACADÉMIQUE (Diplômes, Grade, Spécialité, Université d'origine, CV) */}
+              {sheetTab === 'ACADEMIC' && (
+                <div className="space-y-5">
+                  <div className="border-b border-slate-100 pb-2">
+                    <h4 className="text-sm font-black text-[#16202A]">
+                      3. Parcours académique — Diplômes, grade, spécialité & université d’origine
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Titres universitaires, domaine de recherche et Curriculum Vitae académique.
+                    </p>
+                  </div>
+
+                  {!isEditingTeacherSheet ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {renderReadOnlyField('Grade universitaire', activeTeacher.academicRank)}
+                      {renderReadOnlyField('Diplôme le plus élevé', activeTeacher.highestDiploma)}
+                      {renderReadOnlyField('Spécialité académique', activeTeacher.specialty)}
+                      {renderReadOnlyField('Université d’origine (Alma Mater)', activeTeacher.almaMater)}
+                      {renderReadOnlyField('Département de rattachement', activeTeacher.department)}
+                      {renderReadOnlyField(
+                        'Profil académique (ORCID / LinkedIn)',
+                        activeTeacher.orcidUrl || activeTeacher.linkedInUrl
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                          Grade universitaire
+                        </label>
+                        <select
+                          value={editAcademicRank}
+                          onChange={(e) => {
+                            setEditAcademicRank(e.target.value);
+                            setIsTeacherDirty(true);
+                          }}
+                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-semibold text-[#16202A]"
+                        >
+                          <option value="">-- Non renseigné --</option>
+                          <option value="Professeur Titulaire">Professeur Titulaire</option>
+                          <option value="Maître de Conférences">Maître de Conférences</option>
+                          <option value="Assistant d'Enseignement Supérieur">Assistant d'ESR</option>
+                          <option value="Enseignant-Chercheur">Enseignant-Chercheur</option>
+                          <option value="Chargé de Cours / Expert Pro">Chargé de Cours / Expert Pro</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                          Diplôme le plus élevé
+                        </label>
+                        <input
+                          type="text"
+                          value={editHighestDiploma}
+                          onChange={(e) => {
+                            setEditHighestDiploma(e.target.value);
+                            setIsTeacherDirty(true);
+                          }}
+                          placeholder="Doctorat (PhD), HDR, Master..."
+                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                          Spécialité académique
+                        </label>
+                        <input
+                          type="text"
+                          value={editSpecialty}
+                          onChange={(e) => {
+                            setEditSpecialty(e.target.value);
+                            setIsTeacherDirty(true);
+                          }}
+                          placeholder="Génie Logiciel, IA, Finance..."
+                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-semibold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                          Université d’origine (Alma Mater)
+                        </label>
+                        <input
+                          type="text"
+                          value={editAlmaMater}
+                          onChange={(e) => {
+                            setEditAlmaMater(e.target.value);
+                            setIsTeacherDirty(true);
+                          }}
+                          placeholder="Établissement d'obtention du diplôme"
+                          className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
+                        />
+                      </div>
 
                       <div className="sm:col-span-2">
                         <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                          Lien LinkedIn / ORCID
+                          Profil ORCID / Google Scholar / LinkedIn
                         </label>
                         <input
                           type="text"
@@ -1306,264 +1451,14 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                             setEditLinkedIn(e.target.value);
                             setIsTeacherDirty(true);
                           }}
-                          placeholder="https://linkedin.com/in/..."
+                          placeholder="https://orcid.org/... ou https://linkedin.com/in/..."
                           className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
                         />
                       </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {/* ONGLET 3 : INFORMATIONS MÉTIER (QUALIFICATIONS, CV, DISPONIBILITÉS 07h-17h, PAIE & SÉANCES) */}
-              {sheetTab === 'PROFESSIONAL' && (
-                <div className="space-y-5">
-                  {/* 3A. Qualifications, Contrat & Matières */}
-                  <div className="space-y-3">
-                    <div className="border-b border-slate-100 pb-2">
-                      <h4 className="text-sm font-black text-[#16202A]">
-                        Qualifications académiques, contrat & matières enseignées
-                      </h4>
-                    </div>
-
-                    {!isEditingTeacherSheet ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {renderReadOnlyField('Spécialité académique', activeTeacher.specialty)}
-                        {renderReadOnlyField('Diplôme le plus élevé', activeTeacher.highestDiploma)}
-                        {renderReadOnlyField('Université d’origine (Alma Mater)', activeTeacher.almaMater)}
-                        {renderReadOnlyField('Département / Pôle', activeTeacher.department)}
-                        {renderReadOnlyField('Type de contrat', activeTeacher.contractType || 'VACATAIRE')}
-                        {renderReadOnlyField('Quota horaire max / semaine', `${activeTeacher.weeklyMaxHours || 18} h`)}
-                        <div className="sm:col-span-2 lg:col-span-3">
-                          {renderReadOnlyField(
-                            'Matières / EC enseignés',
-                            activeTeacher.subjects && activeTeacher.subjects.length > 0
-                              ? activeTeacher.subjects.join(', ')
-                              : undefined
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Spécialité académique
-                          </label>
-                          <input
-                            type="text"
-                            value={editSpecialty}
-                            onChange={(e) => {
-                              setEditSpecialty(e.target.value);
-                              setIsTeacherDirty(true);
-                            }}
-                            placeholder="Génie Logiciel, IA, Finance..."
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-semibold"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Diplôme le plus élevé
-                          </label>
-                          <input
-                            type="text"
-                            value={editHighestDiploma}
-                            onChange={(e) => {
-                              setEditHighestDiploma(e.target.value);
-                              setIsTeacherDirty(true);
-                            }}
-                            placeholder="Doctorat (PhD), HDR, Master..."
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Université d’origine
-                          </label>
-                          <input
-                            type="text"
-                            value={editAlmaMater}
-                            onChange={(e) => {
-                              setEditAlmaMater(e.target.value);
-                              setIsTeacherDirty(true);
-                            }}
-                            placeholder="Établissement d'obtention du diplôme"
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Département / Pôle EBM
-                          </label>
-                          <input
-                            type="text"
-                            value={editDepartment}
-                            onChange={(e) => {
-                              setEditDepartment(e.target.value);
-                              setIsTeacherDirty(true);
-                            }}
-                            placeholder="Pôle Technologies Numériques..."
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Quota horaire max (h/semaine)
-                          </label>
-                          <input
-                            type="number"
-                            min="2"
-                            max="40"
-                            value={editWeeklyMax}
-                            onChange={(e) => {
-                              setEditWeeklyMax(Number(e.target.value));
-                              setIsTeacherDirty(true);
-                            }}
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-bold"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Date de prise de fonction
-                          </label>
-                          <input
-                            type="date"
-                            value={editHireDate}
-                            onChange={(e) => {
-                              setEditHireDate(e.target.value);
-                              setIsTeacherDirty(true);
-                            }}
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
-                          />
-                        </div>
-
-                        <div className="sm:col-span-2 lg:col-span-3">
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                            Matières / EC enseignés (séparés par une virgule)
-                          </label>
-                          <input
-                            type="text"
-                            value={editSubjectsText}
-                            onChange={(e) => {
-                              setEditSubjectsText(e.target.value);
-                              setIsTeacherDirty(true);
-                            }}
-                            placeholder="Architecture Logicielle, Base de Données, Intelligence Artificielle..."
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 3B. Paie & Rémunération (Strictement restreint à ADMIN, FINANCE, SCOLARITE, SCHEDULER — Règle PDF) */}
-                  {canViewFinancialPayroll && (
-                    <div className="bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC] space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <Banknote className="w-4 h-4 text-[#1F8A83]" />
-                          <div>
-                            <h5 className="font-black text-xs text-[#16202A]">
-                              Données financières & Paie des vacations (Accès habilité Administration / Finances)
-                            </h5>
-                          </div>
-                        </div>
-                        <span className="font-mono text-[11px] font-bold text-[#17345B] bg-white px-2.5 py-1 rounded-lg border border-[#DCE3EC]">
-                          RIB : {activeTeacher.bankRib || 'Non renseigné'}
-                        </span>
-                      </div>
-
-                      {(() => {
-                        const stats = getTeacherHourlyStats(activeTeacher.id);
-                        const rate = activeTeacher.hourlyRateAr || 40000;
-                        const payCompletedAr = stats.totalCompleted * rate;
-                        const payScheduledAr = stats.totalScheduled * rate;
-                        return (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="bg-white p-3 rounded-xl border border-[#DCE3EC]">
-                              <span className="text-[10px] font-bold uppercase text-slate-500 block">Taux Horaire</span>
-                              <span className="text-base font-black text-[#1F8A83]">{rate.toLocaleString()} Ar / h</span>
-                            </div>
-                            <div className="bg-white p-3 rounded-xl border border-[#DCE3EC]">
-                              <span className="text-[10px] font-bold uppercase text-slate-500 block">
-                                Heures Validées ({stats.totalCompleted}h)
-                              </span>
-                              <span className="text-base font-black text-[#16202A]">
-                                {payCompletedAr.toLocaleString()} Ar
-                              </span>
-                            </div>
-                            <div className="bg-white p-3 rounded-xl border border-[#DCE3EC]">
-                              <span className="text-[10px] font-bold uppercase text-slate-500 block">
-                                Semaine Planifiée ({stats.totalScheduled}h)
-                              </span>
-                              <span className="text-base font-black text-[#17345B]">
-                                {payScheduledAr.toLocaleString()} Ar
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {isEditingTeacherSheet && (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
-                          <div>
-                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                              Taux Horaire (Ar/h)
-                            </label>
-                            <input
-                              type="number"
-                              step="1000"
-                              min="5000"
-                              value={editHourlyRate}
-                              onChange={(e) => {
-                                setEditHourlyRate(Number(e.target.value));
-                                setIsTeacherDirty(true);
-                              }}
-                              className="w-full p-2 bg-white border border-[#DCE3EC] rounded-xl font-black text-[#1F8A83]"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                              Type de contrat
-                            </label>
-                            <select
-                              value={editContractType}
-                              onChange={(e) => {
-                                setEditContractType(e.target.value as any);
-                                setIsTeacherDirty(true);
-                              }}
-                              className="w-full p-2 bg-white border border-[#DCE3EC] rounded-xl font-bold"
-                            >
-                              <option value="PERMANENT">Permanent</option>
-                              <option value="VACATAIRE">Vacataire</option>
-                              <option value="MISSIONNAIRE">Missionnaire</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
-                              RIB / Compte bancaire ou Mobile Money
-                            </label>
-                            <input
-                              type="text"
-                              value={editBankRib}
-                              onChange={(e) => {
-                                setEditBankRib(e.target.value);
-                                setIsTeacherDirty(true);
-                              }}
-                              placeholder="BNI / BOA / MVola..."
-                              className="w-full p-2 bg-white border border-[#DCE3EC] rounded-xl font-mono"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 3C. CV Académique */}
+                  {/* CV Académique */}
                   <div className="p-4 bg-[#F5F7FA] border border-[#DCE3EC] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <span className="text-xs font-black text-[#16202A] flex items-center gap-1.5">
@@ -1635,8 +1530,98 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                       )}
                     </div>
                   </div>
+                </div>
+              )}
 
-                  {/* 3D. Grille de Disponibilités Hebdomadaires (07h00–17h00) */}
+              {/* ONGLET 4 : ENSEIGNEMENT (Matières, Groupes, Disponibilités, Volumes horaires) */}
+              {sheetTab === 'TEACHING' && (
+                <div className="space-y-5">
+                  <div className="border-b border-slate-100 pb-2">
+                    <h4 className="text-sm font-black text-[#16202A]">
+                      4. Enseignement — Matières, groupes, disponibilités & volumes horaires
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Charge pédagogique, créneaux de disponibilité hebdomadaire et séances planifiées.
+                    </p>
+                  </div>
+
+                  {/* Volumes horaires & Groupes pris en charge */}
+                  {(() => {
+                    const stats = getTeacherHourlyStats(activeTeacher.id);
+                    const teacherCourses = courses.filter((c) => c.teacherIds.includes(activeTeacher.id));
+                    const teacherGroupIds = Array.from(
+                      new Set([
+                        ...teacherCourses.flatMap((c) => c.groupIds),
+                        ...sessions.filter((s) => s.teacherId === activeTeacher.id).flatMap((s) => s.groupIds),
+                      ])
+                    );
+                    const teacherGroupCodes = teacherGroupIds
+                      .map((gid) => groups.find((g) => g.id === gid)?.code)
+                      .filter(Boolean) as string[];
+                    const isOver = stats.totalScheduled > stats.maxWeekly;
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                          <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                            Volumes horaires (Planifié / Quota)
+                          </span>
+                          <span className={`text-base font-black ${isOver ? 'text-[#C94A4A]' : 'text-[#17345B]'}`}>
+                            {stats.totalScheduled}h / {stats.maxWeekly}h max
+                          </span>
+                          <span className="text-[11px] text-slate-500 block mt-0.5">
+                            Dont {stats.totalCompleted}h réalisées et validées
+                          </span>
+                        </div>
+                        <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                          <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                            Groupes & Promotions attribués
+                          </span>
+                          <span className="text-sm font-black text-[#16202A] block mt-0.5">
+                            {teacherGroupCodes.length > 0 ? teacherGroupCodes.join(', ') : 'Aucun groupe attribué'}
+                          </span>
+                        </div>
+                        <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                          <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                            Cours & EC au référentiel
+                          </span>
+                          <span className="text-sm font-black text-[#1F8A83] block mt-0.5">
+                            {teacherCourses.length} cours rattaché(s)
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Matières enseignées */}
+                  {!isEditingTeacherSheet ? (
+                    <div>
+                      {renderReadOnlyField(
+                        'Matières / Éléments Constitutifs (EC) enseignés',
+                        activeTeacher.subjects && activeTeacher.subjects.length > 0
+                          ? activeTeacher.subjects.join(', ')
+                          : undefined
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
+                      <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                        Matières / EC enseignés (séparés par une virgule)
+                      </label>
+                      <input
+                        type="text"
+                        value={editSubjectsText}
+                        onChange={(e) => {
+                          setEditSubjectsText(e.target.value);
+                          setIsTeacherDirty(true);
+                        }}
+                        placeholder="Architecture Logicielle, Base de Données, Intelligence Artificielle..."
+                        className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-semibold"
+                      />
+                    </div>
+                  )}
+
+                  {/* Grille de Disponibilités Hebdomadaires (07h00–17h00) */}
                   <div className="bg-white rounded-2xl border border-[#DCE3EC] p-4 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
@@ -1721,7 +1706,7 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                     })()}
                   </div>
 
-                  {/* 3E. Séances Planifiées & Export PDF */}
+                  {/* Séances Planifiées & Export PDF */}
                   <div className="p-4 bg-[#F5F7FA] rounded-2xl border border-[#DCE3EC] space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
@@ -1784,11 +1769,197 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                 </div>
               )}
 
-              {/* ONGLET 4 : COMPTE & SÉCURITÉ */}
+              {/* ONGLET 5 : CONTRAT & RÉMUNÉRATION (Accès confidentiel réservé aux personnes autorisées) */}
+              {sheetTab === 'CONTRACT_PAY' && (
+                <div className="space-y-4">
+                  <div className="border-b border-slate-100 pb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-black text-[#16202A]">
+                        5. Contrat & rémunération — Type de contrat, taux horaire, quota, RIB & estimations de paie
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Données contractuelles et bancaires à accès confidentiel réservé aux personnes habilitées.
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 bg-[#17345B]/10 text-[#17345B] rounded-lg text-[10px] font-bold flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      Espace Confidentiel RH / Finances
+                    </span>
+                  </div>
+
+                  {!canViewFinancialPayroll ? (
+                    <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 space-y-1.5">
+                      <div className="font-black text-xs flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-amber-700" />
+                        Accès confidentiel restreint
+                      </div>
+                      <p className="text-xs text-amber-800">
+                        Les informations de rémunération, le taux horaire et les coordonnées bancaires (RIB) sont strictement réservés à la Direction, au Service Financier et à la Scolarité habilitée.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Estimations de paie & indicateurs contractuels */}
+                      {(() => {
+                        const stats = getTeacherHourlyStats(activeTeacher.id);
+                        const rate = activeTeacher.hourlyRateAr || 40000;
+                        const payCompletedAr = stats.totalCompleted * rate;
+                        const payScheduledAr = stats.totalScheduled * rate;
+                        return (
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                              <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                                Type de contrat
+                              </span>
+                              <span className="text-sm font-black text-[#17345B] block mt-0.5">
+                                {activeTeacher.contractType || 'VACATAIRE'}
+                              </span>
+                            </div>
+                            <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                              <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                                Taux horaire
+                              </span>
+                              <span className="text-base font-black text-[#1F8A83] block mt-0.5">
+                                {rate.toLocaleString()} Ar / h
+                              </span>
+                            </div>
+                            <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                              <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                                Paie réalisée ({stats.totalCompleted}h validées)
+                              </span>
+                              <span className="text-base font-black text-[#16202A] block mt-0.5">
+                                {payCompletedAr.toLocaleString()} Ar
+                              </span>
+                            </div>
+                            <div className="bg-[#F5F7FA] p-3.5 rounded-2xl border border-[#DCE3EC]">
+                              <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                                Estimation hebdo ({stats.totalScheduled}h planifiées)
+                              </span>
+                              <span className="text-base font-black text-[#17345B] block mt-0.5">
+                                {payScheduledAr.toLocaleString()} Ar
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {!isEditingTeacherSheet ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {renderReadOnlyField('Statut contractuel', activeTeacher.contractType || 'VACATAIRE')}
+                          {renderReadOnlyField(
+                            'Quota horaire hebdomadaire',
+                            `${activeTeacher.weeklyMaxHours || 18} heures / semaine`
+                          )}
+                          {renderReadOnlyField(
+                            'Taux horaire de vacation',
+                            `${(activeTeacher.hourlyRateAr || 40000).toLocaleString()} Ar / heure`
+                          )}
+                          <div className="sm:col-span-2 lg:col-span-3 p-3.5 bg-[#F5F7FA] rounded-xl border border-[#DCE3EC] flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">
+                                Coordonnées bancaires / RIB (Données sensibles masquées par défaut)
+                              </span>
+                              <span className="font-mono font-bold text-xs text-[#16202A]">
+                                {activeTeacher.bankRib
+                                  ? showConfidentialRib
+                                    ? activeTeacher.bankRib
+                                    : `${activeTeacher.bankRib.slice(0, 6)} •••• •••• •••• ${activeTeacher.bankRib.slice(-4)}`
+                                  : 'Non renseigné'}
+                              </span>
+                            </div>
+                            {activeTeacher.bankRib && (
+                              <button
+                                type="button"
+                                onClick={() => setShowConfidentialRib((prev) => !prev)}
+                                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-[#17345B] border border-[#DCE3EC] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                {showConfidentialRib ? 'Masquer le RIB' : 'Afficher le RIB complet'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                              Type de contrat
+                            </label>
+                            <select
+                              value={editContractType}
+                              onChange={(e) => {
+                                setEditContractType(e.target.value as any);
+                                setIsTeacherDirty(true);
+                              }}
+                              className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-bold"
+                            >
+                              <option value="PERMANENT">Permanent</option>
+                              <option value="VACATAIRE">Vacataire</option>
+                              <option value="MISSIONNAIRE">Missionnaire</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                              Taux Horaire (Ar/h)
+                            </label>
+                            <input
+                              type="number"
+                              step="1000"
+                              min="5000"
+                              value={editHourlyRate}
+                              onChange={(e) => {
+                                setEditHourlyRate(Number(e.target.value));
+                                setIsTeacherDirty(true);
+                              }}
+                              className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-black text-[#1F8A83]"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                              Quota horaire max (h/semaine)
+                            </label>
+                            <input
+                              type="number"
+                              min="2"
+                              max="40"
+                              value={editWeeklyMax}
+                              onChange={(e) => {
+                                setEditWeeklyMax(Number(e.target.value));
+                                setIsTeacherDirty(true);
+                              }}
+                              className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-bold"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2 lg:col-span-4">
+                            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                              RIB / Compte bancaire ou Mobile Money (Confidentiel)
+                            </label>
+                            <input
+                              type="text"
+                              value={editBankRib}
+                              onChange={(e) => {
+                                setEditBankRib(e.target.value);
+                                setIsTeacherDirty(true);
+                              }}
+                              placeholder="BNI / BOA / BFV / MVola..."
+                              className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ONGLET 6 : COMPTE & SÉCURITÉ */}
               {sheetTab === 'SECURITY' && (
                 <div className="space-y-4">
                   <div className="border-b border-slate-100 pb-2">
-                    <h4 className="text-sm font-black text-[#16202A]">Accès au portail SIS, statut & sécurité</h4>
+                    <h4 className="text-sm font-black text-[#16202A]">6. Compte & sécurité — Identifiant, accès & permissions</h4>
                     <p className="text-[11px] text-slate-500">
                       Paramètres d’authentification, liaison Google Calendar et statut d’activation du compte.
                     </p>

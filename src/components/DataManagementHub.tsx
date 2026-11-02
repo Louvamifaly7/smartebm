@@ -48,6 +48,7 @@ export const DataManagementHub: React.FC = () => {
     deleteFiliere,
     domaines,
     addDomaine,
+    updateDomaine,
     deleteDomaine,
     seedBatchDemoData,
     resetToDefaultData,
@@ -119,6 +120,248 @@ export const DataManagementHub: React.FC = () => {
     setEditingRoomEquip(null);
   };
 
+  // --- STATES & HANDLERS FOR FULL ENTITY MODIFICATION ---
+  // 1. Course editing
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [editCourseCode, setEditCourseCode] = useState('');
+  const [editCourseTitle, setEditCourseTitle] = useState('');
+  const [editCourseTotalHours, setEditCourseTotalHours] = useState(30);
+  const [editCourseDuration, setEditCourseDuration] = useState(2);
+  const [editCourseFiliere, setEditCourseFiliere] = useState('');
+  const [editCourseLevel, setEditCourseLevel] = useState('L1');
+  const [editCourseTeacherId, setEditCourseTeacherId] = useState('');
+  const [editCourseGroupIds, setEditCourseGroupIds] = useState<string[]>([]);
+  const [editCourseColor, setEditCourseColor] = useState('#3b82f6');
+  const [editCourseDesc, setEditCourseDesc] = useState('');
+
+  const openEditCourse = (c: Course) => {
+    setEditingCourse(c);
+    setEditCourseCode(c.code);
+    setEditCourseTitle(c.title);
+    setEditCourseTotalHours(c.totalHours || 30);
+    setEditCourseDuration(c.defaultSessionDuration || 2);
+    setEditCourseFiliere(c.filiereId || filieres[0]?.id || '');
+    setEditCourseLevel(c.level || 'L1');
+    setEditCourseTeacherId(c.teacherIds?.[0] || teachers[0]?.id || '');
+    setEditCourseGroupIds(c.groupIds || []);
+    setEditCourseColor(c.color || '#3b82f6');
+    setEditCourseDesc(c.description || '');
+  };
+
+  const handleSaveEditCourse = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCourse) return;
+    if (!editCourseCode.trim() || !editCourseTitle.trim()) {
+      showNotification('Le code et le titre du cours sont obligatoires.', true);
+      return;
+    }
+    updateCourse(editingCourse.id, {
+      code: editCourseCode.trim().toUpperCase(),
+      title: editCourseTitle.trim(),
+      totalHours: Number(editCourseTotalHours) || 30,
+      defaultSessionDuration: Number(editCourseDuration) || 2,
+      filiereId: editCourseFiliere || filieres[0]?.id || 'fil-1',
+      level: editCourseLevel,
+      teacherIds: editCourseTeacherId ? [editCourseTeacherId] : [],
+      groupIds: editCourseGroupIds,
+      color: editCourseColor,
+      description: editCourseDesc.trim() || undefined,
+    });
+    showNotification(`Module "${editCourseTitle}" mis à jour avec succès !`);
+    setEditingCourse(null);
+  };
+
+  // 2. Full Room editing
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [editRoomCode, setEditRoomCode] = useState('');
+  const [editRoomName, setEditRoomName] = useState('');
+  const [editRoomBuilding, setEditRoomBuilding] = useState('');
+  const [editRoomFloor, setEditRoomFloor] = useState('');
+  const [editRoomCapacity, setEditRoomCapacity] = useState(35);
+  const [editRoomStatus, setEditRoomStatus] = useState<Room['status']>('available');
+  const [editRoomColor, setEditRoomColor] = useState('#2563eb');
+  const [editRoomEquips, setEditRoomEquips] = useState<string[]>([]);
+  const [editRoomCustomEquipInput, setEditRoomCustomEquipInput] = useState('');
+
+  const openEditRoom = (r: Room) => {
+    setEditingRoom(r);
+    setEditRoomCode(r.code);
+    setEditRoomName(r.name);
+    setEditRoomBuilding(r.building || 'Bâtiment Principal EBM');
+    setEditRoomFloor(r.floor || '1er Étage');
+    setEditRoomCapacity(r.capacity || 30);
+    setEditRoomStatus(r.status || 'available');
+    setEditRoomColor(r.colorCode || '#2563eb');
+    setEditRoomEquips([...(r.equipment || [])]);
+    setEditRoomCustomEquipInput('');
+  };
+
+  const handleSaveEditRoom = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRoom) return;
+    if (!editRoomCode.trim() || !editRoomName.trim()) {
+      showNotification('Le code et le nom de la salle sont obligatoires.', true);
+      return;
+    }
+    updateRoom(editingRoom.id, {
+      code: editRoomCode.trim().toUpperCase(),
+      name: editRoomName.trim(),
+      building: editRoomBuilding.trim(),
+      floor: editRoomFloor.trim(),
+      capacity: Number(editRoomCapacity) || 30,
+      status: editRoomStatus,
+      colorCode: editRoomColor,
+      equipment: editRoomEquips,
+    });
+    showNotification(`Salle "${editRoomName}" mise à jour avec succès !`);
+    setEditingRoom(null);
+  };
+
+  // 3. Teacher editing
+  const [editingTeacher, setEditingTeacher] = useState<User | null>(null);
+  const [editTeacherName, setEditTeacherName] = useState('');
+  const [editTeacherEmail, setEditTeacherEmail] = useState('');
+  const [editTeacherPhone, setEditTeacherPhone] = useState('');
+  const [editTeacherSubjects, setEditTeacherSubjects] = useState('');
+  const [editTeacherMaxHours, setEditTeacherMaxHours] = useState(18);
+  const [editTeacherIsActive, setEditTeacherIsActive] = useState(true);
+
+  const openEditTeacher = (t: User) => {
+    setEditingTeacher(t);
+    setEditTeacherName(t.name);
+    setEditTeacherEmail(t.email);
+    setEditTeacherPhone(t.phone || '');
+    setEditTeacherSubjects(t.subjects ? t.subjects.join(', ') : '');
+    setEditTeacherMaxHours(t.weeklyMaxHours || 18);
+    setEditTeacherIsActive(t.isActive ?? true);
+  };
+
+  const handleSaveEditTeacher = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeacher) return;
+    if (!editTeacherName.trim() || !editTeacherEmail.trim()) {
+      showNotification('Le nom et l\'email de l\'enseignant sont obligatoires.', true);
+      return;
+    }
+    const subjectsArray = editTeacherSubjects.split(',').map((s) => s.trim()).filter(Boolean);
+    updateTeacher(editingTeacher.id, {
+      name: editTeacherName.trim(),
+      email: editTeacherEmail.trim(),
+      phone: editTeacherPhone.trim() || undefined,
+      subjects: subjectsArray,
+      weeklyMaxHours: Number(editTeacherMaxHours) || 18,
+      isActive: editTeacherIsActive,
+    });
+    showNotification(`Enseignant "${editTeacherName}" mis à jour avec succès !`);
+    setEditingTeacher(null);
+  };
+
+  // 4. Group editing
+  const [editingGroup, setEditingGroup] = useState<StudentGroup | null>(null);
+  const [editGroupCode, setEditGroupCode] = useState('');
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupFiliere, setEditGroupFiliere] = useState('');
+  const [editGroupLevel, setEditGroupLevel] = useState('L1');
+  const [editGroupCount, setEditGroupCount] = useState(32);
+  const [editGroupHasSubgroups, setEditGroupHasSubgroups] = useState(true);
+
+  const openEditGroup = (g: StudentGroup) => {
+    setEditingGroup(g);
+    setEditGroupCode(g.code);
+    setEditGroupName(g.name);
+    setEditGroupFiliere(g.filiereId || filieres[0]?.id || '');
+    setEditGroupLevel(g.level || 'L1');
+    setEditGroupCount(g.studentCount || 30);
+    setEditGroupHasSubgroups(Boolean(g.subGroups && g.subGroups.length > 0));
+  };
+
+  const handleSaveEditGroup = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGroup) return;
+    if (!editGroupCode.trim() || !editGroupName.trim()) {
+      showNotification('Le code et le nom du groupe sont obligatoires.', true);
+      return;
+    }
+    const cleanCode = editGroupCode.trim().toUpperCase();
+    let subGroups = editingGroup.subGroups || [];
+    if (editGroupHasSubgroups && subGroups.length === 0) {
+      subGroups = [
+        { id: `sub-${cleanCode.toLowerCase()}-1`, code: `${cleanCode}-TP1`, name: 'Groupe TP 1', studentCount: Math.ceil(Number(editGroupCount) / 2) },
+        { id: `sub-${cleanCode.toLowerCase()}-2`, code: `${cleanCode}-TP2`, name: 'Groupe TP 2', studentCount: Math.floor(Number(editGroupCount) / 2) },
+      ];
+    } else if (!editGroupHasSubgroups) {
+      subGroups = [];
+    }
+    updateGroup(editingGroup.id, {
+      code: cleanCode,
+      name: editGroupName.trim(),
+      filiereId: editGroupFiliere || filieres[0]?.id || 'fil-1',
+      level: editGroupLevel,
+      studentCount: Number(editGroupCount) || 30,
+      subGroups,
+    });
+    showNotification(`Groupe "${cleanCode}" mis à jour avec succès !`);
+    setEditingGroup(null);
+  };
+
+  // 5. Filière editing
+  const [editingFiliere, setEditingFiliere] = useState<Filiere | null>(null);
+  const [editFiliereCode, setEditFiliereCode] = useState('');
+  const [editFiliereName, setEditFiliereName] = useState('');
+  const [editFiliereDomaine, setEditFiliereDomaine] = useState('');
+  const [editFiliereDept, setEditFiliereDept] = useState('');
+
+  const openEditFiliere = (f: Filiere) => {
+    setEditingFiliere(f);
+    setEditFiliereCode(f.code);
+    setEditFiliereName(f.name);
+    setEditFiliereDomaine(f.domaine || domaines[0] || 'Sciences et Technologies');
+    setEditFiliereDept(f.department || 'Pôle Technologies Numériques');
+  };
+
+  const handleSaveEditFiliere = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFiliere) return;
+    if (!editFiliereCode.trim() || !editFiliereName.trim()) {
+      showNotification('Le code et le nom de la filière sont obligatoires.', true);
+      return;
+    }
+    updateFiliere(editingFiliere.id, {
+      code: editFiliereCode.trim().toUpperCase(),
+      name: editFiliereName.trim(),
+      domaine: editFiliereDomaine || domaines[0] || 'Sciences et Technologies',
+      department: editFiliereDept.trim(),
+    });
+    showNotification(`Mention "${editFiliereCode}" mise à jour avec succès !`);
+    setEditingFiliere(null);
+  };
+
+  // 6. Domaine editing
+  const [editingDomaine, setEditingDomaine] = useState<string | null>(null);
+  const [editDomaineName, setEditDomaineName] = useState('');
+
+  const openEditDomaine = (dom: string) => {
+    setEditingDomaine(dom);
+    setEditDomaineName(dom);
+  };
+
+  const handleSaveEditDomaine = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDomaine) return;
+    const clean = editDomaineName.trim();
+    if (!clean) {
+      showNotification('Le nom du domaine ne peut pas être vide.', true);
+      return;
+    }
+    const res = updateDomaine(editingDomaine, clean);
+    if (res.success) {
+      showNotification(`Domaine renommé en "${clean}" avec succès !`);
+      setEditingDomaine(null);
+    } else {
+      showNotification(res.error || 'Erreur lors de la modification du domaine.', true);
+    }
+  };
+
   const availableEquipList = [
     'Double Vidéoprojecteur 4K laser',
     'Vidéoprojecteur HD',
@@ -162,19 +405,48 @@ export const DataManagementHub: React.FC = () => {
   const [courseFiliere, setCourseFiliere] = useState(filieres[0]?.id || '');
   const [courseLevel, setCourseLevel] = useState('L1');
   const [courseTeacherId, setCourseTeacherId] = useState(teachers[0]?.id || '');
-  const [courseGroupIds, setCourseGroupIds] = useState<string[]>([groups[0]?.id || '']);
+  const [courseGroupIds, setCourseGroupIds] = useState<string[]>(() => {
+    const g1a = groups.find((g) => g.code.trim().toUpperCase() === 'G1A2627');
+    if (g1a) return [g1a.id];
+    const initialFil = filieres[0]?.id || '';
+    const matching = groups.filter((g) => g.filiereId === initialFil);
+    return matching.length > 0 ? [matching[0].id] : groups[0] ? [groups[0].id] : [];
+  });
   const [courseColor, setCourseColor] = useState('#3b82f6');
   const [courseDesc, setCourseDesc] = useState('');
 
+  const handleFiliereChangeForCourse = (newFiliereId: string, level = courseLevel) => {
+    setCourseFiliere(newFiliereId);
+    const g1a = groups.find((g) => g.code.trim().toUpperCase() === 'G1A2627');
+    if (g1a && courseGroupIds.includes(g1a.id)) {
+      return;
+    }
+    const matchingLevel = groups.filter((g) => g.filiereId === newFiliereId && g.level === level);
+    const matchingAny = groups.filter((g) => g.filiereId === newFiliereId);
+    if (g1a) {
+      setCourseGroupIds([g1a.id]);
+    } else if (matchingLevel.length > 0) {
+      setCourseGroupIds([matchingLevel[0].id]);
+    } else if (matchingAny.length > 0) {
+      setCourseGroupIds([matchingAny[0].id]);
+    } else if (groups[0]) {
+      setCourseGroupIds([groups[0].id]);
+    }
+  };
+
   const handleCreateCourse = (e: React.FormEvent) => {
     e.preventDefault();
+    const targetFilId = courseFiliere || filieres[0]?.id || 'fil-1';
+    const validSelectedGroups = courseGroupIds.filter((gid) =>
+      groups.some((g) => g.id === gid)
+    );
     const res = addCourse({
       code: courseCode.trim().toUpperCase(),
       title: courseTitle.trim(),
-      filiereId: courseFiliere || filieres[0]?.id || 'fil-1',
+      filiereId: targetFilId,
       level: courseLevel,
       academicYear: '2026-2027',
-      groupIds: courseGroupIds.length > 0 ? courseGroupIds : [groups[0]?.id || ''],
+      groupIds: validSelectedGroups,
       teacherIds: courseTeacherId ? [courseTeacherId] : [teachers[0]?.id || ''],
       totalHours: Number(courseTotalHours) || 30,
       defaultSessionDuration: Number(courseDuration) || 2,
@@ -473,7 +745,7 @@ export const DataManagementHub: React.FC = () => {
                   </label>
                   <select
                     value={courseFiliere}
-                    onChange={(e) => setCourseFiliere(e.target.value)}
+                    onChange={(e) => handleFiliereChangeForCourse(e.target.value, courseLevel)}
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
                   >
                     {filieres.map((f) => (
@@ -487,7 +759,11 @@ export const DataManagementHub: React.FC = () => {
                   </label>
                   <select
                     value={courseLevel}
-                    onChange={(e) => setCourseLevel(e.target.value)}
+                    onChange={(e) => {
+                      const nextLvl = e.target.value;
+                      setCourseLevel(nextLvl);
+                      handleFiliereChangeForCourse(courseFiliere, nextLvl);
+                    }}
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
                   >
                     <option value="L1">Licence 1 (L1)</option>
@@ -516,7 +792,7 @@ export const DataManagementHub: React.FC = () => {
 
               <div>
                 <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Groupe(s) concerné(s) (cours partagé multi-groupes)
+                  Groupe(s) d'étudiants concerné(s)
                 </label>
                 <select
                   multiple
@@ -525,11 +801,20 @@ export const DataManagementHub: React.FC = () => {
                     const sel = Array.from(e.target.selectedOptions, (opt) => opt.value);
                     setCourseGroupIds(sel);
                   }}
-                  className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs h-18"
+                  className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs h-22"
                 >
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>{g.code} ({g.studentCount} ét.)</option>
-                  ))}
+                  {[...groups]
+                    .sort((a, b) => {
+                      const aIsG1A = a.code.trim().toUpperCase() === 'G1A2627' ? 1 : 0;
+                      const bIsG1A = b.code.trim().toUpperCase() === 'G1A2627' ? 1 : 0;
+                      if (aIsG1A !== bIsG1A) return bIsG1A - aIsG1A;
+                      return a.code.localeCompare(b.code);
+                    })
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.code} — {g.name} ({g.studentCount} ét.)
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -564,6 +849,7 @@ export const DataManagementHub: React.FC = () => {
             <div className="space-y-2.5 overflow-y-auto max-h-[560px] pr-1">
               {courses.map((c) => {
                 const assignedTeacher = users.find((u) => u.id === c.teacherIds[0]);
+                const courseFil = filieres.find((f) => f.id === c.filiereId);
                 const assignedGroupNames = c.groupIds.map((gId) => groups.find((g) => g.id === gId)?.code).filter(Boolean);
 
                 return (
@@ -572,36 +858,52 @@ export const DataManagementHub: React.FC = () => {
                     className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start justify-between gap-3 text-xs"
                   >
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded text-[10px]">
                           {c.code}
                         </span>
+                        {courseFil && (
+                          <span className="font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded text-[10px]">
+                            {courseFil.code} • {c.level || 'L1'}
+                          </span>
+                        )}
                         <h4 className="font-bold text-slate-900 text-sm truncate">{c.title}</h4>
                         <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-[10px]">
                           {c.totalHours} h totales
                         </span>
                       </div>
                       <p className="text-slate-600 mt-1">
-                        Professeur : <strong>{assignedTeacher?.name || 'Non assigné'}</strong> • Groupes : {assignedGroupNames.join(', ')}
+                        Filière : <strong>{courseFil?.name || 'Non spécifiée'}</strong> • Professeur : <strong>{assignedTeacher?.name || 'Non assigné'}</strong> • Groupes : {assignedGroupNames.join(', ') || 'Aucun'}
                       </p>
                       {c.description && (
                         <p className="text-slate-500 italic mt-0.5 text-[11px] line-clamp-1">{c.description}</p>
                       )}
                     </div>
-                    <button
-                      onClick={() => {
-                        const res = deleteCourse(c.id);
-                        if (!res.success) {
-                          showNotification(res.error || 'Suppression refusée.', true);
-                        } else {
-                          showNotification(`Cours "${c.title}" supprimé.`);
-                        }
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                      title="Supprimer ce cours"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditCourse(c)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                        title="Modifier ce cours / module"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const res = deleteCourse(c.id);
+                          if (!res.success) {
+                            showNotification(res.error || 'Suppression refusée.', true);
+                          } else {
+                            showNotification(`Cours "${c.title}" supprimé.`);
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Supprimer ce cours"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -849,22 +1151,31 @@ export const DataManagementHub: React.FC = () => {
                         Équipements
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const res = deleteRoom(r.id);
-                        if (!res.success) {
-                          showNotification(res.error || 'Suppression refusée.', true);
-                        } else {
-                          showNotification(`Salle "${r.name}" supprimée.`);
-                        }
-                      }}
-                      className="text-slate-400 hover:text-red-600 p-1 cursor-pointer"
-                      title="Supprimer la salle"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditRoom(r)}
+                        className="text-slate-500 hover:text-blue-600 p-1 cursor-pointer rounded hover:bg-blue-50 transition-colors"
+                        title="Modifier cette salle"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const res = deleteRoom(r.id);
+                          if (!res.success) {
+                            showNotification(res.error || 'Suppression refusée.', true);
+                          } else {
+                            showNotification(`Salle "${r.name}" supprimée.`);
+                          }
+                        }}
+                        className="text-slate-400 hover:text-red-600 p-1 cursor-pointer rounded hover:bg-red-50 transition-colors"
+                        title="Supprimer la salle"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -988,15 +1299,27 @@ export const DataManagementHub: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      deleteTeacher(t.id);
-                      showNotification(`Enseignant "${t.name}" supprimé.`);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => openEditTeacher(t)}
+                      className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                      title="Modifier cet enseignant"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteTeacher(t.id);
+                        showNotification(`Enseignant "${t.name}" supprimé.`);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                      title="Supprimer cet enseignant"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1141,19 +1464,31 @@ export const DataManagementHub: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => {
-                      const res = deleteGroup(g.id);
-                      if (!res.success) {
-                        showNotification(res.error || 'Suppression refusée.', true);
-                      } else {
-                        showNotification(`Groupe "${g.code}" supprimé.`);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => openEditGroup(g)}
+                      className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                      title="Modifier ce groupe"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const res = deleteGroup(g.id);
+                        if (!res.success) {
+                          showNotification(res.error || 'Suppression refusée.', true);
+                        } else {
+                          showNotification(`Groupe "${g.code}" supprimé.`);
+                        }
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                      title="Supprimer ce groupe"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1301,6 +1636,14 @@ export const DataManagementHub: React.FC = () => {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-bold"
                   >
                     <span>{dom}</span>
+                    <button
+                      type="button"
+                      onClick={() => openEditDomaine(dom)}
+                      className="text-emerald-700 hover:text-blue-600 cursor-pointer p-0.5 rounded transition-colors"
+                      title="Renommer ce domaine"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
                     {domaines.length > 1 && (
                       <button
                         type="button"
@@ -1337,15 +1680,27 @@ export const DataManagementHub: React.FC = () => {
                         Domaine : <strong>{f.domaine || 'Sciences et Technologies'}</strong> • {f.department}
                       </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        deleteFiliere(f.id);
-                        showNotification(`Mention "${f.name}" supprimée.`);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEditFiliere(f)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                        title="Modifier cette mention / filière"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          deleteFiliere(f.id);
+                          showNotification(`Mention "${f.name}" supprimée.`);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
+                        title="Supprimer cette mention / filière"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1554,6 +1909,815 @@ export const DataManagementHub: React.FC = () => {
                 Enregistrer ({editRoomEquipList.length})
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 1: MODIFIER UN COURS / MODULE --- */}
+      {editingCourse && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-white">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm leading-tight">
+                    Modifier le cours • {editingCourse.code}
+                  </h4>
+                  <p className="text-[11px] text-blue-200">{editingCourse.title}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCourse(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditCourse} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-3.5 overflow-y-auto text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Code du module *</label>
+                    <input
+                      type="text"
+                      value={editCourseCode}
+                      onChange={(e) => setEditCourseCode(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-mono uppercase font-bold text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Intitulé du cours *</label>
+                    <input
+                      type="text"
+                      value={editCourseTitle}
+                      onChange={(e) => setEditCourseTitle(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Filière / Mention *</label>
+                    <select
+                      value={editCourseFiliere}
+                      onChange={(e) => setEditCourseFiliere(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    >
+                      {filieres.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.code} - {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Niveau académique *</label>
+                    <select
+                      value={editCourseLevel}
+                      onChange={(e) => setEditCourseLevel(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    >
+                      <option value="L1">Licence 1 (L1)</option>
+                      <option value="L2">Licence 2 (L2)</option>
+                      <option value="L3">Licence 3 (L3)</option>
+                      <option value="M1">Master 1 (M1)</option>
+                      <option value="M2">Master 2 (M2)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Volume horaire total (h)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={300}
+                      value={editCourseTotalHours}
+                      onChange={(e) => setEditCourseTotalHours(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Durée standard (h)</label>
+                    <input
+                      type="number"
+                      step={0.5}
+                      min={0.5}
+                      max={8}
+                      value={editCourseDuration}
+                      onChange={(e) => setEditCourseDuration(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Couleur calendrier</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={editCourseColor}
+                        onChange={(e) => setEditCourseColor(e.target.value)}
+                        className="w-9 h-9 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
+                      />
+                      <span className="font-mono text-[11px] text-slate-600">{editCourseColor}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Enseignant responsable</label>
+                  <select
+                    value={editCourseTeacherId}
+                    onChange={(e) => setEditCourseTeacherId(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                  >
+                    <option value="">-- Aucun enseignant assigné --</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Groupes d'étudiants concernés ({editCourseGroupIds.length} sélectionné(s))
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl max-h-36 overflow-y-auto">
+                    {groups.map((g) => {
+                      const isChecked = editCourseGroupIds.includes(g.id);
+                      return (
+                        <label
+                          key={g.id}
+                          className="flex items-center gap-2 p-1 rounded-lg hover:bg-white cursor-pointer transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditCourseGroupIds((prev) => [...prev, g.id]);
+                              } else {
+                                setEditCourseGroupIds((prev) => prev.filter((id) => id !== g.id));
+                              }
+                            }}
+                            className="rounded text-blue-600"
+                          />
+                          <span className="truncate">
+                            <strong>{g.code}</strong> - {g.name}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Description / Objectifs</label>
+                  <textarea
+                    rows={2}
+                    value={editCourseDesc}
+                    onChange={(e) => setEditCourseDesc(e.target.value)}
+                    placeholder="Programme, pré-requis, objectifs pédagogiques..."
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCourse(null)}
+                  className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 2: MODIFIER UNE SALLE COMPLÈTE --- */}
+      {editingRoom && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-white">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm leading-tight">
+                    Modifier la salle • {editingRoom.code}
+                  </h4>
+                  <p className="text-[11px] text-blue-200">{editingRoom.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRoom(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditRoom} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-3.5 overflow-y-auto text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Code de la salle *</label>
+                    <input
+                      type="text"
+                      value={editRoomCode}
+                      onChange={(e) => setEditRoomCode(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-mono uppercase font-bold text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Nom usuel complet *</label>
+                    <input
+                      type="text"
+                      value={editRoomName}
+                      onChange={(e) => setEditRoomName(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Bâtiment *</label>
+                    <input
+                      type="text"
+                      value={editRoomBuilding}
+                      onChange={(e) => setEditRoomBuilding(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Étage *</label>
+                    <input
+                      type="text"
+                      value={editRoomFloor}
+                      onChange={(e) => setEditRoomFloor(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Capacité (places) *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={editRoomCapacity}
+                      onChange={(e) => setEditRoomCapacity(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Statut opérationnel</label>
+                    <select
+                      value={editRoomStatus}
+                      onChange={(e) => setEditRoomStatus(e.target.value as Room['status'])}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    >
+                      <option value="available">Disponible</option>
+                      <option value="maintenance">En maintenance</option>
+                      <option value="occupied">Occupée</option>
+                      <option value="unavailable">Indisponible</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Couleur</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={editRoomColor}
+                        onChange={(e) => setEditRoomColor(e.target.value)}
+                        className="w-9 h-9 p-0.5 border border-slate-300 rounded-lg cursor-pointer"
+                      />
+                      <span className="font-mono text-[11px] text-slate-600">{editRoomColor}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Équipements */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Équipements ({editRoomEquips.length})
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-xl min-h-[44px] mb-2">
+                    {editRoomEquips.length === 0 ? (
+                      <span className="text-slate-400 italic">Aucun équipement affecté.</span>
+                    ) : (
+                      editRoomEquips.map((eq, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 bg-white border border-blue-200 text-blue-900 font-semibold px-2 py-0.5 rounded-lg text-[11px]"
+                        >
+                          <span>{eq}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditRoomEquips((prev) => prev.filter((item) => item !== eq))}
+                            className="text-slate-400 hover:text-red-600 rounded-full cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editRoomCustomEquipInput}
+                      onChange={(e) => setEditRoomCustomEquipInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = editRoomCustomEquipInput.trim();
+                          if (val && !editRoomEquips.includes(val)) {
+                            setEditRoomEquips((prev) => [...prev, val]);
+                            setEditRoomCustomEquipInput('');
+                          }
+                        }
+                      }}
+                      placeholder="Ajouter un équipement (ex: Caméra 4K, 30 PC GPU...)"
+                      className="flex-1 p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = editRoomCustomEquipInput.trim();
+                        if (val && !editRoomEquips.includes(val)) {
+                          setEditRoomEquips((prev) => [...prev, val]);
+                          setEditRoomCustomEquipInput('');
+                        }
+                      }}
+                      className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-900 rounded-xl font-bold cursor-pointer"
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingRoom(null)}
+                  className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 3: MODIFIER UN ENSEIGNANT --- */}
+      {editingTeacher && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-white">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm leading-tight">
+                    Modifier l'enseignant • {editingTeacher.name}
+                  </h4>
+                  <p className="text-[11px] text-blue-200">{editingTeacher.email}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTeacher(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditTeacher} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-3.5 overflow-y-auto text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Nom complet *</label>
+                  <input
+                    type="text"
+                    value={editTeacherName}
+                    onChange={(e) => setEditTeacherName(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Email institutionnel *</label>
+                    <input
+                      type="email"
+                      value={editTeacherEmail}
+                      onChange={(e) => setEditTeacherEmail(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Téléphone mobile</label>
+                    <input
+                      type="text"
+                      value={editTeacherPhone}
+                      onChange={(e) => setEditTeacherPhone(e.target.value)}
+                      placeholder="+261 34 00 000 00"
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Matières et spécialités enseignées (séparées par virgules)
+                  </label>
+                  <input
+                    type="text"
+                    value={editTeacherSubjects}
+                    onChange={(e) => setEditTeacherSubjects(e.target.value)}
+                    placeholder="Génie Logiciel, Algorithmique, BDD..."
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Quota max heures hebdo</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={editTeacherMaxHours}
+                      onChange={(e) => setEditTeacherMaxHours(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Statut du compte</label>
+                    <select
+                      value={editTeacherIsActive ? 'active' : 'inactive'}
+                      onChange={(e) => setEditTeacherIsActive(e.target.value === 'active')}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    >
+                      <option value="active">Actif</option>
+                      <option value="inactive">Suspendu / Inactif</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTeacher(null)}
+                  className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 4: MODIFIER UN GROUPE / PROMOTION --- */}
+      {editingGroup && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-white">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm leading-tight">
+                    Modifier le groupe • {editingGroup.code}
+                  </h4>
+                  <p className="text-[11px] text-blue-200">{editingGroup.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingGroup(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditGroup} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-3.5 overflow-y-auto text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Code du groupe *</label>
+                    <input
+                      type="text"
+                      value={editGroupCode}
+                      onChange={(e) => setEditGroupCode(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-mono uppercase font-bold text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Nom complet *</label>
+                    <input
+                      type="text"
+                      value={editGroupName}
+                      onChange={(e) => setEditGroupName(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Filière associée *</label>
+                    <select
+                      value={editGroupFiliere}
+                      onChange={(e) => setEditGroupFiliere(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    >
+                      {filieres.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.code} - {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Niveau d'études *</label>
+                    <select
+                      value={editGroupLevel}
+                      onChange={(e) => setEditGroupLevel(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    >
+                      <option value="L1">Licence 1 (L1)</option>
+                      <option value="L2">Licence 2 (L2)</option>
+                      <option value="L3">Licence 3 (L3)</option>
+                      <option value="M1">Master 1 (M1)</option>
+                      <option value="M2">Master 2 (M2)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Effectif total d'étudiants *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={editGroupCount}
+                    onChange={(e) => setEditGroupCount(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+
+                <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-purple-900">
+                    <input
+                      type="checkbox"
+                      checked={editGroupHasSubgroups}
+                      onChange={(e) => setEditGroupHasSubgroups(e.target.checked)}
+                      className="rounded text-purple-600"
+                    />
+                    <span>Activer les sous-groupes TP (TP1 et TP2)</span>
+                  </label>
+                  <p className="text-[11px] text-purple-700 mt-1 pl-6">
+                    Divise automatiquement la promotion en 2 sous-groupes équilibrés pour les travaux pratiques en laboratoire.
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingGroup(null)}
+                  className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 5: MODIFIER UNE FILIÈRE / MENTION --- */}
+      {editingFiliere && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-600 rounded-xl text-white">
+                  <GraduationCap className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm leading-tight">
+                    Modifier la filière • {editingFiliere.code}
+                  </h4>
+                  <p className="text-[11px] text-blue-200">{editingFiliere.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingFiliere(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditFiliere} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-3.5 overflow-y-auto text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Code de la mention *</label>
+                    <input
+                      type="text"
+                      value={editFiliereCode}
+                      onChange={(e) => setEditFiliereCode(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-mono uppercase font-bold text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Intitulé complet *</label>
+                    <input
+                      type="text"
+                      value={editFiliereName}
+                      onChange={(e) => setEditFiliereName(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Domaine LMD *</label>
+                  <select
+                    value={editFiliereDomaine}
+                    onChange={(e) => setEditFiliereDomaine(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                  >
+                    {domaines.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Département / Pôle académique *</label>
+                  <input
+                    type="text"
+                    value={editFiliereDept}
+                    onChange={(e) => setEditFiliereDept(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingFiliere(null)}
+                  className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 6: MODIFIER / RENOMMER UN DOMAINE --- */}
+      {editingDomaine && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-600 rounded-xl text-white">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm leading-tight">Renommer le domaine</h4>
+                  <p className="text-[11px] text-emerald-200">{editingDomaine}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingDomaine(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditDomaine} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Nouveau libellé du domaine *</label>
+                <input
+                  type="text"
+                  value={editDomaineName}
+                  onChange={(e) => setEditDomaineName(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
+                  required
+                  autoFocus
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Le changement sera immédiatement répercuté sur toutes les filières rattachées.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDomaine(null)}
+                  className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-semibold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Renommer
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

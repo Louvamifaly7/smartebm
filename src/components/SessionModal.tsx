@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   X,
@@ -10,13 +10,15 @@ import {
   AlertTriangle,
   Sparkles,
   CheckCircle,
-  FileText,
   RotateCcw,
   Ban,
+  ChevronUp,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { TimetableSession, SessionActivityType } from '../types';
 import { detectSessionConflicts } from '../utils/conflictDetector';
-import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { getAntananarivoDateStr, getDefaultPlanningDateStr } from '../utils/securityAndDateUtils';
 import { showAppToast } from './ToastAndConfirmCenter';
 
 interface SessionModalProps {
@@ -33,7 +35,10 @@ export const SessionModal: React.FC<SessionModalProps> = ({
   mode = 'CREATE',
 }) => {
   const {
+    currentUser,
+    filieres,
     courses,
+    ecs,
     rooms,
     groups,
     users,
@@ -42,22 +47,22 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     updateSession,
     rescheduleSession,
     cancelSession,
-    validateSession,
     appSettings,
   } = useApp();
 
-  const teachers = users.filter((u) => u.role === 'TEACHER');
+  const teachers = useMemo(() => users.filter((u) => u.role === 'TEACHER'), [users]);
 
   const scheduleConfig = appSettings.scheduleSettings || {
     dayStartTime: '07:00',
     dayEndTime: '18:00',
-    slotIntervalMinutes: 30,
+    slotIntervalMinutes: 15,
   };
 
-  const configurableTimeSlots = (() => {
+  // Always offer quarter-hour (15-minute) intervals so courses can start after a 15-minute break (e.g., 10:00 -> 10:15)
+  const configurableTimeSlots = useMemo(() => {
     const [startH, startM] = (scheduleConfig.dayStartTime || '07:00').split(':').map(Number);
     const [endH, endM] = (scheduleConfig.dayEndTime || '18:00').split(':').map(Number);
-    const step = scheduleConfig.slotIntervalMinutes || 30;
+    const step = 15;
     const startTotal = (isNaN(startH) ? 7 : startH) * 60 + (isNaN(startM) ? 0 : startM);
     const endTotal = (isNaN(endH) ? 18 : endH) * 60 + (isNaN(endM) ? 0 : endM);
     const slots: string[] = [];
@@ -66,11 +71,13 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       const mm = String(m % 60).padStart(2, '0');
       slots.push(`${hh}:${mm}`);
     }
-    return slots.length >= 2 ? slots : ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
-  })();
+    return slots;
+  }, [scheduleConfig.dayStartTime, scheduleConfig.dayEndTime]);
 
   // Form State
   const [sessionType, setSessionType] = useState<SessionActivityType>('COURSE');
+  const [modalFiliereId, setModalFiliereId] = useState<string>('ALL');
+  const [showOtherFiliereGroups, setShowOtherFiliereGroups] = useState<boolean>(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventSpeaker, setEventSpeaker] = useState('');
   const [eventCategoryLabel, setEventCategoryLabel] = useState('');
@@ -90,23 +97,73 @@ export const SessionModal: React.FC<SessionModalProps> = ({
   const [rescheduleEndTime, setRescheduleEndTime] = useState('16:00');
   const [rescheduleRoomId, setRescheduleRoomId] = useState('');
 
-  // Conflict state
+  // Conflict & Assistant state
   const [conflictResult, setConflictResult] = useState<ReturnType<typeof detectSessionConflicts>>({
     hasConflict: false,
     conflicts: [],
     suggestions: [],
   });
-  const [showSmartAssistant, setShowSmartAssistant] = useState<boolean>(true);
+  const [showSmartAssistant, setShowSmartAssistant] = useState<boolean>(false);
   const [desiredDurationHours, setDesiredDurationHours] = useState<number>(2);
   const [assistantAppliedMsg, setAssistantAppliedMsg] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
   const [repeatWeeks, setRepeatWeeks] = useState<number>(12);
 
+  const conflictBoxRef = useRef<HTMLDivElement>(null);
+
+  const resolveGroupsForCourse = (crsId: string, fallbackFiliereId?: string): string[] => {
+    const crs = courses.find((c) => c.id === crsId);
+    if (crs && crs.groupIds && crs.groupIds.length > 0) {
+      const existingCourseGroups = crs.groupIds.filter((gid) =>
+        groups.some((grp) => grp.id === gid)
+      );
+      if (existingCourseGroups.length > 0) return existingCourseGroups;
+    }
+
+    const targetFilId =
+      crs?.filiereId && crs.filiereId !== 'ALL'
+        ? crs.filiereId
+        : fallbackFiliereId && fallbackFiliereId !== 'ALL'
+        ? fallbackFiliereId
+        : undefined;
+
+    if (targetFilId) {
+      const targetFilObj = filieres.find((f) => f.id === targetFilId);
+      const targetFilCode = targetFilObj?.code?.trim().toUpperCase();
+
+      const matchingLevel = groups.filter(
+        (g) => g.filiereId === targetFilId && (!crs?.level || g.level === crs.level)
+      );
+      if (matchingLevel.length > 0) return [matchingLevel[0].id];
+
+      const matchingFiliere = groups.filter((g) => g.filiereId === targetFilId);
+      if (matchingFiliere.length > 0) return [matchingFiliere[0].id];
+
+      if (targetFilCode) {
+        const prefixMatch = groups.filter((g) => {
+          const c = g.code.toUpperCase();
+          return (
+            c.startsWith(targetFilCode) ||
+            (targetFilCode === 'DTA' && c.startsWith('D1')) ||
+            (targetFilCode === 'GAE' && c.startsWith('G1'))
+          );
+        });
+        if (prefixMatch.length > 0) return [prefixMatch[0].id];
+      }
+    }
+
+    return groups[0] ? [groups[0].id] : [];
+  };
+
   // Initialize form when opened or mode changed
   useEffect(() => {
     setFormError(null);
+    setAssistantAppliedMsg(null);
+    setShowOtherFiliereGroups(false);
     if (sessionToEdit) {
+      const editCourse = courses.find((c) => c.id === sessionToEdit.courseId);
+      setModalFiliereId(editCourse?.filiereId || 'ALL');
       setSessionType(sessionToEdit.sessionType || 'COURSE');
       setEventTitle(sessionToEdit.eventTitle || '');
       setEventSpeaker(sessionToEdit.eventSpeaker || '');
@@ -125,18 +182,38 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       setRescheduleEndTime(sessionToEdit.endTime);
       setRescheduleRoomId(sessionToEdit.roomId);
     } else {
-      const defaultCourse = courses[0];
+      // Read active filiere filter from TimetableGrid if set
+      let activeTimetableFiliere = 'ALL';
+      try {
+        const raw = localStorage.getItem(`ebm_timetable_filters_v2_${currentUser?.id}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.filiereId && parsed.filiereId !== 'ALL') {
+            activeTimetableFiliere = parsed.filiereId;
+          }
+        }
+      } catch {
+        // Ignore
+      }
+
+      setModalFiliereId(activeTimetableFiliere);
+      const candidateCourses =
+        activeTimetableFiliere !== 'ALL'
+          ? courses.filter((c) => c.filiereId === activeTimetableFiliere)
+          : courses;
+      const defaultCourse = candidateCourses[0] || courses[0];
+
       setSessionType('COURSE');
       setEventTitle('');
       setEventSpeaker('');
       setEventCategoryLabel('');
       setCourseId(defaultCourse?.id || '');
       setTeacherId(defaultCourse?.teacherIds[0] || teachers[0]?.id || '');
-      setGroupIds(defaultCourse?.groupIds || [groups[0]?.id || '']);
+      setGroupIds(resolveGroupsForCourse(defaultCourse?.id || '', activeTimetableFiliere));
       setRoomId(rooms[0]?.id || '');
-      
-      const todayStr = getAntananarivoDateStr();
-      setDate(todayStr);
+
+      const defaultDateStr = getDefaultPlanningDateStr();
+      setDate(defaultDateStr);
       setStartTime('08:30');
       setEndTime('10:30');
       setNotes('');
@@ -144,52 +221,246 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     }
   }, [sessionToEdit, isOpen]);
 
-  // Real-time conflict detection effect
+  // Real-time conflict detection effect (for CREATE, EDIT, and RESCHEDULE) with light debounce for fluid UI
   useEffect(() => {
-    const validActivity = sessionType === 'COURSE' ? Boolean(courseId) : Boolean(eventTitle.trim());
-    if ((mode === 'CREATE' || mode === 'EDIT') && validActivity && roomId && date && startTime && endTime) {
-      const result = detectSessionConflicts(
-        {
-          id: sessionToEdit?.id,
-          courseId: sessionType === 'COURSE' ? courseId : `EVENT-${sessionType}`,
-          teacherId: teacherId || 'EXTERNAL_SPEAKER',
-          groupIds,
-          roomId,
-          date,
-          startTime,
-          endTime,
-        },
-        sessions,
-        rooms,
-        groups,
-        users
-      );
-      setConflictResult(result);
-    } else {
-      setConflictResult({ hasConflict: false, conflicts: [], suggestions: [] });
-    }
-  }, [sessionType, eventTitle, courseId, teacherId, groupIds, roomId, date, startTime, endTime, mode, sessionToEdit, sessions]);
+    const timer = setTimeout(() => {
+      if (mode === 'RESCHEDULE' && sessionToEdit && rescheduleDate && rescheduleStartTime && rescheduleEndTime) {
+        const result = detectSessionConflicts(
+          {
+            id: sessionToEdit.id,
+            courseId: sessionToEdit.courseId,
+            teacherId: sessionToEdit.teacherId,
+            groupIds: sessionToEdit.groupIds,
+            roomId: rescheduleRoomId || sessionToEdit.roomId,
+            date: rescheduleDate,
+            startTime: rescheduleStartTime,
+            endTime: rescheduleEndTime,
+          },
+          sessions,
+          rooms,
+          groups,
+          users,
+          {
+            scheduleSettings: appSettings.scheduleSettings,
+            courses,
+            filieres,
+          }
+        );
+        setConflictResult(result);
+        return;
+      }
 
-  if (!isOpen) return null;
+      const validActivity = sessionType === 'COURSE' ? Boolean(courseId) : Boolean(eventTitle.trim());
+      if ((mode === 'CREATE' || mode === 'EDIT') && validActivity && roomId && date && startTime && endTime) {
+        const result = detectSessionConflicts(
+          {
+            id: sessionToEdit?.id,
+            courseId: sessionType === 'COURSE' ? courseId : `EVENT-${sessionType}`,
+            teacherId: teacherId || 'EXTERNAL_SPEAKER',
+            groupIds,
+            roomId,
+            date,
+            startTime,
+            endTime,
+          },
+          sessions,
+          rooms,
+          groups,
+          users,
+          {
+            scheduleSettings: appSettings.scheduleSettings,
+            courses,
+            filieres,
+          }
+        );
+        setConflictResult(result);
+      } else {
+        setConflictResult({ hasConflict: false, conflicts: [], suggestions: [] });
+      }
+    }, 60);
 
-  // Handle course change auto-populating teacher & group defaults
+    return () => clearTimeout(timer);
+  }, [
+    sessionType,
+    eventTitle,
+    courseId,
+    teacherId,
+    groupIds,
+    roomId,
+    date,
+    startTime,
+    endTime,
+    rescheduleDate,
+    rescheduleStartTime,
+    rescheduleEndTime,
+    rescheduleRoomId,
+    mode,
+    sessionToEdit?.id,
+    sessionToEdit?.courseId,
+    sessionToEdit?.teacherId,
+    sessionToEdit?.groupIds,
+    sessionToEdit?.roomId,
+    sessions,
+    rooms,
+    groups,
+    users,
+    appSettings.scheduleSettings,
+  ]);
+
+  // Handle course change auto-populating teacher & group defaults strictly within the course's filiere
   const handleCourseChange = (newCourseId: string) => {
     setCourseId(newCourseId);
     const crs = courses.find((c) => c.id === newCourseId);
     if (crs) {
-      if (crs.teacherIds.length > 0) setTeacherId(crs.teacherIds[0]);
-      if (crs.groupIds.length > 0) setGroupIds(crs.groupIds);
+      if (crs.teacherIds && crs.teacherIds.length > 0) setTeacherId(crs.teacherIds[0]);
+      setGroupIds(resolveGroupsForCourse(newCourseId, crs.filiereId));
+      setShowOtherFiliereGroups(false);
     }
+  };
+
+  const handleModalFiliereChange = (newFilId: string) => {
+    setModalFiliereId(newFilId);
+    setShowOtherFiliereGroups(false);
+    const matchingCourses =
+      newFilId === 'ALL' ? courses : courses.filter((c) => c.filiereId === newFilId);
+    if (matchingCourses.length > 0) {
+      const firstCrs = matchingCourses[0];
+      setCourseId(firstCrs.id);
+      if (firstCrs.teacherIds && firstCrs.teacherIds.length > 0) setTeacherId(firstCrs.teacherIds[0]);
+      setGroupIds(resolveGroupsForCourse(firstCrs.id, newFilId));
+    } else if (newFilId !== 'ALL') {
+      const filObj = filieres.find((f) => f.id === newFilId);
+      const filCode = filObj?.code?.trim().toUpperCase();
+      const filGroups = groups.filter((g) => {
+        if (g.filiereId === newFilId) return true;
+        if (filCode) {
+          const c = g.code.toUpperCase();
+          return (
+            c.startsWith(filCode) ||
+            (filCode === 'DTA' && c.startsWith('D1')) ||
+            (filCode === 'GAE' && c.startsWith('G1'))
+          );
+        }
+        return false;
+      });
+      if (filGroups.length > 0) setGroupIds([filGroups[0].id]);
+    }
+  };
+
+  const selectedCourseObj = useMemo(
+    () => courses.find((c) => c.id === courseId),
+    [courses, courseId]
+  );
+
+  const activeFiliereIdForGroups = useMemo(() => {
+    if (modalFiliereId !== 'ALL') return modalFiliereId;
+    if (sessionType === 'COURSE' && selectedCourseObj?.filiereId) {
+      return selectedCourseObj.filiereId;
+    }
+    return null;
+  }, [modalFiliereId, sessionType, selectedCourseObj?.filiereId]);
+
+  // Filter groups: when a filière is selected, ONLY show groups belonging to that filière in primary list
+  const { primaryFiliereGroups, otherFiliereGroups } = useMemo(() => {
+    if (activeFiliereIdForGroups && activeFiliereIdForGroups !== 'ALL') {
+      const activeFilObj = filieres.find((f) => f.id === activeFiliereIdForGroups);
+      const activeFilCode = activeFilObj?.code?.trim().toUpperCase();
+
+      const matching = groups.filter((g) => {
+        if (g.filiereId === activeFiliereIdForGroups) return true;
+        if (activeFilCode) {
+          const c = g.code.toUpperCase();
+          if (
+            c.startsWith(activeFilCode) ||
+            (activeFilCode === 'DTA' && c.startsWith('D1')) ||
+            (activeFilCode === 'GAE' && c.startsWith('G1')) ||
+            g.name.toUpperCase().includes(activeFilCode)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      const remaining = groups.filter((g) => !matching.some((m) => m.id === g.id));
+
+      if (matching.length === 0) {
+        return {
+          primaryFiliereGroups: groups,
+          otherFiliereGroups: [],
+        };
+      }
+
+      return {
+        primaryFiliereGroups: matching.sort((a, b) => a.code.localeCompare(b.code)),
+        otherFiliereGroups: remaining.sort((a, b) => a.code.localeCompare(b.code)),
+      };
+    }
+
+    return {
+      primaryFiliereGroups: groups.slice().sort((a, b) => a.code.localeCompare(b.code)),
+      otherFiliereGroups: [],
+    };
+  }, [groups, filieres, activeFiliereIdForGroups]);
+
+  const filteredModalCourses = useMemo(() => {
+    return modalFiliereId === 'ALL'
+      ? courses
+      : courses.filter((c) => c.filiereId === modalFiliereId);
+  }, [courses, modalFiliereId]);
+
+  const toggleGroupSelection = (gid: string) => {
+    setGroupIds((prev) => {
+      if (prev.includes(gid)) {
+        return prev.length > 1 ? prev.filter((id) => id !== gid) : prev;
+      }
+      return [...prev, gid];
+    });
   };
 
   const calculateDuration = (start: string, end: string) => {
     const [sH, sM] = start.split(':').map(Number);
     const [eH, eM] = end.split(':').map(Number);
-    return Number((((eH * 60 + eM) - (sH * 60 + sM)) / 60).toFixed(2));
+    return Number(((eH * 60 + eM - (sH * 60 + sM)) / 60).toFixed(2));
   };
 
-  // Smart Scheduling Assistant: Compute best available (date, startTime, endTime, room) slots
-  const smartRecommendedSlots = (() => {
+  const currentDurationHours = calculateDuration(startTime, endTime);
+
+  // Find if there is a previous session on the same day for the selected group(s) or teacher to offer a 1-click "+15 min pause" start
+  const previousDaySessionEnd = useMemo(() => {
+    if (!date) return null;
+    const sameDaySessions = sessions.filter(
+      (s) =>
+        s.date === date &&
+        s.status !== 'CANCELLED' &&
+        s.id !== sessionToEdit?.id &&
+        (s.teacherId === teacherId || s.groupIds.some((gid) => groupIds.includes(gid)))
+    );
+    if (sameDaySessions.length === 0) return null;
+    const sorted = [...sameDaySessions].sort((a, b) => b.endTime.localeCompare(a.endTime));
+    const latestEnd = sorted[0].endTime;
+    const [h, m] = latestEnd.split(':').map(Number);
+    const afterBreakTotal = h * 60 + m + 15;
+    if (afterBreakTotal >= 18 * 60) return null;
+    const nextStart = `${String(Math.floor(afterBreakTotal / 60)).padStart(2, '0')}:${String(
+      afterBreakTotal % 60
+    ).padStart(2, '0')}`;
+    const durMin = Math.max(60, Math.round((currentDurationHours > 0 ? currentDurationHours : 2) * 60));
+    const nextEndTotal = Math.min(18 * 60, afterBreakTotal + durMin);
+    const nextEnd = `${String(Math.floor(nextEndTotal / 60)).padStart(2, '0')}:${String(
+      nextEndTotal % 60
+    ).padStart(2, '0')}`;
+    return {
+      previousEnd: latestEnd,
+      suggestedStart: nextStart,
+      suggestedEnd: nextEnd,
+    };
+  }, [date, sessions, sessionToEdit?.id, teacherId, groupIds, currentDurationHours]);
+
+  // Smart Scheduling Assistant: Compute best available (date, startTime, endTime, room) slots efficiently
+  const smartRecommendedSlots = useMemo(() => {
+    if (!showSmartAssistant) return [];
+
     const selectedTeacherObj = users.find((u) => u.id === teacherId);
     const totalStudentsNeeded = groupIds.reduce((sum, gid) => {
       const grp = groups.find((g) => g.id === gid);
@@ -197,13 +468,26 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     }, 0);
 
     const compatibleRooms = rooms.filter((r) => r.capacity >= Math.max(15, totalStudentsNeeded));
-    const candidateRooms = compatibleRooms.length > 0 ? compatibleRooms : rooms;
+    const candidateRooms = (compatibleRooms.length > 0 ? compatibleRooms : rooms)
+      .slice()
+      .sort((a, b) => a.capacity - b.capacity)
+      .slice(0, 3); // Test top 3 closest capacity rooms for high performance
 
     const baseDate = date ? new Date(date) : new Date();
     const dayOfWeek = baseDate.getDay();
     const diffToMonday = (dayOfWeek + 6) % 7;
     const monday = new Date(baseDate);
     monday.setDate(baseDate.getDate() - diffToMonday);
+
+    const mondayStr = getAntananarivoDateStr(monday);
+    const satObj = new Date(monday);
+    satObj.setDate(monday.getDate() + 5);
+    const satStr = getAntananarivoDateStr(satObj);
+
+    // Filter relevant sessions for this week only - shrinks search space by 90%+
+    const weekSessions = sessions.filter(
+      (s) => s.status !== 'CANCELLED' && s.date >= mondayStr && s.date <= satStr
+    );
 
     const dayNamesFr = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
     const candidateTimeStarts = ['07:00', '08:00', '09:00', '10:00', '13:30', '14:00', '15:00'];
@@ -235,9 +519,14 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
         // Check if teacher declared availability covers this slot
         const teacherAvail =
-          selectedTeacherObj?.availabilities?.some(
-            (av) => av.day === dayName && (av.startTime || '07:00') <= st && (av.endTime || '17:00') >= et
-          ) ?? true;
+          selectedTeacherObj?.availabilities && selectedTeacherObj.availabilities.length > 0
+            ? selectedTeacherObj.availabilities.some(
+                (av) =>
+                  av.day === dayName &&
+                  (av.startTime || '07:00') <= st &&
+                  (av.endTime || '17:00') >= et
+              )
+            : true;
 
         for (const rm of candidateRooms) {
           const check = detectSessionConflicts(
@@ -251,16 +540,22 @@ export const SessionModal: React.FC<SessionModalProps> = ({
               startTime: st,
               endTime: et,
             },
-            sessions,
+            weekSessions,
             rooms,
             groups,
-            users
+            users,
+            {
+              scheduleSettings: appSettings.scheduleSettings,
+            }
           );
 
           if (!check.hasConflict) {
             recommendations.push({
               date: dStr,
-              dayLabel: `${dayName} ${dObj.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`,
+              dayLabel: `${dayName} ${dObj.toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'short',
+              })}`,
               startTime: st,
               endTime: et,
               roomId: rm.id,
@@ -271,16 +566,29 @@ export const SessionModal: React.FC<SessionModalProps> = ({
             break; // One best room per time slot is enough to keep suggestions diverse
           }
         }
-        if (recommendations.length >= 9) break;
+        if (recommendations.length >= 6) break;
       }
-      if (recommendations.length >= 9) break;
+      if (recommendations.length >= 6) break;
     }
 
     // Prioritize slots where teacher explicitly declared availability
-    return recommendations.sort(
-      (a, b) => Number(b.teacherDeclaredAvailable) - Number(a.teacherDeclaredAvailable)
-    ).slice(0, 6);
-  })();
+    return recommendations
+      .sort((a, b) => Number(b.teacherDeclaredAvailable) - Number(a.teacherDeclaredAvailable))
+      .slice(0, 6);
+  }, [
+    showSmartAssistant,
+    date,
+    desiredDurationHours,
+    teacherId,
+    groupIds,
+    rooms,
+    sessions,
+    users,
+    appSettings.scheduleSettings,
+    courseId,
+    sessionType,
+    sessionToEdit?.id,
+  ]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -302,7 +610,9 @@ export const SessionModal: React.FC<SessionModalProps> = ({
         return;
       }
       if (rescheduleStartTime >= rescheduleEndTime) {
-        setFormError('L’heure de fin du report doit être strictement postérieure à l’heure de début.');
+        setFormError(
+          'L’heure de fin du report doit être strictement postérieure à l’heure de début.'
+        );
         return;
       }
       const res = rescheduleSession(
@@ -338,6 +648,11 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       return;
     }
 
+    if (groupIds.length === 0) {
+      setFormError('Veuillez sélectionner au moins un groupe d’étudiants.');
+      return;
+    }
+
     if (mode === 'CREATE') {
       const totalOccurrences = isRecurring ? Math.max(2, Math.min(20, repeatWeeks)) : 1;
       let createdCount = 0;
@@ -365,7 +680,9 @@ export const SessionModal: React.FC<SessionModalProps> = ({
           endTime,
           durationHours,
           status: 'PUBLISHED',
-          notes: isRecurring ? `${notes ? notes + ' · ' : ''}Séance récurrente (${w + 1}/${totalOccurrences})` : notes,
+          notes: isRecurring
+            ? `${notes ? notes + ' · ' : ''}Séance récurrente (${w + 1}/${totalOccurrences})`
+            : notes,
         });
 
         if (!res.success) {
@@ -385,7 +702,9 @@ export const SessionModal: React.FC<SessionModalProps> = ({
       }
 
       if (createdCount === 0) {
-        setFormError(`Aucune séance n'a pu être planifiée : ${skippedReasons[0] || 'Conflit détecté'}`);
+        setFormError(
+          `Aucune séance n'a pu être planifiée : ${skippedReasons[0] || 'Conflit détecté'}`
+        );
         return;
       }
 
@@ -442,20 +761,29 @@ export const SessionModal: React.FC<SessionModalProps> = ({
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 border border-slate-200 my-8 animate-in fade-in zoom-in duration-150">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-          <div className="flex items-center gap-2.5">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/* Modal Container constrained to 90vh with Fixed Header, Scrollable Body, and Fixed Footer */}
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-150"
+      >
+        {/* 1. FIXED / STICKY HEADER (Always visible) */}
+        <div className="shrink-0 bg-white px-4 sm:px-6 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className={`p-2.5 rounded-xl text-white ${
+              className={`p-2 rounded-xl text-white shrink-0 ${
                 mode === 'CANCEL'
                   ? 'bg-red-600'
                   : mode === 'RESCHEDULE'
                   ? 'bg-amber-600'
-                  : 'bg-blue-600'
+                  : 'bg-[#17345B]'
               }`}
             >
               {mode === 'CANCEL' ? (
@@ -466,46 +794,50 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                 <Calendar className="w-5 h-5" />
               )}
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 {mode === 'CREATE' && 'Planifier un Cours, une Conférence ou un Événement'}
                 {mode === 'EDIT' && 'Modifier la séance ou l’événement'}
                 {mode === 'RESCHEDULE' && 'Reporter la séance'}
                 {mode === 'CANCEL' && 'Annuler la séance (Notification automatique)'}
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] text-slate-500 truncate">
                 {mode === 'CANCEL'
-                  ? 'Déclenche des notifications automatiques'
-                  : 'Insertion directe dans l’emploi du temps des étudiants avec vérification des conflits'}
+                  ? 'Déclenche des notifications automatiques aux étudiants et à l’enseignant'
+                  : 'Insertion directe dans l’emploi du temps avec contrôle temps réel des conflits'}
               </p>
             </div>
           </div>
+
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            title="Fermer la fenêtre"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        {/* 2. SCROLLABLE FORM BODY (Vertical scroll, never clipped) */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 space-y-3.5">
           {formError && (
-            <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 font-semibold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{formError}</span>
+            <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 font-semibold flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span className="whitespace-normal break-words">{formError}</span>
             </div>
           )}
-          
+
           {/* MODE: CANCEL */}
           {mode === 'CANCEL' && (
             <div className="space-y-3">
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
                 <p className="font-semibold mb-1">
                   Attention : Vous vous apprêtez à annuler cette séance.
                 </p>
                 <p>
-                  Les étudiants concernés ainsi que l’enseignant recevront immédiatement une notification Push Android et une alerte sur le portail Web.
+                  Les étudiants concernés ainsi que l’enseignant recevront immédiatement une
+                  notification Push Android et une alerte sur le portail Web.
                 </p>
               </div>
 
@@ -527,10 +859,11 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
           {/* MODE: RESCHEDULE */}
           {mode === 'RESCHEDULE' && (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
                 <span className="font-semibold block mb-0.5">Report officiel de séance</span>
-                L'ancienne date ({sessionToEdit?.date} à {sessionToEdit?.startTime}) sera conservée dans l'historique et transmise aux étudiants via notification Push.
+                L'ancienne date ({sessionToEdit?.date} à {sessionToEdit?.startTime}) sera conservée
+                dans l'historique et transmise aux étudiants via notification Push.
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -542,7 +875,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                     type="date"
                     value={rescheduleDate}
                     onChange={(e) => setRescheduleDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm"
                     required
                   />
                 </div>
@@ -553,7 +886,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                   <select
                     value={rescheduleRoomId}
                     onChange={(e) => setRescheduleRoomId(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm"
                   >
                     {rooms.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -566,13 +899,54 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Début ({scheduleConfig.slotIntervalMinutes} mn)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Début (15 mn)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const [sH, sM] = rescheduleStartTime.split(':').map(Number);
+                        const durMin = Math.max(
+                          30,
+                          Math.round(calculateDuration(rescheduleStartTime, rescheduleEndTime) * 60) || 120
+                        );
+                        const newStartMin = Math.min(17 * 60 + 45, sH * 60 + sM + 15);
+                        const newEndMin = Math.min(18 * 60, newStartMin + durMin);
+                        setRescheduleStartTime(
+                          `${String(Math.floor(newStartMin / 60)).padStart(2, '0')}:${String(
+                            newStartMin % 60
+                          ).padStart(2, '0')}`
+                        );
+                        setRescheduleEndTime(
+                          `${String(Math.floor(newEndMin / 60)).padStart(2, '0')}:${String(
+                            newEndMin % 60
+                          ).padStart(2, '0')}`
+                        );
+                      }}
+                      className="text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer"
+                    >
+                      +15 min pause
+                    </button>
+                  </div>
                   <select
                     value={rescheduleStartTime}
-                    onChange={(e) => setRescheduleStartTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
+                    onChange={(e) => {
+                      const st = e.target.value;
+                      const durMin = Math.max(
+                        30,
+                        Math.round(calculateDuration(rescheduleStartTime, rescheduleEndTime) * 60) || 120
+                      );
+                      setRescheduleStartTime(st);
+                      const [h, m] = st.split(':').map(Number);
+                      const endMin = Math.min(18 * 60, h * 60 + m + durMin);
+                      setRescheduleEndTime(
+                        `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(
+                          endMin % 60
+                        ).padStart(2, '0')}`
+                      );
+                    }}
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold"
                     required
                   >
                     {configurableTimeSlots.slice(0, -1).map((slot) => (
@@ -584,12 +958,12 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Fin ({scheduleConfig.slotIntervalMinutes} mn)
+                    Fin (15 mn)
                   </label>
                   <select
                     value={rescheduleEndTime}
                     onChange={(e) => setRescheduleEndTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold"
                     required
                   >
                     {configurableTimeSlots
@@ -612,39 +986,60 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder="Ex: Participation jury académique, demande des délégués..."
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm"
                   required
                 />
               </div>
+
+              {/* Conflict Alert Box for Reschedule */}
+              {conflictResult.hasConflict && (
+                <div
+                  ref={conflictBoxRef}
+                  className="p-3.5 bg-red-50 border border-red-300 rounded-xl text-xs space-y-2"
+                >
+                  <div className="flex items-center gap-2 text-red-800 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>Conflit détecté sur le nouveau créneau :</span>
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1 text-red-700 whitespace-normal break-words">
+                    {conflictResult.conflicts.map((c, i) => (
+                      <li key={i} className="leading-relaxed">
+                        {c.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
           {/* MODE: CREATE OR EDIT */}
           {(mode === 'CREATE' || mode === 'EDIT') && (
             <>
-              {/* Type d'activité à insérer dans l'emploi du temps */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+              {/* 1. Type d'activité */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
                   Type d'activité à planifier *
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
                   {[
-                    { id: 'COURSE', label: '📚 Cours académique' },
+                    { id: 'COURSE', label: '📚 Cours' },
                     { id: 'CONFERENCE', label: '🎤 Conférence' },
-                    { id: 'SEMINAIRE', label: '🏛️ Séminaire / Atelier' },
-                    { id: 'SOUTENANCE', label: '🎓 Soutenance / Jury' },
-                    { id: 'EXAMEN', label: '📝 Examen / Épreuve' },
-                    { id: 'AUTRE_EVENEMENT', label: '📌 Autre événement' },
+                    { id: 'SEMINAIRE', label: '🏛️ Séminaire' },
+                    { id: 'SOUTENANCE', label: '🎓 Soutenance' },
+                    { id: 'EXAMEN', label: '📝 Examen' },
+                    { id: 'AUTRE_EVENEMENT', label: '📌 Autre' },
                   ].map((typeOpt) => (
                     <button
                       key={typeOpt.id}
                       type="button"
                       onClick={() => setSessionType(typeOpt.id as SessionActivityType)}
-                      className={`px-3 py-2 rounded-xl font-bold text-left border transition-all cursor-pointer ${
+                      className={`px-2.5 py-1.5 rounded-xl font-bold text-center border transition-all cursor-pointer truncate ${
                         sessionType === typeOpt.id
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          ? 'bg-[#17345B] text-white border-[#17345B] shadow-2xs'
                           : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                       }`}
+                      title={typeOpt.label}
                     >
                       {typeOpt.label}
                     </button>
@@ -652,51 +1047,74 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                 </div>
               </div>
 
+              {/* 2. Filière, Matière / Événement & Enseignant */}
               {sessionType === 'COURSE' ? (
-                /* Course & Teacher */
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      Matière / Cours *
-                    </label>
-                    <select
-                      value={courseId}
-                      onChange={(e) => handleCourseChange(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium"
-                      required
-                    >
-                      {courses.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.code} - {c.title} ({c.totalHours}h)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Filière / Mention
+                      </label>
+                      <select
+                        value={modalFiliereId}
+                        onChange={(e) => handleModalFiliereChange(e.target.value)}
+                        className="w-full h-10 px-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs sm:text-sm font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                      >
+                        <option value="ALL">Toutes les filières ({courses.length} cours)</option>
+                        {filieres.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.code} — {f.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      Enseignant responsable *
-                    </label>
-                    <select
-                      value={teacherId}
-                      onChange={(e) => setTeacherId(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm"
-                      required
-                    >
-                      {teachers.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Matière / Cours *
+                      </label>
+                      <select
+                        value={courseId}
+                        onChange={(e) => handleCourseChange(e.target.value)}
+                        className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        required
+                      >
+                        {(filteredModalCourses.length > 0 ? filteredModalCourses : courses).map((c) => {
+                          const fil = filieres.find((f) => f.id === c.filiereId);
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {fil ? `[${fil.code}] ` : ''}
+                              {c.code} - {c.title} ({c.totalHours}h)
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Enseignant responsable *
+                      </label>
+                      <select
+                        value={teacherId}
+                        onChange={(e) => setTeacherId(e.target.value)}
+                        className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        required
+                      >
+                        {teachers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               ) : (
-                /* Custom Event / Conference Fields */
-                <div className="space-y-3 p-3.5 bg-purple-50/60 border border-purple-200 rounded-xl">
+                <div className="space-y-3 p-3 bg-purple-50/60 border border-purple-200 rounded-xl">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className={sessionType === 'AUTRE_EVENEMENT' ? '' : 'sm:col-span-2'}>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-900 mb-1">
                         Intitulé de la conférence / événement *
                       </label>
                       <input
@@ -705,13 +1123,13 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                         placeholder="Ex: Conférence sur l'Entrepreneuriat & FinTech à Madagascar"
                         value={eventTitle}
                         onChange={(e) => setEventTitle(e.target.value)}
-                        className="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-sm font-bold text-slate-900"
+                        className="w-full h-10 px-3 bg-white border border-purple-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900"
                       />
                     </div>
 
                     {sessionType === 'AUTRE_EVENEMENT' && (
                       <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-900 mb-1">
                           Catégorie personnalisée
                         </label>
                         <input
@@ -719,7 +1137,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                           placeholder="Ex: Forum Entreprises, Visite d'étude..."
                           value={eventCategoryLabel}
                           onChange={(e) => setEventCategoryLabel(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-sm font-semibold text-slate-800"
+                          className="w-full h-10 px-3 bg-white border border-purple-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800"
                         />
                       </div>
                     )}
@@ -727,7 +1145,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-900 mb-1">
                         Intervenant(e) / Conférencier
                       </label>
                       <input
@@ -735,18 +1153,18 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                         placeholder="Ex: M. Tahiry Rakotoarisoa (DG FinTech Mada)"
                         value={eventSpeaker}
                         onChange={(e) => setEventSpeaker(e.target.value)}
-                        className="w-full p-2 bg-white border border-purple-300 rounded-xl text-xs font-medium"
+                        className="w-full h-10 px-3 bg-white border border-purple-300 rounded-xl text-xs font-medium"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-purple-900 mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-purple-900 mb-1">
                         Enseignant référent / Modérateur (optionnel)
                       </label>
                       <select
                         value={teacherId}
                         onChange={(e) => setTeacherId(e.target.value)}
-                        className="w-full p-2 bg-white border border-purple-300 rounded-xl text-xs"
+                        className="w-full h-10 px-3 bg-white border border-purple-300 rounded-xl text-xs"
                       >
                         <option value="EXTERNAL_SPEAKER">-- Intervenant externe uniquement --</option>
                         {teachers.map((t) => (
@@ -760,21 +1178,110 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                 </div>
               )}
 
-              {/* Group selection & Room selection */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 3. Groupe(s) d'étudiants & Salle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Groupe(s) d'étudiants *
-                  </label>
+                  <div className="flex items-center justify-between mb-1 gap-1">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                      Groupe(s) d'étudiants *{' '}
+                      {activeFiliereIdForGroups && activeFiliereIdForGroups !== 'ALL' && (
+                        <span className="text-indigo-700 font-extrabold">
+                          ({filieres.find((f) => f.id === activeFiliereIdForGroups)?.code || activeFiliereIdForGroups})
+                        </span>
+                      )}
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      {otherFiliereGroups.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowOtherFiliereGroups((v) => !v)}
+                          className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer"
+                        >
+                          {showOtherFiliereGroups ? 'Filière uniquement' : '+ Autres filières'}
+                        </button>
+                      )}
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                        {groupIds.length} sélectionné(s)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Interactive Group Chips (Strictly filtered by the active filiere) */}
+                  <div className="flex flex-wrap gap-1 mb-1.5 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    {primaryFiliereGroups.map((g) => {
+                      const active = groupIds.includes(g.id);
+                      return (
+                        <button
+                          key={`chip-${g.id}`}
+                          type="button"
+                          onClick={() => toggleGroupSelection(g.id)}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 border transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {active && <Check className="w-3 h-3 shrink-0" />}
+                          <span>
+                            {g.code} ({g.studentCount})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {otherFiliereGroups.length > 0 && (
+                    <div className="mb-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowOtherFiliereGroups((v) => !v)}
+                        className="text-[10px] font-semibold text-indigo-700 hover:underline cursor-pointer"
+                      >
+                        {showOtherFiliereGroups
+                          ? 'Masquer les groupes des autres filières'
+                          : '+ Afficher les groupes des autres filières (Tronc commun)'}
+                      </button>
+                      {showOtherFiliereGroups && (
+                        <div className="flex flex-wrap gap-1 mt-1 p-1.5 bg-indigo-50/40 border border-indigo-200 rounded-xl">
+                          {otherFiliereGroups.map((g) => {
+                            const active = groupIds.includes(g.id);
+                            const filCode = filieres.find((f) => f.id === g.filiereId)?.code;
+                            return (
+                              <button
+                                key={`other-chip-${g.id}`}
+                                type="button"
+                                onClick={() => toggleGroupSelection(g.id)}
+                                className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold inline-flex items-center gap-1 border transition-colors cursor-pointer ${
+                                  active
+                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {active && <Check className="w-2.5 h-2.5 shrink-0" />}
+                                <span>
+                                  {filCode ? `[${filCode}] ` : ''}{g.code} ({g.studentCount})
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Native multiple select preserved for accessibility & keyboard selection */}
                   <select
                     multiple
                     value={groupIds}
                     onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, (option) => option.value);
-                      setGroupIds(selected);
+                      const selected = Array.from(
+                        e.target.selectedOptions,
+                        (option) => option.value
+                      );
+                      if (selected.length > 0) setGroupIds(selected);
                     }}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs h-20"
-                    required
+                    className="sr-only"
+                    aria-label="Sélection multiple des groupes d'étudiants"
                   >
                     {groups.map((g) => (
                       <option key={g.id} value={g.id}>
@@ -782,51 +1289,307 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                       </option>
                     ))}
                   </select>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
-                    Maintenez Ctrl (ou Cmd) pour sélectionner plusieurs groupes (cours partagé).
+                  <span className="text-[10px] text-slate-500 block">
+                    {activeFiliereIdForGroups && activeFiliereIdForGroups !== 'ALL'
+                      ? `Affichage exclusif des groupes de la mention sélectionnée (${primaryFiliereGroups.length} groupe(s)).`
+                      : `Sélectionnez un ou plusieurs groupes d'étudiants.`}
                   </span>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
                     Salle de cours / Labo *
                   </label>
                   <select
                     value={roomId}
                     onChange={(e) => setRoomId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     required
                   >
                     {rooms.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.name} ({r.capacity} pl.)
+                        {r.name} ({r.capacity} pl.{r.status === 'maintenance' ? ' - Maintenance' : ''})
                       </option>
                     ))}
                   </select>
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500 px-1">
+                    <span>
+                      Effectif total :{' '}
+                      <strong className="text-slate-800">
+                        {groupIds.reduce(
+                          (sum, gid) =>
+                            sum + (groups.find((g) => g.id === gid)?.studentCount || 0),
+                          0
+                        )}{' '}
+                        étudiants
+                      </strong>
+                    </span>
+                    <span>
+                      Capacité salle :{' '}
+                      <strong className="text-slate-800">
+                        {rooms.find((r) => r.id === roomId)?.capacity || 0} places
+                      </strong>
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* ASSISTANT INTELLIGENT DE PLANIFICATION (Aide au placement Date, Heure & Salle) */}
-              <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-blue-50 to-slate-50 border border-indigo-200 rounded-2xl space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+              {/* 4. Date, Heure de début (pas de 15 min / 1/4 d'heure), Heure de fin */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                        Heure début (15 mn)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const [sH, sM] = startTime.split(':').map(Number);
+                          const durMin = Math.max(
+                            30,
+                            Math.round((currentDurationHours > 0 ? currentDurationHours : 2) * 60)
+                          );
+                          const newStartMin = Math.min(17 * 60 + 45, sH * 60 + sM + 15);
+                          const newEndMin = Math.min(18 * 60, newStartMin + durMin);
+                          setStartTime(
+                            `${String(Math.floor(newStartMin / 60)).padStart(2, '0')}:${String(
+                              newStartMin % 60
+                            ).padStart(2, '0')}`
+                          );
+                          setEndTime(
+                            `${String(Math.floor(newEndMin / 60)).padStart(2, '0')}:${String(
+                              newEndMin % 60
+                            ).padStart(2, '0')}`
+                          );
+                        }}
+                        title="Décaler le début de +15 minutes (pause d'un quart d'heure)"
+                        className="text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                      >
+                        +15 min pause
+                      </button>
+                    </div>
+                    <select
+                      value={startTime}
+                      onChange={(e) => {
+                        const st = e.target.value;
+                        const preservedMinutes = Math.max(
+                          30,
+                          Math.round((currentDurationHours > 0 ? currentDurationHours : 2) * 60)
+                        );
+                        setStartTime(st);
+                        const [h, m] = st.split(':').map(Number);
+                        const endMinutes = Math.min(18 * 60, h * 60 + m + preservedMinutes);
+                        const endH = String(Math.floor(endMinutes / 60)).padStart(2, '0');
+                        const endM = String(endMinutes % 60).padStart(2, '0');
+                        setEndTime(`${endH}:${endM}`);
+                      }}
+                      className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      required
+                    >
+                      {configurableTimeSlots.slice(0, -1).map((slot) => (
+                        <option key={`create-start-${slot}`} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                        Heure fin (15 mn)
+                      </label>
+                      {currentDurationHours > 0 && (
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                          {currentDurationHours}h
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      required
+                    >
+                      {configurableTimeSlots
+                        .filter((slot) => slot > startTime)
+                        .map((slot) => (
+                          <option key={`create-end-${slot}`} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Quick 15-min break helper & quick duration chips */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px]">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-bold text-slate-600">Durée rapide :</span>
+                    {[
+                      { label: '1h', min: 60 },
+                      { label: '1h30', min: 90 },
+                      { label: '1h45', min: 105 },
+                      { label: '2h', min: 120 },
+                      { label: '2h30', min: 150 },
+                      { label: '3h', min: 180 },
+                      { label: '4h', min: 240 },
+                    ].map((d) => {
+                      const isCurrent = Math.round(currentDurationHours * 60) === d.min;
+                      return (
+                        <button
+                          key={d.label}
+                          type="button"
+                          onClick={() => {
+                            const [h, m] = startTime.split(':').map(Number);
+                            const endMin = Math.min(18 * 60, h * 60 + m + d.min);
+                            setEndTime(
+                              `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(
+                                endMin % 60
+                              ).padStart(2, '0')}`
+                            );
+                          }}
+                          className={`px-2 py-0.5 rounded font-bold transition-colors cursor-pointer ${
+                            isCurrent
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {previousDaySessionEnd && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStartTime(previousDaySessionEnd.suggestedStart);
+                        setEndTime(previousDaySessionEnd.suggestedEnd);
+                      }}
+                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                      title={`Un cours se termine à ${previousDaySessionEnd.previousEnd} ce jour-là. Cliquez pour démarrer à ${previousDaySessionEnd.suggestedStart} (après 15 min de pause).`}
+                    >
+                      <Clock className="w-3 h-3 text-amber-700" />
+                      <span>
+                        Après pause 15 mn : {previousDaySessionEnd.suggestedStart} –{' '}
+                        {previousDaySessionEnd.suggestedEnd} (fin cours précédent :{' '}
+                        {previousDaySessionEnd.previousEnd})
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. REAL-TIME CONFLICT ALERT BOX (Full visibility, never truncated) */}
+              {conflictResult.hasConflict && (
+                <div
+                  ref={conflictBoxRef}
+                  className="p-3.5 bg-red-50 border-2 border-red-300 rounded-xl text-xs space-y-2.5 shadow-2xs"
+                >
+                  <div className="flex items-center justify-between gap-2 text-red-900 font-bold">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>
+                        {conflictResult.conflicts.length} conflit(s) détecté(s) avant publication :
+                      </span>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wider bg-red-200/80 text-red-900 px-2 py-0.5 rounded-md font-extrabold">
+                      Enregistrement bloqué
+                    </span>
+                  </div>
+
+                  <ul className="list-disc pl-5 space-y-1.5 text-red-800 whitespace-normal break-words">
+                    {conflictResult.conflicts.map((c, i) => (
+                      <li key={i} className="leading-relaxed font-medium">
+                        {c.message}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Assisted Scheduling Suggestions from Conflict Detector */}
+                  {conflictResult.suggestions && conflictResult.suggestions.length > 0 && (
+                    <div className="pt-2.5 border-t border-red-200">
+                      <span className="font-bold text-slate-800 flex items-center gap-1.5 mb-2">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span>Créneaux alternatifs suggérés sans aucun conflit (1 clic) :</span>
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                        {conflictResult.suggestions.map((sug, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setDate(sug.date);
+                              setStartTime(sug.startTime);
+                              setEndTime(sug.endTime);
+                              setRoomId(sug.roomId);
+                              setAssistantAppliedMsg(
+                                `Créneau sans conflit appliqué : ${sug.date} (${sug.startTime}-${sug.endTime}) en ${sug.roomName}`
+                              );
+                            }}
+                            className="px-2.5 py-1.5 bg-white hover:bg-blue-50 text-blue-900 border border-blue-300 rounded-lg text-[11px] font-semibold text-left transition-all hover:shadow-xs cursor-pointer flex items-center justify-between gap-1"
+                          >
+                            <span className="truncate">
+                              {sug.date} • {sug.startTime}–{sug.endTime} ({sug.roomName})
+                            </span>
+                            <span className="text-[10px] font-bold text-blue-600 shrink-0">
+                              Choisir
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 6. COMPACT & COLLAPSIBLE SMART SCHEDULING ASSISTANT */}
+              <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-blue-50/90 to-slate-50 border border-indigo-200 rounded-xl space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSmartAssistant((prev) => !prev)}
+                    className="flex items-center gap-2 text-left cursor-pointer group"
+                  >
+                    <div className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">
                       <Sparkles className="w-3.5 h-3.5" />
                     </div>
                     <div>
-                      <span className="text-xs font-black text-indigo-950 block">
-                        Assistant de Planification (Placement Intelligent Date, Heure & Salle)
-                      </span>
-                      <span className="text-[10px] text-slate-600">
-                        Analyse les disponibilités de l'enseignant, l'emploi du temps des étudiants et la capacité des salles
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-indigo-950 group-hover:text-indigo-700">
+                          Assistant de Planification (Placement Intelligent)
+                        </span>
+                        <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded">
+                          {showSmartAssistant
+                            ? `${smartRecommendedSlots.length} créneau(x) libre(s)`
+                            : 'Suggestions intelligentes'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-600 block">
+                        Disponibilités enseignant, groupes d'étudiants et capacité des salles
                       </span>
                     </div>
-                  </div>
+                  </button>
+
                   <div className="flex items-center gap-1.5">
                     <select
                       value={desiredDurationHours}
                       onChange={(e) => setDesiredDurationHours(Number(e.target.value))}
-                      className="text-[11px] font-bold bg-white border border-indigo-200 rounded-lg px-2 py-1 text-indigo-900"
+                      className="text-[11px] font-bold bg-white border border-indigo-200 rounded-lg px-2 py-1 text-indigo-900 cursor-pointer"
                       title="Durée souhaitée"
                     >
                       <option value={1}>Durée : 1h</option>
@@ -838,28 +1601,43 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowSmartAssistant((prev) => !prev)}
-                      className="text-[11px] font-bold text-indigo-700 hover:underline px-1.5 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-100/70 border border-indigo-200 rounded-lg px-2.5 py-1 transition-colors cursor-pointer"
                     >
-                      {showSmartAssistant ? 'Masquer' : 'Afficher'}
+                      <span>{showSmartAssistant ? 'Masquer' : 'Afficher'}</span>
+                      {showSmartAssistant ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </div>
                 </div>
 
                 {assistantAppliedMsg && (
-                  <div className="p-2 bg-emerald-100/90 border border-emerald-300 rounded-xl text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                    <span>{assistantAppliedMsg}</span>
+                  <div className="p-2 bg-emerald-100/90 border border-emerald-300 rounded-lg text-[11px] font-bold text-emerald-900 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <span>{assistantAppliedMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAssistantAppliedMsg(null)}
+                      className="text-emerald-700 hover:text-emerald-950"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
 
                 {showSmartAssistant && (
-                  <div className="space-y-2 pt-1">
+                  <div className="pt-1">
                     {smartRecommendedSlots.length === 0 ? (
-                      <p className="text-[11px] text-slate-500 italic">
-                        Aucun créneau automatique trouvé sur cette semaine. Vous pouvez changer la date de référence ci-dessous.
+                      <p className="text-[11px] text-slate-500 italic py-1">
+                        Aucun créneau automatique libre trouvé sur cette semaine. Essayez une autre
+                        date ou durée.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                         {smartRecommendedSlots.map((slot, idx) => {
                           const isCurrentlySelected =
                             date === slot.date &&
@@ -877,21 +1655,23 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                                 setEndTime(slot.endTime);
                                 setRoomId(slot.roomId);
                                 setAssistantAppliedMsg(
-                                  `Créneau appliqué : ${slot.dayLabel} de ${slot.startTime} à ${slot.endTime} en salle ${slot.roomName}`
+                                  `Créneau appliqué : ${slot.dayLabel} (${slot.startTime}–${slot.endTime}) en ${slot.roomName}`
                                 );
                               }}
-                              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                              className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-1.5 ${
                                 isCurrentlySelected
-                                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+                                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
                                   : 'bg-white hover:bg-indigo-50/70 text-slate-800 border-indigo-200/80'
                               }`}
                             >
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-xs truncate">{slot.dayLabel}</span>
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="font-bold text-[11px] truncate">
+                                    {slot.dayLabel}
+                                  </span>
                                   {slot.teacherDeclaredAvailable && (
                                     <span
-                                      className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                      className={`text-[9px] px-1 py-0.2 rounded font-bold ${
                                         isCurrentlySelected
                                           ? 'bg-emerald-400 text-slate-950'
                                           : 'bg-emerald-100 text-emerald-800'
@@ -902,21 +1682,22 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                                   )}
                                 </div>
                                 <div
-                                  className={`text-[11px] font-mono font-bold mt-0.5 ${
+                                  className={`text-[10px] font-mono font-bold mt-0.5 truncate ${
                                     isCurrentlySelected ? 'text-indigo-100' : 'text-indigo-700'
                                   }`}
                                 >
-                                  {slot.startTime} - {slot.endTime} • {slot.roomName} ({slot.roomCapacity} pl.)
+                                  {slot.startTime}–{slot.endTime} • {slot.roomName} (
+                                  {slot.roomCapacity}p)
                                 </div>
                               </div>
                               <span
-                                className={`text-[10px] font-bold px-2 py-1 rounded-lg shrink-0 ${
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${
                                   isCurrentlySelected
                                     ? 'bg-white text-indigo-700'
                                     : 'bg-indigo-100 text-indigo-800'
                                 }`}
                               >
-                                {isCurrentlySelected ? 'Choisi ✓' : 'Choisir'}
+                                {isCurrentlySelected ? '✓' : 'Choisir'}
                               </span>
                             </button>
                           );
@@ -927,82 +1708,21 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                 )}
               </div>
 
-              {/* Date, Start time, End time */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Heure début ({scheduleConfig.slotIntervalMinutes} mn)
-                  </label>
-                  <select
-                    value={startTime}
-                    onChange={(e) => {
-                      const st = e.target.value;
-                      setStartTime(st);
-                      const [h, m] = st.split(':').map(Number);
-                      const endMinutes = Math.min(18 * 60, h * 60 + m + 120);
-                      const endH = String(Math.floor(endMinutes / 60)).padStart(2, '0');
-                      const endM = String(endMinutes % 60).padStart(2, '0');
-                      setEndTime(`${endH}:${endM}`);
-                    }}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
-                    required
-                  >
-                    {configurableTimeSlots.slice(0, -1).map((slot) => (
-                      <option key={`create-start-${slot}`} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Heure fin ({scheduleConfig.slotIntervalMinutes} mn)
-                  </label>
-                  <select
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold"
-                    required
-                  >
-                    {configurableTimeSlots
-                      .filter((slot) => slot > startTime)
-                      .map((slot) => (
-                        <option key={`create-end-${slot}`} value={slot}>
-                          {slot}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Recurring Weekly Option (Séances récurrentes sur le semestre) */}
-              {mode === 'CREATE' && (
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isRecurring}
-                        onChange={(e) => setIsRecurring(e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span>Répéter chaque semaine (Séance récurrente sur le semestre)</span>
-                    </label>
-                    {isRecurring && (
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <span className="text-slate-600 font-semibold">Pendant :</span>
+              {/* 7. Répétition hebdomadaire & Notes de la séance */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                {mode === 'CREATE' && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isRecurring}
+                          onChange={(e) => setIsRecurring(e.target.checked)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                        />
+                        <span>Répéter chaque semaine</span>
+                      </label>
+                      {isRecurring && (
                         <select
                           value={repeatWeeks}
                           onChange={(e) => setRepeatWeeks(Number(e.target.value))}
@@ -1010,109 +1730,89 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                         >
                           <option value={4}>4 semaines (1 mois)</option>
                           <option value={8}>8 semaines (Demi-semestre)</option>
-                          <option value={12}>12 semaines (Semestre standard)</option>
-                          <option value={15}>15 semaines (Semestre complet)</option>
+                          <option value={12}>12 semaines (Semestre)</option>
+                          <option value={15}>15 semaines (Complet)</option>
                         </select>
-                      </div>
-                    )}
-                  </div>
-                  {isRecurring && (
-                    <p className="text-[11px] text-slate-500">
-                      Ce créneau ({startTime} - {endTime}) sera planifié automatiquement le même jour de chaque semaine pendant{' '}
-                      <strong>{repeatWeeks} semaines</strong> avec contrôle individuel des conflits.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Notes de la séance / Objectifs pédagogiques
-                </label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ex: TP sur machines, prévoir ordinateurs portables..."
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
-                />
-              </div>
-
-              {/* Real-time Conflict Alert Box (Section 9.2, RG-12) */}
-              {conflictResult.hasConflict && (
-                <div className="p-3.5 bg-red-50 border border-red-300 rounded-xl text-xs space-y-2">
-                  <div className="flex items-center gap-2 text-red-800 font-bold">
-                    <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                    <span>Conflit détecté avant publication :</span>
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1 text-red-700">
-                    {conflictResult.conflicts.map((c, i) => (
-                      <li key={i}>{c.message}</li>
-                    ))}
-                  </ul>
-
-                  {/* Assisted Scheduling Suggestions */}
-                  {conflictResult.suggestions && conflictResult.suggestions.length > 0 && (
-                    <div className="mt-3 pt-2.5 border-t border-red-200">
-                      <span className="font-bold text-slate-800 flex items-center gap-1.5 mb-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                        Créneaux alternatifs suggérés sans conflit :
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {conflictResult.suggestions.map((sug, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              setDate(sug.date);
-                              setStartTime(sug.startTime);
-                              setEndTime(sug.endTime);
-                              setRoomId(sug.roomId);
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-800 border border-blue-300 rounded-lg text-[11px] font-semibold transition-all hover:shadow-xs"
-                          >
-                            {sug.date} • {sug.startTime}-{sug.endTime} ({sug.roomName})
-                          </button>
-                        ))}
-                      </div>
+                      )}
                     </div>
-                  )}
+                    <p className="text-[10px] text-slate-500 leading-snug">
+                      {isRecurring
+                        ? `Planifie automatiquement ce créneau (${startTime}–${endTime}) sur ${repeatWeeks} semaines avec contrôle des conflits.`
+                        : 'Cochez pour répéter automatiquement ce cours sur tout le semestre.'}
+                    </p>
+                  </div>
+                )}
+
+                <div className={mode === 'CREATE' ? '' : 'sm:col-span-2'}>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Notes de la séance / Objectifs pédagogiques
+                  </label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Ex: TP sur machines, prévoir ordinateurs portables..."
+                    className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
                 </div>
-              )}
+              </div>
             </>
           )}
+        </div>
 
-          {/* Action Footer */}
-          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200">
+        {/* 3. FIXED / STICKY ACTION FOOTER (Always visible at bottom of modal) */}
+        <div className="shrink-0 bg-slate-50 px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {conflictResult.hasConflict ? (
+              <button
+                type="button"
+                onClick={() =>
+                  conflictBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200/80 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                <span>
+                  {conflictResult.conflicts.length} conflit(s) — Voir les détails
+                </span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Aucun conflit détecté • Créneau valide</span>
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 border border-slate-300 bg-white text-slate-700 text-xs sm:text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               Annuler
             </button>
             <button
               type="submit"
-              disabled={conflictResult.hasConflict}
-              className={`px-5 py-2 text-white text-sm font-bold rounded-xl shadow-md transition-all ${
-                conflictResult.hasConflict
+              disabled={mode !== 'CANCEL' && conflictResult.hasConflict}
+              className={`px-5 py-2 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all cursor-pointer ${
+                mode !== 'CANCEL' && conflictResult.hasConflict
                   ? 'bg-slate-400 cursor-not-allowed'
                   : mode === 'CANCEL'
                   ? 'bg-red-600 hover:bg-red-700'
                   : mode === 'RESCHEDULE'
                   ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-blue-700 hover:bg-blue-800'
+                  : 'bg-[#17345B] hover:bg-[#2F6FED]'
               }`}
             >
-              {mode === 'CREATE' && 'Créer la séance'}
+              {mode === 'CREATE' && 'Enregistrer / Publier'}
               {mode === 'EDIT' && 'Enregistrer les modifications'}
               {mode === 'RESCHEDULE' && 'Confirmer le report & Notifier'}
               {mode === 'CANCEL' && 'Confirmer l’annulation & Notifier'}
             </button>
           </div>
-        </form>
-      </div>
+        </div>
+      </form>
     </div>
   );
 };

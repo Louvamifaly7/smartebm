@@ -76,7 +76,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = () => {
 
   // Modal Detail State & Card Modal State
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [detailTab, setDetailTab] = useState<'PROFILE' | 'CONTACT' | 'GRADES' | 'FINANCES' | 'SECURITY'>('PROFILE');
+  const [detailTab, setDetailTab] = useState<'PROFILE' | 'CONTACT' | 'ACADEMIC' | 'GRADES' | 'FINANCES' | 'SECURITY'>('PROFILE');
   const [studentGradeSemester, setStudentGradeSemester] = useState<'ANNUEL' | 'S1' | 'S2'>('ANNUEL');
   const [cardModalStudent, setCardModalStudent] = useState<User | null>(null);
 
@@ -97,6 +97,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = () => {
   const [editCity, setEditCity] = useState('');
   const [editOriginSchool, setEditOriginSchool] = useState('');
   const [editBacSeries, setEditBacSeries] = useState('');
+  const [editGroupId, setEditGroupId] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhones, setEditPhones] = useState<string[]>(['']);
   const [editLinkedIn, setEditLinkedIn] = useState('');
@@ -156,6 +157,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = () => {
     setEditCity(student.city || '');
     setEditOriginSchool(student.originSchool || '');
     setEditBacSeries(student.bacSeries || '');
+    setEditGroupId(student.groupId || groups[0]?.id || '');
     setEditEmail(student.email || '');
     setEditPhones(student.phones && student.phones.length > 0 ? [...student.phones] : [student.phone || '']);
     setEditLinkedIn(student.linkedInUrl || '');
@@ -174,7 +176,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = () => {
 
   const openStudentSheet = (
     student: User,
-    initialTab: 'PROFILE' | 'CONTACT' | 'GRADES' | 'FINANCES' | 'SECURITY' = 'PROFILE'
+    initialTab: 'PROFILE' | 'CONTACT' | 'ACADEMIC' | 'GRADES' | 'FINANCES' | 'SECURITY' = 'PROFILE'
   ) => {
     setSelectedStudentId(student.id);
     setDetailTab(isFinanceRole && initialTab === 'GRADES' ? 'FINANCES' : initialTab);
@@ -272,6 +274,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = () => {
       updates.birthPlace = editBirthPlace.trim() || undefined;
       updates.originSchool = editOriginSchool.trim() || undefined;
       updates.bacSeries = editBacSeries.trim() || undefined;
+      updates.groupId = editGroupId || selectedStudentDetail.groupId;
       updates.parentContacts = editParentContacts;
     }
 
@@ -1458,7 +1461,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
               </div>
             </div>
 
-            {/* 4 Standardized Tabs Bar (Section 4 of PDF) */}
+            {/* 6 Standardized Tabs Bar (Profil, Coordonnées, Parcours académique, Scolarité & évaluations, Finances & écolages, Compte & sécurité) */}
             <div className="flex overflow-x-auto border-b border-[#DCE3EC] bg-[#F5F7FA] px-5 pt-2 text-xs font-bold gap-2">
               <button
                 type="button"
@@ -1470,7 +1473,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 }`}
               >
                 <UserIcon className="w-3.5 h-3.5" />
-                1. Identité
+                1. Profil
               </button>
               <button
                 type="button"
@@ -1482,7 +1485,19 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 }`}
               >
                 <Mail className="w-3.5 h-3.5" />
-                2. Coordonnées & Famille
+                2. Coordonnées
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailTab('ACADEMIC')}
+                className={`py-2.5 px-3.5 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                  detailTab === 'ACADEMIC'
+                    ? 'border-[#2F6FED] text-[#2F6FED] bg-white rounded-t-xl'
+                    : 'border-transparent text-slate-600 hover:text-[#16202A]'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                3. Parcours académique
               </button>
               {!isFinanceRole && (
                 <button
@@ -1495,7 +1510,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                   }`}
                 >
                   <Briefcase className="w-3.5 h-3.5" />
-                  3. Scolarité & Notes LMD
+                  4. Scolarité & évaluations
                 </button>
               )}
               <button
@@ -1508,7 +1523,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 }`}
               >
                 <CreditCard className="w-3.5 h-3.5" />
-                {isFinanceRole ? '3. Situation Financière & Impayés' : '3b. Finances & Écolages'}
+                5. Finances & écolages
               </button>
               <button
                 type="button"
@@ -1520,7 +1535,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                4. Compte & sécurité
+                6. Compte & sécurité
               </button>
             </div>
 
@@ -1539,13 +1554,13 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                 </div>
               )}
 
-              {/* ONGLET 1: IDENTITÉ (État civil, Origine scolaire, Photo — Zéro valeur fictive) */}
+              {/* ONGLET 1: PROFIL (Identité, Photo, Statut, Naissance — Zéro valeur fictive) */}
               {detailTab === 'PROFILE' && (
                 <div className="space-y-4 text-xs">
                   <div className="border-b border-slate-100 pb-2">
-                    <h4 className="font-black text-sm text-[#16202A]">État civil, identité & origine scolaire</h4>
+                    <h4 className="font-black text-sm text-[#16202A]">1. Profil : Identité, photo & statut</h4>
                     <p className="text-[11px] text-slate-500">
-                      Informations officielles de l’étudiant ({selectedStudentDetail.matricule}). Aucun champ inconnu n’est pré-rempli avec des valeurs fictives.
+                      Informations d’état civil de l’étudiant ({selectedStudentDetail.matricule}). Aucun champ inconnu n’est pré-rempli avec des valeurs fictives.
                     </p>
                   </div>
 
@@ -1614,7 +1629,7 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Date de naissance</label>
                           <input
@@ -1642,34 +1657,6 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                             className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl disabled:opacity-60"
                           />
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Établissement d’origine</label>
-                          <input
-                            type="text"
-                            value={editOriginSchool}
-                            onChange={(e) => {
-                              setEditOriginSchool(e.target.value);
-                              setIsStudentDirty(true);
-                            }}
-                            disabled={!canDirectEditIdentity}
-                            placeholder="Lycée / Université d'origine"
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl disabled:opacity-60"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Série du Baccalauréat</label>
-                          <input
-                            type="text"
-                            value={editBacSeries}
-                            onChange={(e) => {
-                              setEditBacSeries(e.target.value);
-                              setIsStudentDirty(true);
-                            }}
-                            disabled={!canDirectEditIdentity}
-                            placeholder="Ex: Série C, D, A2, OSE..."
-                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl disabled:opacity-60"
-                          />
-                        </div>
                       </div>
                     </div>
                   ) : (
@@ -1688,6 +1675,12 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                         </span>
                       </div>
                       <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl">
+                        <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Statut administratif</span>
+                        <span className={`font-bold text-sm ${selectedStudentDetail.isActive ? 'text-[#1F8A83]' : 'text-rose-600'}`}>
+                          {selectedStudentDetail.isActive ? 'Actif (Inscrit)' : 'Suspendu'}
+                        </span>
+                      </div>
+                      <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl">
                         <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Date de naissance</span>
                         {selectedStudentDetail.birthDate ? (
                           <span className="font-bold text-sm text-[#16202A]">{selectedStudentDetail.birthDate}</span>
@@ -1703,18 +1696,120 @@ EBM-2026-0303,Raharisoa,Miora,2004-11-05,miora.rah@etudiant.ebm.edu,INFO,L1,L1-I
                           <span className="italic text-slate-400">Non renseigné</span>
                         )}
                       </div>
+                      <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Carte étudiante QR</span>
+                          <span className="font-mono font-bold text-xs text-[#17345B]">
+                            {selectedStudentDetail.cardToken || 'Active'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCardModalStudent(selectedStudentDetail)}
+                          className="px-2.5 py-1.5 bg-[#17345B] hover:bg-slate-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <QrCode className="w-3 h-3" /> Afficher
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ONGLET 3: PARCOURS ACADÉMIQUE (Filière/Mention, Parcours LMD, Groupe, Série du Bac, Établissement d'origine) */}
+              {detailTab === 'ACADEMIC' && (
+                <div className="space-y-4 text-xs">
+                  <div className="border-b border-slate-100 pb-2">
+                    <h4 className="font-black text-sm text-[#16202A]">3. Parcours académique : Mention, parcours LMD, groupe & baccalauréat</h4>
+                    <p className="text-[11px] text-slate-500">
+                      Affectation pédagogique actuelle, niveau d’études, série du baccalauréat et établissement d’origine.
+                    </p>
+                  </div>
+
+                  {isEditingSheet ? (
+                    <div className="space-y-4 bg-[#F5F7FA] p-4 rounded-2xl border border-[#DCE3EC]">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Groupe / Promotion d’affectation *</label>
+                          <select
+                            value={editGroupId}
+                            onChange={(e) => {
+                              setEditGroupId(e.target.value);
+                              setIsStudentDirty(true);
+                            }}
+                            disabled={!canDirectEditIdentity}
+                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl font-semibold disabled:opacity-60"
+                          >
+                            {groups.map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.code} — {g.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Série du Baccalauréat</label>
+                          <input
+                            type="text"
+                            value={editBacSeries}
+                            onChange={(e) => {
+                              setEditBacSeries(e.target.value);
+                              setIsStudentDirty(true);
+                            }}
+                            disabled={!canDirectEditIdentity}
+                            placeholder="Ex: Série C, D, A2, OSE..."
+                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl disabled:opacity-60"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Établissement d’origine</label>
+                          <input
+                            type="text"
+                            value={editOriginSchool}
+                            onChange={(e) => {
+                              setEditOriginSchool(e.target.value);
+                              setIsStudentDirty(true);
+                            }}
+                            disabled={!canDirectEditIdentity}
+                            placeholder="Lycée / Université d'origine"
+                            className="w-full p-2.5 bg-white border border-[#DCE3EC] rounded-xl disabled:opacity-60"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl">
-                        <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Lycée / Établissement d’origine</span>
-                        {selectedStudentDetail.originSchool ? (
-                          <span className="font-bold text-sm text-[#16202A]">{selectedStudentDetail.originSchool}</span>
-                        ) : (
-                          <span className="italic text-slate-400">Non renseigné</span>
-                        )}
+                        <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Mention / Filière</span>
+                        <span className="font-bold text-sm text-[#17345B]">
+                          {studentMetrics.get(selectedStudentDetail.id)?.filiereName || 'Non renseigné'}
+                        </span>
+                      </div>
+                      <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl">
+                        <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Parcours LMD</span>
+                        <span className="font-bold text-sm text-[#16202A]">
+                          {studentMetrics.get(selectedStudentDetail.id)?.parcoursCode || 'Tronc commun'}
+                        </span>
+                      </div>
+                      <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl">
+                        <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Groupe & Année universitaire</span>
+                        <span className="font-bold text-sm text-[#2F6FED]">
+                          {studentMetrics.get(selectedStudentDetail.id)?.groupCode || 'Sans groupe'} (
+                          {studentMetrics.get(selectedStudentDetail.id)?.academicYear || selectedAcademicYear})
+                        </span>
                       </div>
                       <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl">
                         <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Série du Baccalauréat</span>
                         {selectedStudentDetail.bacSeries ? (
                           <span className="font-bold text-sm text-[#17345B]">{selectedStudentDetail.bacSeries}</span>
+                        ) : (
+                          <span className="italic text-slate-400">Non renseigné</span>
+                        )}
+                      </div>
+                      <div className="p-3.5 bg-[#F5F7FA] border border-[#DCE3EC] rounded-xl sm:col-span-2">
+                        <span className="text-[10px] font-bold uppercase text-slate-500 block mb-1">Lycée / Établissement d’origine</span>
+                        {selectedStudentDetail.originSchool ? (
+                          <span className="font-bold text-sm text-[#16202A]">{selectedStudentDetail.originSchool}</span>
                         ) : (
                           <span className="italic text-slate-400">Non renseigné</span>
                         )}

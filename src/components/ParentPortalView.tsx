@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { RBAC } from '../utils/rbacPermissions';
-import { escapeHtml, getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { escapeHtml, getAntananarivoDateStr, getAcademicWeekMondayDate } from '../utils/securityAndDateUtils';
 import {
   Users,
   GraduationCap,
@@ -533,18 +533,16 @@ export const ParentPortalView: React.FC = () => {
                   <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
                     {(() => {
                       const getChildWeekDayInfo = (dayIdx: number) => {
-                        const now = new Date();
-                        const currentDay = now.getDay();
-                        const distanceToMonday = (currentDay + 6) % 7;
-                        const monday = new Date(now);
-                        monday.setDate(now.getDate() - distanceToMonday + parentWeekOffset * 7 + dayIdx);
-                        const dateStr = getAntananarivoDateStr(monday);
+                        const baseMonday = getAcademicWeekMondayDate();
+                        const targetDay = new Date(baseMonday);
+                        targetDay.setDate(baseMonday.getDate() + parentWeekOffset * 7 + dayIdx);
+                        const dateStr = getAntananarivoDateStr(targetDay);
                         const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
                         return {
                           dayIdx,
                           name: dayNames[dayIdx],
                           dateStr,
-                          displayDate: monday.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+                          displayDate: targetDay.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
                         };
                       };
 

@@ -84,9 +84,27 @@ export default defineConfig(() => {
       }),
     ],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
       },
+    },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'lucide-react',
+        'recharts',
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        'firebase/database',
+        'firebase/storage',
+        'firebase/messaging',
+      ],
     },
     build: {
       rollupOptions: {

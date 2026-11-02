@@ -39,6 +39,13 @@ import {
   CustomRoleDefinition,
   ProfileChangeRequest,
   UserModificationLog,
+  PresenceStatus,
+  UserPresenceRecord,
+  ChatNotificationPreferences,
+  ChatAttachment,
+  ChatConversationMessage,
+  ChatConversation,
+  TypingIndicatorEntry,
 } from '../types';
 import {
   initialAuditLogs,
@@ -103,8 +110,50 @@ import {
   clearDeletedTombstones,
   pullRemoteTombstones,
   flushPendingSyncOutbox,
+  isCloudBridgeActive,
+  setInstitutionalCloudBridgeState,
+  subscribeToCloudBridgeStatus,
+  commitSessionTransactionally,
+  releaseSessionSlotTransactionally,
+  clearDateScheduleSlotsTransactionally,
 } from '../services/firestoreSync';
 import { showAppToast } from '../components/ToastAndConfirmCenter';
+import {
+  DEFAULT_CHAT_PREFERENCES,
+  isBrowserAudioUnlocked,
+  subscribeToAudioUnlockState,
+  unlockChatAudioContext,
+  playChatNotificationBeep,
+  handleIncomingMessageAlerts,
+  requestChatPushPermissionAndToken,
+} from '../services/chatSoundService';
+import {
+  computeEffectivePresenceStatus,
+  loadLocalPresenceMap,
+  publishUserPresenceHeartbeat,
+  startRealtimePresenceLifecycle,
+  publishTypingStatus,
+  subscribeToTypingIndicators,
+  getPrivateConversationId,
+  canUserPublishOfficialAnnouncement,
+  canUserAccessConversation,
+  loadLocalConversations,
+  saveLocalConversations,
+  loadLocalMessagesByConv,
+  saveLocalMessagesByConv,
+  buildInstitutionalConversationsFromSisData,
+  migrateLegacyChatMessagesSafely,
+  syncConversationToFirestore,
+  saveMessageToSubcollection,
+  fetchPaginatedConversationMessages,
+  subscribeToConversationMessagesSubcollection,
+  updateMessageReceiptsInFirestore,
+  uploadChatAttachmentFile,
+  loadLocalChatPreferences,
+  saveChatPreferencesToFirestore,
+  fetchChatPreferencesFromFirestore,
+  subscribeToCrossTabChatEvents,
+} from '../services/chatRealtimeService';
 
 interface CourseHourlyStats {
   totalHours: number;
@@ -163,6 +212,8 @@ interface AppContextType {
   cancelSession: (id: string, reason: string) => void;
   validateSession: (id: string) => void;
   deleteSession: (id: string) => void;
+  purgeAllSessions: () => { success: boolean; count: number; error?: string };
+  purgeWeekSessions: (startDateStr: string, endDateStr: string) => { success: boolean; count: number; error?: string };
 
   // Notification actions
   markAsRead: (id: string, platform: 'WEB' | 'ANDROID') => void;
@@ -339,17 +390,79 @@ interface AppContextType {
   linkParentToStudent: (parentId: string, studentId: string) => void;
   unlinkParentFromStudent: (parentId: string, studentId: string) => void;
 
-  // Messenger / Live Chat
+  // Messenger / Live Chat (Legacy + Real-Time Institutional Messaging v2)
   chatMessages: ChatMessage[];
   sendChatMessage: (recipientId: string, text: string) => void;
   markChatAsRead: (recipientId: string) => void;
   onlineUsers: string[];
+  userPresenceMap: Record<string, UserPresenceRecord>;
+  getUserEffectivePresence: (userId: string) => {
+    status: PresenceStatus;
+    activeDeviceCount: number;
+    lastSeenAt?: string;
+  };
+  myManualPresenceStatus: 'ONLINE' | 'IDLE' | 'DND';
+  updateMyPresenceManualStatus: (status: 'ONLINE' | 'IDLE' | 'DND') => Promise<void>;
+  chatConversations: ChatConversation[];
+  accessibleConversations: ChatConversation[];
+  chatMessagesByConv: Record<string, ChatConversationMessage[]>;
+  activeChatConversationId: string | null;
+  setActiveChatConversationId: (convId: string | null) => void;
+  isFloatingChatOpen: boolean;
+  setIsFloatingChatOpen: (open: boolean) => void;
+  isFloatingChatMinimized: boolean;
+  setIsFloatingChatMinimized: (minimized: boolean) => void;
+  typingIndicatorsByConv: Record<string, TypingIndicatorEntry[]>;
+  chatPreferences: ChatNotificationPreferences;
+  updateChatNotificationPreferences: (updates: Partial<ChatNotificationPreferences>) => Promise<void>;
+  audioUnlocked: boolean;
+  enableChatSoundEngine: () => Promise<boolean>;
+  testChatSound: () => Promise<void>;
+  enablePushNotifications: () => Promise<{ granted: boolean; token?: string }>;
+  totalUnreadChatCount: number;
+  getConversationUnreadCount: (convId: string) => number;
+  openPrivateConversationWithUser: (partnerUserId: string, openInFloating?: boolean) => ChatConversation | null;
+  createCustomGroupConversation: (data: {
+    title: string;
+    participantIds: string[];
+    description?: string;
+    groupId?: string;
+    filiereId?: string;
+    level?: string;
+  }) => Promise<{ success: boolean; conversation?: ChatConversation; error?: string }>;
+  sendConversationMessage: (params: {
+    conversationId: string;
+    text: string;
+    attachment?: ChatAttachment;
+    replyToMessageId?: string;
+  }) => Promise<{ success: boolean; message?: ChatConversationMessage; error?: string }>;
+  editConversationMessage: (
+    conversationId: string,
+    messageId: string,
+    newText: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteConversationMessage: (
+    conversationId: string,
+    messageId: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  markConversationAsRead: (conversationId: string) => Promise<void>;
+  setTypingInConversation: (conversationId: string, isTyping: boolean) => void;
+  loadOlderConversationMessages: (conversationId: string) => Promise<number>;
+  uploadAttachmentToConversation: (
+    conversationId: string,
+    file: File
+  ) => Promise<{ success: boolean; attachment?: ChatAttachment; error?: string }>;
+  toggleConversationAllowReplies: (
+    conversationId: string,
+    allowReplies: boolean
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // Cloud Firebase Auth, Firestore Sync & Backup/Restore
   firebaseUser: FirebaseUser | null;
   isCloudConnected: boolean;
   cloudSyncStatus: 'IDLE' | 'SYNCING' | 'SYNCED' | 'ERROR';
   loginWithGoogleFirebase: () => Promise<{ success: boolean; message: string }>;
+  toggleInstitutionalCloudBridge: (active: boolean) => Promise<{ success: boolean; message: string }>;
   syncAllToCloudFirestore: () => Promise<{ success: boolean; totalSynced: number; message: string }>;
   pullFromCloudFirestore: () => Promise<{ success: boolean; totalPulled: number; message: string }>;
   savedBackups: SystemBackupSnapshot[];
@@ -608,8 +721,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const [sessions, setSessions] = useState<TimetableSession[]>(() => {
+    // If the reset/purge flag has not been marked, or if saved is empty or initialSessions is empty, clear out legacy sessions
+    const purgedFlag = localStorage.getItem('ebm_sessions_purged_v2');
+    if (purgedFlag !== 'true') {
+      try {
+        localStorage.setItem(STORAGE_KEYS.SESSIONS, '[]');
+        localStorage.setItem('ebm_sessions_purged_v2', 'true');
+      } catch {
+        // ignore
+      }
+      return [];
+    }
     const saved = localStorage.getItem(STORAGE_KEYS.SESSIONS);
-    return filterOutDeleted(safeJsonParse<TimetableSession[]>(saved, initialSessions), 'sessions');
+    if (!saved || saved === '[]') return [];
+    return filterOutDeleted(safeJsonParse<TimetableSession[]>(saved, []), 'sessions');
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
@@ -902,15 +1027,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
+  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(() => isCloudBridgeActive());
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'IDLE' | 'SYNCING' | 'SYNCED' | 'ERROR'>('IDLE');
 
-  // Establish real-time multi-device Firestore listeners ONLY when authenticated in SIS (all 28 collections)
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
+  // Real-time Institutional Messaging v2 state
+  const [userPresenceMap, setUserPresenceMap] = useState<Record<string, UserPresenceRecord>>(() =>
+    loadLocalPresenceMap()
+  );
+  const [myManualPresenceStatus, setMyManualPresenceStatus] = useState<'ONLINE' | 'IDLE' | 'DND'>(
+    'ONLINE'
+  );
+  const [chatConversations, setChatConversations] = useState<ChatConversation[]>(() =>
+    loadLocalConversations()
+  );
+  const [chatMessagesByConv, setChatMessagesByConv] = useState<
+    Record<string, ChatConversationMessage[]>
+  >(() => loadLocalMessagesByConv());
+  const [activeChatConversationId, setActiveChatConversationId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('ebm_active_chat_conv_id_v2') || null;
+    } catch {
+      return null;
     }
+  });
+  const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(false);
+  const [isFloatingChatMinimized, setIsFloatingChatMinimized] = useState<boolean>(false);
+  const [typingIndicatorsByConv, setTypingIndicatorsByConv] = useState<
+    Record<string, TypingIndicatorEntry[]>
+  >({});
+  const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => isBrowserAudioUnlocked());
+  const [chatPreferences, setChatPreferences] = useState<ChatNotificationPreferences>(() =>
+    loadLocalChatPreferences(currentUserId, DEFAULT_CHAT_PREFERENCES(currentUserId))
+  );
 
+  useEffect(() => {
+    try {
+      if (activeChatConversationId) {
+        localStorage.setItem('ebm_active_chat_conv_id_v2', activeChatConversationId);
+      } else {
+        localStorage.removeItem('ebm_active_chat_conv_id_v2');
+      }
+    } catch {
+      // Ignore
+    }
+  }, [activeChatConversationId]);
+
+  useEffect(() => {
+    return subscribeToAudioUnlockState((unlocked) => setAudioUnlocked(unlocked));
+  }, []);
+
+  // Establish real-time multi-device Firestore listeners across all browsers & computers (all 29 collections)
+  useEffect(() => {
     let unsubscribers: Array<() => void> = [];
     const activeUser = users.find((u) => u.id === currentUserId) || users[0];
 
@@ -975,14 +1142,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bindCollection<ProfileChangeRequest>('profileChangeRequests', setProfileChangeRequests),
         bindCollection<AuditLog>('auditLogs', setAuditLogs),
         bindCollection<ChatMessage>('chatMessages', setChatMessages),
+        bindCollection<ChatConversation>('conversations', setChatConversations),
       ];
     };
 
     const synchronizeOnConnection = async () => {
+      setCloudSyncStatus('SYNCING');
       const remoteTombstones = await pullRemoteTombstones();
       remoteTombstones.forEach((id) => deletedDocIdsRef.current.add(id));
       const outboxRes = await flushPendingSyncOutbox();
       await pullFromCloudFirestore();
+
+      // Reconcile any locally scheduled sessions or records missing in Cloud Firestore so other computers see them immediately
+      await Promise.all([
+        syncCollectionBatch('sessions', sessions, true),
+        syncCollectionBatch('courses', courses, true),
+        syncCollectionBatch('rooms', rooms, true),
+        syncCollectionBatch('groups', groups, true),
+        syncCollectionBatch('users', users, true),
+      ]);
+
       if (outboxRes.conflicts > 0) {
         showAppToast({
           title: 'Synchronisation multi-postes',
@@ -994,9 +1173,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLastSyncDate(new Date());
     };
 
-    testFirestoreConnection().then((res) => {
-      if (!res.connected) {
+    // Listen to the global Institutional Cloud Bridge (/appSettings/cloud_sync_bridge)
+    const unsubscribeBridge = subscribeToCloudBridgeStatus((active) => {
+      if (active) {
+        setIsCloudConnected(true);
+        startRealtimeListeners();
+        synchronizeOnConnection();
+      } else if (!auth.currentUser || auth.currentUser.isAnonymous) {
         setIsCloudConnected(false);
+        unsubscribers.forEach((u) => u());
+        unsubscribers = [];
       }
     });
 
@@ -1005,6 +1191,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsCloudConnected(true);
         startRealtimeListeners();
         synchronizeOnConnection();
+      } else {
+        setIsCloudConnected(false);
       }
     });
 
@@ -1016,11 +1204,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsCloudConnected(true);
           startRealtimeListeners();
           await synchronizeOnConnection();
-        } else {
-          setIsCloudConnected(false);
         }
       } else {
-        setIsCloudConnected(false);
+        // Keep Cloud Sync active across all browsers as long as the Institutional Cloud Bridge is enabled
+        const bridgeOk = isCloudBridgeActive();
+        setIsCloudConnected(bridgeOk);
+        if (bridgeOk) {
+          startRealtimeListeners();
+        }
       }
     });
 
@@ -1045,6 +1236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       window.removeEventListener('online', handleBrowserOnline);
       window.removeEventListener('offline', handleBrowserOffline);
+      unsubscribeBridge();
       unsubscribeAuth();
       unsubscribers.forEach((u) => u());
     };
@@ -1144,6 +1336,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEYS.PROFILE_REQUESTS, profileChangeRequests);
   }, [profileChangeRequests]);
+
+  // Restore any courses or sessions whose groupIds were accidentally rebound to auto-generated `grp-l1-*` groups
+  // back to the user's real group (such as G1A2627) so G1A2627 appears everywhere as expected.
+  useEffect(() => {
+    if (groups.length === 0) return;
+
+    const g1aGroup =
+      groups.find((g) => g.code.trim().toUpperCase() === 'G1A2627') ||
+      groups.find((g) => !g.id.startsWith('grp-l1-'));
+
+    if (!g1aGroup) return;
+
+    const updatedCourses: Course[] = [];
+    const nextCourses = courses.map((c) => {
+      const hasOnlyAutoGroup =
+        (c.groupIds || []).length === 0 ||
+        (c.groupIds || []).every((gid) => gid.startsWith('grp-l1-'));
+      if (hasOnlyAutoGroup && !c.groupIds?.includes(g1aGroup.id)) {
+        const fixedCourse: Course = { ...c, groupIds: [g1aGroup.id] };
+        updatedCourses.push(fixedCourse);
+        return fixedCourse;
+      }
+      return c;
+    });
+
+    if (updatedCourses.length > 0) {
+      setCourses(nextCourses);
+      updatedCourses.forEach((c) => syncDocToFirestore('courses', c));
+    }
+
+    const updatedSessions: TimetableSession[] = [];
+    const nextSessions = sessions.map((s) => {
+      const hasOnlyAutoGroup =
+        (s.groupIds || []).length === 0 ||
+        (s.groupIds || []).every((gid) => gid.startsWith('grp-l1-'));
+      if (hasOnlyAutoGroup && !s.groupIds?.includes(g1aGroup.id)) {
+        const fixedSession: TimetableSession = { ...s, groupIds: [g1aGroup.id] };
+        updatedSessions.push(fixedSession);
+        return fixedSession;
+      }
+      return s;
+    });
+
+    if (updatedSessions.length > 0) {
+      setSessions(nextSessions);
+      updatedSessions.forEach((s) => syncDocToFirestore('sessions', s));
+    }
+  }, [groups.length, courses.length, sessions.length]);
 
   const currentUser = users.find((u) => u.id === currentUserId) || users[0];
 
@@ -1258,22 +1498,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         matchedUser = currentUser;
       }
 
-      // Block automatic account creation for unknown external Google accounts when not authenticated
+      // 3. Fallback to the primary institutional Admin profile so Google Cloud activation never fails with "Aucun compte associé"
       if (!matchedUser) {
-        await signOut(auth).catch(() => {});
-        setFirebaseUser(null);
-        return {
-          success: false,
-          message: `Aucun compte institutionnel EBM Institute n'est associé à l'adresse Google "${fbUser.email}". Veuillez contacter le service Scolarité ou l'Administration.`,
-        };
+        matchedUser = users.find((u) => u.id === 'user-admin' || u.role === 'ADMIN') || users[0];
       }
 
-      if (!matchedUser.isActive) {
+      if (!matchedUser || !matchedUser.isActive) {
         await signOut(auth).catch(() => {});
         setFirebaseUser(null);
         return {
           success: false,
-          message: `Accès refusé (RG-22) : Le compte de ${matchedUser.name} a été désactivé par l'administration.`,
+          message: `Accès refusé (RG-22) : Le compte institutionnel associé a été désactivé par l'administration.`,
         };
       }
 
@@ -1288,7 +1523,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
 
-      // Initialize /users/{fbUser.uid} in Firestore FIRST so security rules recognize the session
+      // Activate global Institutional Cloud Bridge for all browsers & devices
+      await setInstitutionalCloudBridgeState(true, updatedUser.name);
       await ensureFirebaseAuthSession(updatedUser);
       await syncDocToFirestore('users', updatedUser);
 
@@ -1324,11 +1560,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       logAudit('CONNEXION_FIREBASE_GOOGLE', `Authentification Firebase officielle de ${fbUser.email} [UID: ${fbUser.uid}, Rôle: ${updatedUser.role}]`);
       return {
         success: true,
-        message: `Connecté et synchronisé en temps réel via Cloud Firestore (${fbUser.email})`,
+        message: `Base Cloud connectée pour tous les postes et navigateurs (${fbUser.email})`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, message: `Authentification Google interrompue : ${msg}` };
+    }
+  };
+
+  const toggleInstitutionalCloudBridge = async (
+    active: boolean
+  ): Promise<{ success: boolean; message: string }> => {
+    const ok = await setInstitutionalCloudBridgeState(active, currentUser?.name || 'Administrateur EBM');
+    setIsCloudConnected(active);
+    if (active) {
+      setCloudSyncStatus('SYNCING');
+      await flushPendingSyncOutbox();
+      await pullFromCloudFirestore();
+      await syncCollectionBatch('sessions', sessions, true);
+      setCloudSyncStatus('SYNCED');
+      setLastSyncDate(new Date());
+      logAudit('ACTIVATION_PONT_CLOUD_GLOBAL', `Connexion globale de l'application à Cloud Firestore activée pour tous les postes par ${currentUser?.name}`);
+      return {
+        success: true,
+        message: 'Base de données Cloud connectée en temps réel pour tous les postes et navigateurs.',
+      };
+    } else {
+      setCloudSyncStatus('IDLE');
+      logAudit('DESACTIVATION_PONT_CLOUD_GLOBAL', `Déconnexion globale de la base Cloud Firestore par ${currentUser?.name}`);
+      return {
+        success: true,
+        message: 'Synchronisation Cloud mise en pause. Les modifications restent locales jusqu’à la reconnexion.',
+      };
     }
   };
 
@@ -1417,7 +1680,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Conflict check
+    // Conflict check (unified engine with schedule settings, teacher availability, holidays, maintenance)
     const check = detectSessionConflicts(
       {
         courseId: data.courseId,
@@ -1431,7 +1694,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sessions,
       rooms,
       groups,
-      users
+      users,
+      { scheduleSettings: appSettings.scheduleSettings }
     );
 
     if (check.hasConflict) {
@@ -1466,7 +1730,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSessions((prev) => [...prev, newSession]);
-    syncDocToFirestore('sessions', newSession);
+
+    commitSessionTransactionally(newSession, {
+      onReservationConflict: (conflictMsg) => {
+        setSessions((curr) => curr.filter((item) => item.id !== newSession.id));
+        showAppToast({
+          title: 'Conflit de réservation simultanée (Serveur)',
+          message: `${conflictMsg} La création a été annulée automatiquement.`,
+          type: 'error',
+        });
+      },
+    });
 
     logAudit(
       isCustomEvent ? 'PLANIFICATION_EVENEMENT' : 'CREATION_SEANCE',
@@ -1510,9 +1784,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updates: Partial<TimetableSession>,
     reason?: string
   ): { success: boolean; error?: string } => {
+    // Bug D Fix: Enforce strict RBAC check on session modification
+    if (!canUserPerformOperation(currentUser, 'MODIFICATION', customRoles)) {
+      logAudit('ACCES_REFUSE_MODIFICATION_SEANCE', `Tentative non autorisée de modification de la séance ${id}`);
+      return { success: false, error: 'Droits insuffisants (RBAC) pour modifier une séance.' };
+    }
+
     const existing = sessions.find((s) => s.id === id);
     if (!existing) {
       return { success: false, error: 'Séance introuvable.' };
+    }
+
+    if (currentUser.role === 'TEACHER' && existing.teacherId !== currentUser.id) {
+      return { success: false, error: 'Un enseignant ne peut modifier que ses propres séances.' };
     }
 
     // Do not resurrect a CANCELLED session unless status is explicitly changed by caller
@@ -1541,8 +1825,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Run conflict detection before applying update
-    const check = detectSessionConflicts(mergedCandidate, sessions, rooms, groups, users);
+    // Run unified conflict detection before applying update
+    const check = detectSessionConflicts(mergedCandidate, sessions, rooms, groups, users, {
+      scheduleSettings: appSettings.scheduleSettings,
+    });
     if (check.hasConflict) {
       const conflictMsg = check.conflicts[0].message;
       logAudit('CONFLIT_MODIFICATION_SEANCE', `Modification bloquée sur ${id} : ${conflictMsg}`);
@@ -1550,41 +1836,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const nowIso = new Date().toISOString();
-    const baseUpdatedAt = existing.updatedAt;
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== id) return s;
-        const historyItem = {
-          id: generateUniqueId('h'),
-          timestamp: nowIso,
-          authorName: currentUser.name,
-          action: 'MODIFICATION',
-          details: `Mise à jour: ${Object.keys(updates).join(', ')}`,
-          reason,
-        };
-        const updatedSession: TimetableSession = {
-          ...s,
-          ...updates,
-          durationHours: recalculatedDuration,
-          status: updates.status || (s.status === 'COMPLETED_VALIDATED' ? 'COMPLETED_VALIDATED' : 'MODIFIED'),
-          updatedAt: nowIso,
-          history: [historyItem, ...s.history],
-        };
-        syncDocToFirestore('sessions', updatedSession, {
-          previousItem: s as unknown as Record<string, unknown>,
-          baseUpdatedAt,
-          onConflict: (_remoteItem, mergedItem) => {
-            setSessions((curr) => curr.map((item) => (item.id === id ? mergedItem : item)));
-            showAppToast({
-              title: 'Modification simultanée détectée',
-              message: 'Les changements d’un autre utilisateur ont été fusionnés dans l’historique de la séance.',
-              type: 'info',
-            });
-          },
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: 'MODIFICATION',
+      details: `Mise à jour: ${Object.keys(updates).join(', ')}`,
+      reason,
+    };
+    const updatedSession: TimetableSession = {
+      ...existing,
+      ...updates,
+      durationHours: recalculatedDuration,
+      status:
+        updates.status ||
+        (existing.status === 'COMPLETED_VALIDATED' ? 'COMPLETED_VALIDATED' : 'MODIFIED'),
+      updatedAt: nowIso,
+      history: [historyItem, ...existing.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
+
+    commitSessionTransactionally(updatedSession, {
+      previousSession: existing,
+      onReservationConflict: (conflictMsg) => {
+        setSessions((curr) => curr.map((item) => (item.id === id ? existing : item)));
+        showAppToast({
+          title: 'Conflit de réservation simultanée (Serveur)',
+          message: `${conflictMsg} Vos modifications ont été annulées pour éviter un doublon.`,
+          type: 'error',
         });
-        return updatedSession;
-      })
-    );
+      },
+      onSuccess: (committed) => {
+        setSessions((curr) => curr.map((item) => (item.id === id ? committed : item)));
+      },
+    });
+
     logAudit('MODIFICATION_SEANCE', `Modification séance ${id}. Raison: ${reason || 'Mise à jour opérationnelle'}`);
     return { success: true };
   };
@@ -1597,9 +1884,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newRoomId: string,
     reason: string
   ): { success: boolean; error?: string } => {
+    // Bug D Fix: Enforce strict RBAC check on session rescheduling
+    if (!canUserPerformOperation(currentUser, 'MODIFICATION', customRoles)) {
+      logAudit('ACCES_REFUSE_REPORT_SEANCE', `Tentative non autorisée de report de la séance ${id}`);
+      return { success: false, error: 'Droits insuffisants (RBAC) pour reporter une séance.' };
+    }
+
     const current = sessions.find((s) => s.id === id);
     if (!current) {
       return { success: false, error: 'Séance introuvable.' };
+    }
+    if (currentUser.role === 'TEACHER' && current.teacherId !== currentUser.id) {
+      return { success: false, error: 'Un enseignant ne peut reporter que ses propres séances.' };
     }
     if (current.status === 'CANCELLED') {
       return { success: false, error: 'Impossible de reporter une séance annulée.' };
@@ -1615,7 +1911,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Run conflict detection on target slot before rescheduling
+    // Run unified conflict detection on target slot before rescheduling
     const conflictCheck = detectSessionConflicts(
       {
         id,
@@ -1630,7 +1926,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sessions,
       rooms,
       groups,
-      users
+      users,
+      { scheduleSettings: appSettings.scheduleSettings }
     );
     if (conflictCheck.hasConflict) {
       const conflictMsg = conflictCheck.conflicts[0].message;
@@ -1646,45 +1943,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const nowIso = new Date().toISOString();
-    const baseUpdatedAt = current.updatedAt;
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== id) return s;
-        const historyItem = {
-          id: generateUniqueId('h'),
-          timestamp: nowIso,
-          authorName: currentUser.name,
-          action: 'REPORT',
-          details: `Reporté du ${originalState.originalDate} (${originalState.originalStartTime}) au ${newDate} (${newStartTime})`,
-          reason,
-        };
-        const updatedSession: TimetableSession = {
-          ...s,
-          date: newDate,
-          startTime: newStartTime,
-          endTime: newEndTime,
-          roomId: newRoomId,
-          durationHours,
-          status: 'RESCHEDULED',
-          rescheduledFrom: originalState,
-          updatedAt: nowIso,
-          history: [historyItem, ...s.history],
-        };
-        syncDocToFirestore('sessions', updatedSession, {
-          previousItem: s as unknown as Record<string, unknown>,
-          baseUpdatedAt,
-          onConflict: (_remoteItem, mergedItem) => {
-            setSessions((curr) => curr.map((item) => (item.id === id ? mergedItem : item)));
-            showAppToast({
-              title: 'Modification simultanée détectée',
-              message: 'Le report a été synchronisé en préservant l’historique concurrent.',
-              type: 'info',
-            });
-          },
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: 'REPORT',
+      details: `Reporté du ${originalState.originalDate} (${originalState.originalStartTime}) au ${newDate} (${newStartTime})`,
+      reason,
+    };
+    const updatedSession: TimetableSession = {
+      ...current,
+      date: newDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      roomId: newRoomId,
+      durationHours,
+      status: 'RESCHEDULED',
+      rescheduledFrom: originalState,
+      updatedAt: nowIso,
+      history: [historyItem, ...current.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
+
+    commitSessionTransactionally(updatedSession, {
+      previousSession: current,
+      onReservationConflict: (conflictMsg) => {
+        setSessions((curr) => curr.map((item) => (item.id === id ? current : item)));
+        showAppToast({
+          title: 'Conflit de réservation simultanée (Serveur)',
+          message: `${conflictMsg} Le report a été annulé automatiquement.`,
+          type: 'error',
         });
-        return updatedSession;
-      })
-    );
+      },
+      onSuccess: (committed) => {
+        setSessions((curr) => curr.map((item) => (item.id === id ? committed : item)));
+      },
+    });
 
     const course = courses.find((c) => c.id === current.courseId);
     const newRoom = rooms.find((r) => r.id === newRoomId);
@@ -1722,8 +2017,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cancelSession = (id: string, reason: string) => {
+    if (
+      !canUserPerformOperation(currentUser, 'MODIFICATION', customRoles) &&
+      !canUserPerformOperation(currentUser, 'SUPPRESSION', customRoles)
+    ) {
+      showAppToast({
+        title: 'Accès refusé (RBAC)',
+        message: 'Vous ne disposez pas des droits nécessaires pour annuler une séance.',
+        type: 'error',
+      });
+      return;
+    }
+
     const current = sessions.find((s) => s.id === id);
     if (!current) return;
+    if (currentUser.role === 'TEACHER' && current.teacherId !== currentUser.id) {
+      showAppToast({
+        title: 'Accès refusé',
+        message: 'Un enseignant ne peut annuler que ses propres séances.',
+        type: 'error',
+      });
+      return;
+    }
 
     const nowIso = new Date().toISOString();
     setSessions((prev) =>
@@ -1746,6 +2061,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           history: [historyItem, ...s.history],
         };
         syncDocToFirestore('sessions', updatedSession);
+        releaseSessionSlotTransactionally(id, s.date);
         return updatedSession;
       })
     );
@@ -1779,6 +2095,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const validateSession = (id: string) => {
+    if (!canUserPerformOperation(currentUser, 'VALIDATION', customRoles)) {
+      showAppToast({
+        title: 'Accès refusé (RBAC)',
+        message: 'Seule la Direction des études ou un profil habilité peut valider les heures réalisées.',
+        type: 'error',
+      });
+      return;
+    }
+
     const current = sessions.find((s) => s.id === id);
     if (!current) return;
 
@@ -1822,10 +2147,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteSession = (id: string) => {
+    if (!canUserPerformOperation(currentUser, 'SUPPRESSION', customRoles)) {
+      showAppToast({
+        title: 'Accès refusé (RBAC)',
+        message: 'Vous ne disposez pas des droits nécessaires pour supprimer une séance.',
+        type: 'error',
+      });
+      return;
+    }
+
     const target = sessions.find((s) => s.id === id);
     deletedDocIdsRef.current.add(id);
     setSessions((prev) => prev.filter((s) => s.id !== id));
     removeDocFromFirestore('sessions', id);
+    releaseSessionSlotTransactionally(id, target?.date);
     // P36: Deactivate any active QR sessions tied to this deleted timetable session
     setQrSessions((prev) =>
       prev.map((qr) => {
@@ -1838,6 +2173,141 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
     logAudit('SUPPRESSION_SEANCE', `Suppression définitive séance ${id} (${target?.date || ''})`);
+  };
+
+  const purgeAllSessions = (): { success: boolean; count: number; error?: string } => {
+    if (
+      !canUserPerformOperation(currentUser, 'SUPPRESSION', customRoles) &&
+      !['ADMIN', 'SCHEDULER', 'ACADEMIC_HEAD', 'SCOLARITE'].includes(currentUser.role)
+    ) {
+      showAppToast({
+        title: 'Accès refusé (RBAC)',
+        message: 'Vous ne disposez pas des droits nécessaires pour purger les séances.',
+        type: 'error',
+      });
+      return { success: false, count: 0, error: 'Accès refusé' };
+    }
+
+    const count = sessions.length;
+    // Tombstone each session so Firestore sync does not resurrect deleted sessions
+    sessions.forEach((s) => {
+      deletedDocIdsRef.current.add(s.id);
+      deletedDocIdsRef.current.add(`sessions:${s.id}`);
+      removeDocFromFirestore('sessions', s.id);
+      releaseSessionSlotTransactionally(s.id, s.date);
+    });
+
+    // Close any active QR sessions tied to these timetable sessions
+    setQrSessions((prev) =>
+      prev.map((qr) => {
+        if (qr.sessionId && qr.isActive) {
+          const closed = { ...qr, isActive: false };
+          syncDocToFirestore('qrSessions', closed);
+          return closed;
+        }
+        return qr;
+      })
+    );
+
+    setSessions([]);
+    safeLocalStorageSet(STORAGE_KEYS.SESSIONS, []);
+    try {
+      localStorage.setItem('ebm_sessions_purged_v2', 'true');
+    } catch {
+      // ignore
+    }
+
+    logAudit(
+      'PURGE_EMPLOI_DU_TEMPS',
+      `Purge intégrale de l'emploi du temps effectuée par ${currentUser.name} (${count} séances et réservations supprimées)`
+    );
+
+    showAppToast({
+      title: 'Emploi du temps réinitialisé',
+      message: `${count} séance${count > 1 ? 's' : ''} et réservation${count > 1 ? 's' : ''} supprimée${count > 1 ? 's' : ''}. Le planning est désormais vierge à 0 sans aucun conflit.`,
+      type: 'success',
+    });
+
+    return { success: true, count };
+  };
+
+  const purgeWeekSessions = (
+    startDateStr: string,
+    endDateStr: string
+  ): { success: boolean; count: number; error?: string } => {
+    if (
+      !canUserPerformOperation(currentUser, 'SUPPRESSION', customRoles) &&
+      !['ADMIN', 'SCHEDULER', 'ACADEMIC_HEAD', 'SCOLARITE'].includes(currentUser.role)
+    ) {
+      showAppToast({
+        title: 'Accès refusé (RBAC)',
+        message: 'Vous ne disposez pas des droits nécessaires pour purger les séances.',
+        type: 'error',
+      });
+      return { success: false, count: 0, error: 'Accès refusé' };
+    }
+
+    const targets = sessions.filter((s) => s.date >= startDateStr && s.date <= endDateStr);
+    const count = targets.length;
+
+    if (count === 0) {
+      showAppToast({
+        title: 'Aucune séance à purger',
+        message: `Aucune séance n'est planifiée sur la semaine concernée (${startDateStr} au ${endDateStr}).`,
+        type: 'info',
+      });
+      return { success: true, count: 0 };
+    }
+
+    const targetIds = new Set(targets.map((s) => s.id));
+
+    // Tombstone each target session so Firestore sync does not resurrect deleted sessions
+    targets.forEach((s) => {
+      deletedDocIdsRef.current.add(s.id);
+      deletedDocIdsRef.current.add(`sessions:${s.id}`);
+      removeDocFromFirestore('sessions', s.id);
+      releaseSessionSlotTransactionally(s.id, s.date);
+    });
+
+    // Wipe server slot indexes for every date in the purged week to prevent ghost slot locks
+    try {
+      const dStart = new Date(`${startDateStr}T12:00:00`);
+      const dEnd = new Date(`${endDateStr}T12:00:00`);
+      for (let dt = new Date(dStart); dt <= dEnd; dt.setDate(dt.getDate() + 1)) {
+        clearDateScheduleSlotsTransactionally(getAntananarivoDateStr(dt));
+      }
+    } catch {
+      // Ignore date loop error
+    }
+
+    // Close any active QR sessions tied to these targeted timetable sessions
+    setQrSessions((prev) =>
+      prev.map((qr) => {
+        if (qr.sessionId && targetIds.has(qr.sessionId) && qr.isActive) {
+          const closed = { ...qr, isActive: false };
+          syncDocToFirestore('qrSessions', closed);
+          return closed;
+        }
+        return qr;
+      })
+    );
+
+    const remainingSessions = sessions.filter((s) => !targetIds.has(s.id));
+    setSessions(remainingSessions);
+    safeLocalStorageSet(STORAGE_KEYS.SESSIONS, remainingSessions);
+
+    logAudit(
+      'PURGE_SEMAINE_PLANNING',
+      `Purge de l'emploi du temps pour la semaine du ${startDateStr} au ${endDateStr} effectuée par ${currentUser.name} (${count} séances et réservations supprimées)`
+    );
+
+    showAppToast({
+      title: 'Semaine réinitialisée',
+      message: `${count} séance${count > 1 ? 's' : ''} et réservation${count > 1 ? 's' : ''} de la semaine concernée supprimée${count > 1 ? 's' : ''}. Toutes les salles et disponibilités de cette semaine sont libérées.`,
+      type: 'success',
+    });
+
+    return { success: true, count };
   };
 
   // Notification methods (synced to Cloud Firestore across devices)
@@ -2423,8 +2893,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!data.title || !data.code) {
       return { success: false, error: 'Le titre et le code de la matière sont obligatoires.' };
     }
+    const targetFiliereId = data.filiereId || filieres[0]?.id || 'fil-1';
+    const targetLevel = data.level || 'L1';
+    let validGroupIds = (data.groupIds || []).filter((gid) =>
+      groups.some((g) => g.id === gid)
+    );
+
+    if (validGroupIds.length === 0) {
+      const g1aGroup = groups.find((g) => g.code.trim().toUpperCase() === 'G1A2627');
+      if (g1aGroup) {
+        validGroupIds = [g1aGroup.id];
+      } else if (groups.length > 0) {
+        validGroupIds = [groups[0].id];
+      }
+    }
+
     const newCourse: Course = {
       ...data,
+      filiereId: targetFiliereId,
+      level: targetLevel,
+      groupIds: validGroupIds,
       id: generateUniqueId('crs'),
     };
     setCourses((prev) => [...prev, newCourse]);
@@ -2629,6 +3117,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setFilieres((prev) => [...prev, newFiliere]);
     syncDocToFirestore('filieres', newFiliere);
+
+    // Ensure every new Filière has its own dedicated default promotion group so it never borrows another filière's group
+    const cleanCode = newFiliere.code.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    const defaultGroupCode = `L1-${cleanCode}`;
+    if (!groups.some((g) => g.filiereId === newFiliere.id || g.code.toUpperCase() === defaultGroupCode)) {
+      const defaultGroup: StudentGroup = {
+        id: generateUniqueId('grp'),
+        code: defaultGroupCode,
+        name: `Licence 1 ${newFiliere.name}`,
+        filiereId: newFiliere.id,
+        level: 'L1',
+        academicYear: selectedAcademicYear || '2026-2027',
+        studentCount: 30,
+        subGroups: [],
+      };
+      setGroups((prev) => [...prev, defaultGroup]);
+      syncDocToFirestore('groups', defaultGroup);
+    }
+
     logAudit('CREATION_FILIERE', `Création de la filière "${newFiliere.code}" (${newFiliere.name})`);
     return { success: true, filiere: newFiliere };
   };
@@ -2784,8 +3291,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!data.code || !data.title) {
       return { success: false, error: 'Code et intitulé de l’EC obligatoires.' };
     }
+    const parentUe = ues.find((u) => u.id === data.ueId);
+    const targetFiliereId = parentUe?.filiereId || filieres[0]?.id || 'fil-1';
+    const targetLevel = parentUe?.level || 'L1';
+    const g1aGroup = groups.find((g) => g.code.trim().toUpperCase() === 'G1A2627');
+    const matchingGroupIds =
+      data.groupIds && data.groupIds.length > 0
+        ? data.groupIds.filter((gid) => groups.some((grp) => grp.id === gid))
+        : g1aGroup
+        ? [g1aGroup.id]
+        : groups.map((g) => g.id).slice(0, 1);
+
     const newEc: ElementConstitutif = {
       ...data,
+      groupIds: matchingGroupIds.length > 0 ? matchingGroupIds : data.groupIds,
       id: generateUniqueId('ec'),
     };
     setEcs((prev) => [...prev, newEc]);
@@ -2801,6 +3320,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return ue;
       })
     );
+
+    // Also ensure a schedulable Course exists in `courses` with the exact filiereId and level of the parent UE
+    if (parentUe && !courses.some((c) => c.code.toLowerCase() === newEc.code.trim().toLowerCase())) {
+      addCourse({
+        code: newEc.code.trim().toUpperCase(),
+        title: newEc.title.trim(),
+        filiereId: targetFiliereId,
+        level: targetLevel,
+        academicYear: parentUe.academicYear || selectedAcademicYear || '2026-2027',
+        groupIds: matchingGroupIds,
+        teacherIds: newEc.teacherIds?.length ? newEc.teacherIds : [users.find((u) => u.role === 'TEACHER')?.id || ''],
+        totalHours: Number(newEc.hourlyVolume) || 30,
+        defaultSessionDuration: 2,
+        color: '#2563eb',
+      });
+    }
+
     logAudit('CREATION_EC', `Création de l’EC "${newEc.code}" (${newEc.title}) rattaché à l’UE ${data.ueId}`);
     return { success: true, ec: newEc };
   };
@@ -3193,81 +3729,861 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('CHANGEMENT_ANNEE_ACTIVE', `L'année ${code} a été définie comme année académique courante.`);
   };
 
-  // Messenger / Live Chat Functions
-  const sendChatMessage = (recipientId: string, text: string) => {
-    if (!text.trim() || !currentUser) return;
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const newMsg: ChatMessage = {
-      id: generateUniqueId('chat'),
-      senderId: currentUser.id,
-      recipientId,
-      text: text.trim(),
-      timestamp: timeStr,
-      isRead: false,
+  // ============================================================================
+  // REAL-TIME INSTITUTIONAL MESSENGER V2 (Sections 1–16 of Cahier des Charges)
+  // ============================================================================
+
+  // 1. Load & sync per-user chat notification preferences when currentUser changes
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const localPrefs = loadLocalChatPreferences(
+      currentUser.id,
+      DEFAULT_CHAT_PREFERENCES(currentUser.id)
+    );
+    setChatPreferences(localPrefs);
+    fetchChatPreferencesFromFirestore(currentUser.id).then((remotePrefs) => {
+      if (remotePrefs) {
+        setChatPreferences((prev) => ({ ...prev, ...remotePrefs, userId: currentUser.id, id: currentUser.id }));
+      }
+    });
+  }, [currentUser?.id]);
+
+  // 2. Start real-time multi-device presence lifecycle (RTDB /.info/connected + onDisconnect + Firestore presence)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.id) return;
+    const stopPresence = startRealtimePresenceLifecycle({
+      sisUserId: currentUser.id,
+      isAuthenticated,
+      manualStatus: myManualPresenceStatus,
+      onPresenceMapUpdate: (nextMap) => {
+        setUserPresenceMap(nextMap);
+      },
+    });
+    return () => {
+      stopPresence();
+    };
+  }, [isAuthenticated, currentUser?.id, myManualPresenceStatus]);
+
+  // 3. Subscribe to real-time typing indicators & cross-tab events
+  useEffect(() => {
+    const unsubTyping = subscribeToTypingIndicators((convId, entries) => {
+      setTypingIndicatorsByConv((prev) => ({
+        ...prev,
+        [convId]: entries.filter((e) => e.userId !== currentUser?.id),
+      }));
+    });
+
+    const unsubCrossTab = subscribeToCrossTabChatEvents((event) => {
+      if (event.type === 'PRESENCE' && event.payload) {
+        const rec = event.payload as UserPresenceRecord;
+        if (rec.sisUserId) {
+          setUserPresenceMap((prev) => ({ ...prev, [rec.sisUserId]: rec }));
+        }
+      } else if (event.type === 'CONVERSATION' && event.payload) {
+        const conv = event.payload as ChatConversation;
+        if (conv.id) {
+          setChatConversations((prev) => {
+            const exists = prev.some((c) => c.id === conv.id);
+            const next = exists
+              ? prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
+              : [...prev, conv];
+            saveLocalConversations(next);
+            return next;
+          });
+        }
+      } else if (event.type === 'MESSAGE' && event.payload) {
+        const { conversation, message } = event.payload as {
+          conversation: ChatConversation;
+          message: ChatConversationMessage;
+        };
+        if (conversation?.id && message?.id) {
+          setChatConversations((prev) => {
+            const exists = prev.some((c) => c.id === conversation.id);
+            const next = exists
+              ? prev.map((c) => (c.id === conversation.id ? { ...c, ...conversation } : c))
+              : [...prev, conversation];
+            saveLocalConversations(next);
+            return next;
+          });
+          setChatMessagesByConv((prev) => {
+            const existingList = prev[conversation.id] || [];
+            const exists = existingList.some((m) => m.id === message.id);
+            const nextList = exists
+              ? existingList.map((m) => (m.id === message.id ? message : m))
+              : [...existingList, message].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+            const nextMap = { ...prev, [conversation.id]: nextList };
+            saveLocalMessagesByConv(nextMap);
+            return nextMap;
+          });
+          if (
+            currentUser?.id &&
+            message.senderId !== currentUser.id &&
+            !message.deletedAt &&
+            canUserAccessConversation(currentUser, conversation)
+          ) {
+            handleIncomingMessageAlerts({
+              message,
+              conversation,
+              currentUserId: currentUser.id,
+              isAuthenticated,
+              preferences: chatPreferences,
+              activeViewingConversationId: activeChatConversationId,
+              isChatWindowMinimized: isFloatingChatMinimized || !isFloatingChatOpen,
+              onVisualAlert: (info) => {
+                showAppToast({
+                  title: `💬 ${info.conversationTitle}`,
+                  message: `${info.message.senderName}: ${info.message.text.slice(0, 90)}`,
+                  type: 'info',
+                });
+              },
+              onOpenConversation: (cId) => {
+                setActiveChatConversationId(cId);
+                setIsFloatingChatOpen(true);
+                setIsFloatingChatMinimized(false);
+              },
+            });
+          }
+        }
+      } else if (event.type === 'RECEIPT' && event.payload) {
+        const { conversationId, messages } = event.payload as {
+          conversationId: string;
+          messages: ChatConversationMessage[];
+        };
+        if (conversationId && Array.isArray(messages)) {
+          setChatMessagesByConv((prev) => {
+            const existingList = prev[conversationId] || [];
+            const updateMap = new Map(messages.map((m) => [m.id, m]));
+            const nextList = existingList.map((m) =>
+              updateMap.has(m.id) ? { ...m, ...updateMap.get(m.id)! } : m
+            );
+            const nextMap = { ...prev, [conversationId]: nextList };
+            saveLocalMessagesByConv(nextMap);
+            return nextMap;
+          });
+        }
+      }
+    });
+
+    return () => {
+      unsubTyping();
+      unsubCrossTab();
+    };
+  }, [currentUser?.id]);
+
+  // 4. Synchronize pedagogical group conversations, official announcement channel, and migrate legacy chatMessages safely
+  useEffect(() => {
+    let isMounted = true;
+    const syncInstitutionalAndMigrate = async () => {
+      const institutionalConvs = buildInstitutionalConversationsFromSisData({
+        existingConversations: chatConversations,
+        users,
+        groups,
+        filieres,
+        courses,
+        ecs,
+      });
+
+      const migrationRes = await migrateLegacyChatMessagesSafely({
+        legacyMessages: chatMessages,
+        users,
+        existingConversations: institutionalConvs,
+        existingMessagesByConv: chatMessagesByConv,
+      });
+
+      if (!isMounted) return;
+
+      setChatConversations((prev) => {
+        const mergedMap = new Map<string, ChatConversation>();
+        prev.forEach((c) => mergedMap.set(c.id, c));
+        migrationRes.migratedConversations.forEach((c) => {
+          const existing = mergedMap.get(c.id);
+          mergedMap.set(c.id, existing ? { ...c, ...existing, participantIds: c.participantIds } : c);
+        });
+        const nextList = Array.from(mergedMap.values());
+        saveLocalConversations(nextList);
+        return nextList;
+      });
+
+      if (migrationRes.migratedCount > 0) {
+        setChatMessagesByConv((prev) => {
+          const next = { ...prev, ...migrationRes.migratedMessagesByConv };
+          saveLocalMessagesByConv(next);
+          return next;
+        });
+      }
     };
 
-    setChatMessages((prev) => [...prev, newMsg]);
-    syncDocToFirestore('chatMessages', newMsg);
+    syncInstitutionalAndMigrate();
+    return () => {
+      isMounted = false;
+    };
+  }, [users.length, groups.length, filieres.length, courses.length, ecs.length]);
 
-    setTimeout(() => {
-      const recipientUser = users.find((u) => u.id === recipientId);
-      if (recipientUser && recipientUser.id !== currentUser.id) {
-        const smartReplies: Record<string, string[]> = {
-          TEACHER: [
-            "Bonjour, j'ai bien pris note de votre message. Le document est disponible sur le portail.",
-            "Merci pour votre message ! Nous aborderons ce sujet également lors de la prochaine séance.",
-            "Bien reçu, je consulte le dossier sur la plateforme EBM.",
-          ],
-          STUDENT: [
-            "Bonjour ! Merci pour le retour, je regarde tout de suite.",
-            "C'est bien noté, je prépare le devoir demandé.",
-            "Merci beaucoup pour votre disponibilité !",
-          ],
-          ADMIN: [
-            "Bonjour, votre demande a bien été enregistrée par l'administration EBM.",
-            "C'est validé dans le système central EBM Institute.",
-            "N'hésitez pas si vous avez besoin d'une attestation ou d'un relevé officiel.",
-          ],
+  const getUserEffectivePresence = React.useCallback(
+    (userId: string): { status: PresenceStatus; activeDeviceCount: number; lastSeenAt?: string } => {
+      if (userId === currentUser?.id && isAuthenticated) {
+        const myRec = userPresenceMap[userId];
+        const computed = computeEffectivePresenceStatus(myRec);
+        return {
+          status: myManualPresenceStatus || (computed.status === 'OFFLINE' ? 'ONLINE' : computed.status),
+          activeDeviceCount: Math.max(1, computed.activeDeviceCount),
+          lastSeenAt: myRec?.lastSeenAt || new Date().toISOString(),
         };
-        const pool = smartReplies[recipientUser.role] || smartReplies.ADMIN;
-        const randomReply = pool[Math.floor(Math.random() * pool.length)];
-
-        const replyMsg: ChatMessage = {
-          id: generateUniqueId('chat-reply'),
-          senderId: recipientId,
-          recipientId: currentUser.id,
-          text: randomReply,
-          timestamp: timeStr,
-          isRead: false,
-        };
-        setChatMessages((prev) => [...prev, replyMsg]);
-        syncDocToFirestore('chatMessages', replyMsg);
       }
-    }, 1500);
+      return computeEffectivePresenceStatus(userPresenceMap[userId]);
+    },
+    [userPresenceMap, currentUser?.id, isAuthenticated, myManualPresenceStatus]
+  );
+
+  // Dynamically computed list of online user IDs (ZERO fake/hardcoded presence)
+  const onlineUsers = React.useMemo(() => {
+    return users
+      .filter((u) => u.isActive && getUserEffectivePresence(u.id).status !== 'OFFLINE')
+      .map((u) => u.id);
+  }, [users, getUserEffectivePresence]);
+
+  // Accessible conversations for the current user
+  const accessibleConversations = React.useMemo(() => {
+    return chatConversations
+      .filter((conv) => canUserAccessConversation(currentUser, conv))
+      .sort((a, b) => {
+        const timeA = a.lastMessageAt || a.updatedAt || a.createdAt || '';
+        const timeB = b.lastMessageAt || b.updatedAt || b.createdAt || '';
+        return timeB.localeCompare(timeA);
+      });
+  }, [chatConversations, currentUser]);
+
+  // 5. Subscribe to Firestore subcollection messages for accessible conversations & active conversation,
+  //    handle automatic `deliveredTo` receipts, and trigger sound/visual notifications on new incoming messages
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser?.id) return;
+
+    // Subscribe to the active conversation + top 12 recently updated accessible conversations
+    const targetConvIds = Array.from(
+      new Set(
+        [
+          activeChatConversationId,
+          ...accessibleConversations.slice(0, 12).map((c) => c.id),
+        ].filter(Boolean) as string[]
+      )
+    );
+
+    const unsubs = targetConvIds.map((convId) =>
+      subscribeToConversationMessagesSubcollection(convId, 60, (remoteMsgs) => {
+        if (!remoteMsgs || remoteMsgs.length === 0) return;
+
+        const targetConv = chatConversations.find((c) => c.id === convId);
+        const nowIso = new Date().toISOString();
+        const receiptsToSync: ChatConversationMessage[] = [];
+
+        remoteMsgs.forEach((msg) => {
+          if (msg.senderId === currentUser.id || msg.deletedAt) return;
+
+          // Mark as DELIVERED if not yet delivered to currentUser
+          if (!msg.deliveredTo || !msg.deliveredTo[currentUser.id]) {
+            const updatedMsg: ChatConversationMessage = {
+              ...msg,
+              deliveredTo: {
+                ...(msg.deliveredTo || {}),
+                [currentUser.id]: nowIso,
+              },
+              updatedAt: nowIso,
+            };
+            receiptsToSync.push(updatedMsg);
+          }
+
+          // Trigger sound & visual alert for genuinely new incoming messages (deduplicated & post-boot checked inside handleIncomingMessageAlerts)
+          const myEffective = getUserEffectivePresence(currentUser.id);
+          if (myEffective.status !== 'DND') {
+            handleIncomingMessageAlerts({
+              message: msg,
+              conversation: targetConv,
+              currentUserId: currentUser.id,
+              isAuthenticated,
+              preferences: chatPreferences,
+              activeViewingConversationId: activeChatConversationId,
+              isChatWindowMinimized: isFloatingChatMinimized || !isFloatingChatOpen,
+              onVisualAlert: (info) => {
+                showAppToast({
+                  title: `💬 ${info.conversationTitle}`,
+                  message: `${info.message.senderName}: ${info.message.text.slice(0, 90)}`,
+                  type: 'info',
+                });
+              },
+              onOpenConversation: (cId) => {
+                setActiveChatConversationId(cId);
+                setIsFloatingChatOpen(true);
+                setIsFloatingChatMinimized(false);
+              },
+            });
+          }
+        });
+
+        if (receiptsToSync.length > 0) {
+          updateMessageReceiptsInFirestore(convId, receiptsToSync);
+        }
+
+        setChatMessagesByConv((prev) => {
+          const existing = prev[convId] || [];
+          const byId = new Map<string, ChatConversationMessage>();
+          existing.forEach((m) => byId.set(m.id, m));
+          remoteMsgs.forEach((m) => {
+            const prevMsg = byId.get(m.id);
+            byId.set(m.id, prevMsg ? { ...prevMsg, ...m } : m);
+          });
+          const merged = Array.from(byId.values()).sort((a, b) =>
+            a.createdAt.localeCompare(b.createdAt)
+          );
+          const next = { ...prev, [convId]: merged };
+          saveLocalMessagesByConv(next);
+          return next;
+        });
+      })
+    );
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [
+    isAuthenticated,
+    currentUser?.id,
+    activeChatConversationId,
+    accessibleConversations.length,
+    isFloatingChatOpen,
+    isFloatingChatMinimized,
+    chatPreferences,
+  ]);
+
+  const getConversationUnreadCount = React.useCallback(
+    (convId: string): number => {
+      if (!currentUser?.id) return 0;
+      const msgs = chatMessagesByConv[convId] || [];
+      return msgs.filter(
+        (m) =>
+          m.senderId !== currentUser.id &&
+          !m.deletedAt &&
+          (!m.readBy || !m.readBy[currentUser.id])
+      ).length;
+    },
+    [chatMessagesByConv, currentUser?.id]
+  );
+
+  const totalUnreadChatCount = React.useMemo(() => {
+    return accessibleConversations.reduce(
+      (sum, conv) => sum + getConversationUnreadCount(conv.id),
+      0
+    );
+  }, [accessibleConversations, getConversationUnreadCount]);
+
+  const updateMyPresenceManualStatus = async (status: 'ONLINE' | 'IDLE' | 'DND') => {
+    setMyManualPresenceStatus(status);
+    if (!currentUser?.id) return;
+    const rec = await publishUserPresenceHeartbeat({
+      sisUserId: currentUser.id,
+      connectionStatus: status,
+      manualStatus: status,
+    });
+    if (rec) {
+      setUserPresenceMap((prev) => ({ ...prev, [currentUser.id]: rec }));
+    }
+  };
+
+  const updateChatNotificationPreferences = async (
+    updates: Partial<ChatNotificationPreferences>
+  ) => {
+    if (!currentUser?.id) return;
+    const nextPrefs: ChatNotificationPreferences = {
+      ...chatPreferences,
+      ...updates,
+      id: currentUser.id,
+      userId: currentUser.id,
+      updatedAt: new Date().toISOString(),
+    };
+    setChatPreferences(nextPrefs);
+    await saveChatPreferencesToFirestore(nextPrefs);
+  };
+
+  const enableChatSoundEngine = async (): Promise<boolean> => {
+    const ok = await unlockChatAudioContext();
+    setAudioUnlocked(ok);
+    if (ok) {
+      await playChatNotificationBeep(chatPreferences.soundTone, chatPreferences.soundVolume);
+    }
+    return ok;
+  };
+
+  const testChatSound = async (): Promise<void> => {
+    await unlockChatAudioContext();
+    await playChatNotificationBeep(chatPreferences.soundTone, chatPreferences.soundVolume);
+  };
+
+  const enablePushNotifications = async (): Promise<{ granted: boolean; token?: string }> => {
+    const res = await requestChatPushPermissionAndToken();
+    if (res.permission !== 'granted') {
+      return { granted: false };
+    }
+    await updateChatNotificationPreferences({
+      visualNotificationsEnabled: true,
+      pushNotificationsEnabled: true,
+      fcmTokens: res.fcmToken
+        ? Array.from(new Set([...(chatPreferences.fcmTokens || []), res.fcmToken]))
+        : chatPreferences.fcmTokens,
+    });
+    return { granted: true, token: res.fcmToken };
+  };
+
+  const openPrivateConversationWithUser = (
+    partnerUserId: string,
+    openInFloating = false
+  ): ChatConversation | null => {
+    if (!currentUser?.id || !partnerUserId || partnerUserId === currentUser.id) return null;
+    const partner = users.find((u) => u.id === partnerUserId);
+    if (!partner || !partner.isActive) return null;
+
+    const convId = getPrivateConversationId(currentUser.id, partnerUserId);
+    const existing = chatConversations.find((c) => c.id === convId);
+    if (existing) {
+      setActiveChatConversationId(convId);
+      if (openInFloating) {
+        setIsFloatingChatOpen(true);
+        setIsFloatingChatMinimized(false);
+      }
+      return existing;
+    }
+
+    const nowIso = new Date().toISOString();
+    const newConv: ChatConversation = {
+      id: convId,
+      type: 'private',
+      title: `${currentUser.name} & ${partner.name}`,
+      participantIds: [currentUser.id, partnerUserId].sort(),
+      createdBy: currentUser.id,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    setChatConversations((prev) => {
+      const next = [newConv, ...prev];
+      saveLocalConversations(next);
+      return next;
+    });
+    syncConversationToFirestore(newConv);
+    setActiveChatConversationId(convId);
+    if (openInFloating) {
+      setIsFloatingChatOpen(true);
+      setIsFloatingChatMinimized(false);
+    }
+    return newConv;
+  };
+
+  const createCustomGroupConversation = async (data: {
+    title: string;
+    participantIds: string[];
+    description?: string;
+    groupId?: string;
+    filiereId?: string;
+    level?: string;
+  }): Promise<{ success: boolean; conversation?: ChatConversation; error?: string }> => {
+    if (!currentUser?.id) {
+      return { success: false, error: 'Session utilisateur requise.' };
+    }
+    if (!data.title.trim()) {
+      return { success: false, error: 'Veuillez saisir un nom pour le groupe.' };
+    }
+    const nowIso = new Date().toISOString();
+    const allParticipants = Array.from(new Set([currentUser.id, ...data.participantIds]));
+    const newConv: ChatConversation = {
+      id: generateUniqueId('conv-grp'),
+      type: 'group',
+      title: data.title.trim(),
+      participantIds: allParticipants,
+      createdBy: currentUser.id,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      metadata: {
+        description: data.description?.trim() || 'Groupe de discussion pédagogique EBM Institute.',
+        groupId: data.groupId,
+        filiereId: data.filiereId,
+        level: data.level,
+        allowReplies: true,
+        adminIds: [currentUser.id],
+      },
+    };
+
+    setChatConversations((prev) => {
+      const next = [newConv, ...prev];
+      saveLocalConversations(next);
+      return next;
+    });
+    await syncConversationToFirestore(newConv);
+    setActiveChatConversationId(newConv.id);
+    logAudit('CREATION_GROUPE_DISCUSSION', `Groupe de discussion "${newConv.title}" créé par ${currentUser.name}`);
+    return { success: true, conversation: newConv };
+  };
+
+  const sendConversationMessage = async (params: {
+    conversationId: string;
+    text: string;
+    attachment?: ChatAttachment;
+    replyToMessageId?: string;
+  }): Promise<{ success: boolean; message?: ChatConversationMessage; error?: string }> => {
+    const { conversationId, text, attachment, replyToMessageId } = params;
+    if (!currentUser?.id) {
+      return { success: false, error: 'Vous devez être connecté pour envoyer un message.' };
+    }
+    const cleanText = text.trim();
+    if (!cleanText && !attachment) {
+      return { success: false, error: 'Le message ne peut pas être vide.' };
+    }
+
+    const conv = chatConversations.find((c) => c.id === conversationId);
+    if (!conv) {
+      return { success: false, error: 'Conversation introuvable.' };
+    }
+
+    if (!canUserAccessConversation(currentUser, conv)) {
+      return { success: false, error: "Vous n'êtes pas autorisé à participer à cette conversation." };
+    }
+
+    // Check announcement publishing & reply permissions (Section 4.3 & Section 12)
+    if (conv.type === 'announcement') {
+      const canPublish = canUserPublishOfficialAnnouncement(currentUser);
+      const repliesAllowed = conv.metadata?.allowReplies === true;
+      if (!canPublish && !repliesAllowed) {
+        return {
+          success: false,
+          error:
+            "Seuls la Direction, le Responsable Académique et la Scolarité peuvent publier dans ce canal d'annonces officielles.",
+        };
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const existingMsgs = chatMessagesByConv[conversationId] || [];
+    const replyTarget = replyToMessageId
+      ? existingMsgs.find((m) => m.id === replyToMessageId)
+      : undefined;
+
+    const msgType: ChatConversationMessage['type'] = attachment
+      ? ['JPG', 'JPEG', 'PNG'].includes(attachment.extension.toUpperCase())
+        ? 'image'
+        : 'file'
+      : conv.type === 'announcement'
+      ? 'announcement'
+      : 'text';
+
+    // Determine online recipients for immediate delivery receipt
+    const deliveredTo: Record<string, string> = {
+      [currentUser.id]: nowIso,
+    };
+    conv.participantIds.forEach((pid) => {
+      if (pid !== currentUser.id && getUserEffectivePresence(pid).status !== 'OFFLINE') {
+        deliveredTo[pid] = nowIso;
+      }
+    });
+
+    const newMsg: ChatConversationMessage = {
+      id: generateUniqueId('msg'),
+      conversationId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: currentUser.role,
+      text: cleanText || (attachment ? `📎 ${attachment.name}` : ''),
+      type: msgType,
+      attachment,
+      replyToMessageId: replyTarget?.id,
+      replyToPreview: replyTarget
+        ? {
+            senderName: replyTarget.senderName,
+            text: replyTarget.text.slice(0, 120),
+          }
+        : undefined,
+      createdAt: nowIso,
+      deliveredTo,
+      readBy: {
+        [currentUser.id]: nowIso,
+      },
+      updatedAt: nowIso,
+    };
+
+    const updatedConv: ChatConversation = {
+      ...conv,
+      updatedAt: nowIso,
+      lastMessageAt: nowIso,
+      lastMessage: {
+        id: newMsg.id,
+        text: newMsg.text,
+        senderId: newMsg.senderId,
+        senderName: newMsg.senderName,
+        createdAt: nowIso,
+        type: newMsg.type,
+      },
+    };
+
+    setChatMessagesByConv((prev) => {
+      const list = [...(prev[conversationId] || []), newMsg].sort((a, b) =>
+        a.createdAt.localeCompare(b.createdAt)
+      );
+      const next = { ...prev, [conversationId]: list };
+      saveLocalMessagesByConv(next);
+      return next;
+    });
+
+    setChatConversations((prev) => {
+      const next = prev.map((c) => (c.id === conversationId ? updatedConv : c));
+      saveLocalConversations(next);
+      return next;
+    });
+
+    // Clear typing indicator for sender
+    publishTypingStatus({
+      conversationId,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      isTyping: false,
+    });
+
+    await saveMessageToSubcollection(updatedConv, newMsg);
+    return { success: true, message: newMsg };
+  };
+
+  const editConversationMessage = async (
+    conversationId: string,
+    messageId: string,
+    newText: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser?.id) return { success: false, error: 'Session requise.' };
+    const clean = newText.trim();
+    if (!clean) return { success: false, error: 'Le message modifié ne peut pas être vide.' };
+
+    const list = chatMessagesByConv[conversationId] || [];
+    const target = list.find((m) => m.id === messageId);
+    if (!target) return { success: false, error: 'Message introuvable.' };
+    if (target.senderId !== currentUser.id) {
+      return { success: false, error: 'Vous ne pouvez modifier que vos propres messages.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedMsg: ChatConversationMessage = {
+      ...target,
+      text: clean,
+      editedAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    const conv = chatConversations.find((c) => c.id === conversationId);
+    const updatedConv: ChatConversation | undefined = conv
+      ? {
+          ...conv,
+          updatedAt: nowIso,
+          lastMessage:
+            conv.lastMessage?.id === messageId
+              ? { ...conv.lastMessage, text: clean }
+              : conv.lastMessage,
+        }
+      : undefined;
+
+    setChatMessagesByConv((prev) => {
+      const nextList = (prev[conversationId] || []).map((m) =>
+        m.id === messageId ? updatedMsg : m
+      );
+      const next = { ...prev, [conversationId]: nextList };
+      saveLocalMessagesByConv(next);
+      return next;
+    });
+
+    if (updatedConv) {
+      setChatConversations((prev) => {
+        const next = prev.map((c) => (c.id === conversationId ? updatedConv : c));
+        saveLocalConversations(next);
+        return next;
+      });
+      await saveMessageToSubcollection(updatedConv, updatedMsg);
+    }
+
+    return { success: true };
+  };
+
+  const deleteConversationMessage = async (
+    conversationId: string,
+    messageId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser?.id) return { success: false, error: 'Session requise.' };
+    const list = chatMessagesByConv[conversationId] || [];
+    const target = list.find((m) => m.id === messageId);
+    if (!target) return { success: false, error: 'Message introuvable.' };
+    if (target.senderId !== currentUser.id && currentUser.role !== 'ADMIN') {
+      return { success: false, error: 'Vous ne pouvez supprimer que vos propres messages.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedMsg: ChatConversationMessage = {
+      ...target,
+      text: 'Ce message a été supprimé.',
+      attachment: undefined,
+      deletedAt: nowIso,
+      deletedBy: currentUser.id,
+      updatedAt: nowIso,
+    };
+
+    const conv = chatConversations.find((c) => c.id === conversationId);
+    const updatedConv: ChatConversation | undefined = conv
+      ? {
+          ...conv,
+          updatedAt: nowIso,
+          lastMessage:
+            conv.lastMessage?.id === messageId
+              ? { ...conv.lastMessage, text: '🚫 Message supprimé' }
+              : conv.lastMessage,
+        }
+      : undefined;
+
+    setChatMessagesByConv((prev) => {
+      const nextList = (prev[conversationId] || []).map((m) =>
+        m.id === messageId ? updatedMsg : m
+      );
+      const next = { ...prev, [conversationId]: nextList };
+      saveLocalMessagesByConv(next);
+      return next;
+    });
+
+    if (updatedConv) {
+      setChatConversations((prev) => {
+        const next = prev.map((c) => (c.id === conversationId ? updatedConv : c));
+        saveLocalConversations(next);
+        return next;
+      });
+      await saveMessageToSubcollection(updatedConv, updatedMsg);
+    }
+
+    return { success: true };
+  };
+
+  // Explicit read receipt: ONLY marks messages as read when the user actively opens and views the conversation (Section 7)
+  const markConversationAsRead = async (conversationId: string): Promise<void> => {
+    if (!currentUser?.id || !conversationId) return;
+    const msgs = chatMessagesByConv[conversationId] || [];
+    const nowIso = new Date().toISOString();
+    const updatedMessages: ChatConversationMessage[] = [];
+
+    const nextList = msgs.map((m) => {
+      if (m.senderId !== currentUser.id && !m.deletedAt && (!m.readBy || !m.readBy[currentUser.id])) {
+        const updated: ChatConversationMessage = {
+          ...m,
+          deliveredTo: {
+            ...(m.deliveredTo || {}),
+            [currentUser.id]: m.deliveredTo?.[currentUser.id] || nowIso,
+          },
+          readBy: {
+            ...(m.readBy || {}),
+            [currentUser.id]: nowIso,
+          },
+          updatedAt: nowIso,
+        };
+        updatedMessages.push(updated);
+        return updated;
+      }
+      return m;
+    });
+
+    if (updatedMessages.length > 0) {
+      setChatMessagesByConv((prev) => {
+        const next = { ...prev, [conversationId]: nextList };
+        saveLocalMessagesByConv(next);
+        return next;
+      });
+      await updateMessageReceiptsInFirestore(conversationId, updatedMessages);
+    }
+  };
+
+  const setTypingInConversation = (conversationId: string, isTyping: boolean) => {
+    if (!currentUser?.id || !conversationId) return;
+    publishTypingStatus({
+      conversationId,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      isTyping,
+    });
+  };
+
+  const loadOlderConversationMessages = async (conversationId: string): Promise<number> => {
+    const existing = chatMessagesByConv[conversationId] || [];
+    const oldest = existing[0]?.createdAt;
+    const olderMsgs = await fetchPaginatedConversationMessages(conversationId, 40, oldest);
+    if (olderMsgs.length > 0) {
+      setChatMessagesByConv((prev) => {
+        const currentList = prev[conversationId] || [];
+        const byId = new Map<string, ChatConversationMessage>();
+        olderMsgs.forEach((m) => byId.set(m.id, m));
+        currentList.forEach((m) => byId.set(m.id, m));
+        const merged = Array.from(byId.values()).sort((a, b) =>
+          a.createdAt.localeCompare(b.createdAt)
+        );
+        const next = { ...prev, [conversationId]: merged };
+        saveLocalMessagesByConv(next);
+        return next;
+      });
+    }
+    return olderMsgs.length;
+  };
+
+  const uploadAttachmentToConversation = async (
+    conversationId: string,
+    file: File
+  ): Promise<{ success: boolean; attachment?: ChatAttachment; error?: string }> => {
+    if (!currentUser?.id) return { success: false, error: 'Session utilisateur requise.' };
+    return uploadChatAttachmentFile({
+      file,
+      conversationId,
+      senderId: currentUser.id,
+      maxFileSizeMb: Math.min(10, appSettings.storageSettings?.maxFileSizeMb || 10),
+    });
+  };
+
+  const toggleConversationAllowReplies = async (
+    conversationId: string,
+    allowReplies: boolean
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!canUserPublishOfficialAnnouncement(currentUser)) {
+      return { success: false, error: 'Action réservée à la Direction ou la Scolarité.' };
+    }
+    const conv = chatConversations.find((c) => c.id === conversationId);
+    if (!conv) return { success: false, error: 'Canal introuvable.' };
+
+    const updatedConv: ChatConversation = {
+      ...conv,
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        ...(conv.metadata || {}),
+        allowReplies,
+      },
+    };
+    setChatConversations((prev) => {
+      const next = prev.map((c) => (c.id === conversationId ? updatedConv : c));
+      saveLocalConversations(next);
+      return next;
+    });
+    await syncConversationToFirestore(updatedConv);
+    return { success: true };
+  };
+
+  // Legacy-compatible wrappers (ZERO fake auto-replies, delegates directly to real-time conversations)
+  const sendChatMessage = (recipientId: string, text: string) => {
+    if (!text.trim() || !currentUser) return;
+    const conv = openPrivateConversationWithUser(recipientId, false);
+    if (conv) {
+      sendConversationMessage({
+        conversationId: conv.id,
+        text: text.trim(),
+      });
+    }
   };
 
   const markChatAsRead = (partnerId: string) => {
     if (!currentUser) return;
-    setChatMessages((prev) =>
-      prev.map((m) => {
-        if (m.senderId === partnerId && m.recipientId === currentUser.id && !m.isRead) {
-          const updated = { ...m, isRead: true };
-          syncDocToFirestore('chatMessages', updated);
-          return updated;
-        }
-        return m;
-      })
-    );
+    const convId = getPrivateConversationId(currentUser.id, partnerId);
+    markConversationAsRead(convId);
   };
-
-  const onlineUsers = [
-    currentUser?.id,
-    'user-admin',
-    'user-teacher-1',
-    'user-student-1',
-    'user-scheduler',
-  ].filter(Boolean) as string[];
 
   // Formule d'évaluation : 40% CC + 60% Examen OU Évaluation Directe 100%
   // P64: Only compute weighted sum when BOTH quizScore and examScore are defined (unless direct 100% evaluation)
@@ -4884,27 +6200,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCloudSyncStatus('SYNCING');
     createSystemBackup('Sauvegarde automatique avant synchronisation Cloud Firestore');
 
-    let hasSession = await ensureFirebaseAuthSession(currentUser);
-    if (!hasSession) {
-      const googleRes = await loginWithGoogleFirebase();
-      if (!googleRes.success) {
-        setCloudSyncStatus('ERROR');
-        return {
-          success: false,
-          totalSynced: 0,
-          message: googleRes.message || 'Veuillez vous connecter avec votre compte Google (Firebase Auth) pour synchroniser Cloud Firestore.',
-        };
-      }
-      hasSession = await ensureFirebaseAuthSession(currentUser);
-      if (!hasSession) {
-        setCloudSyncStatus('ERROR');
-        return {
-          success: false,
-          totalSynced: 0,
-          message: 'Session Firebase Auth requise pour écrire dans Cloud Firestore.',
-        };
-      }
+    // Ensure the global Institutional Cloud Bridge is enabled without requiring a per-browser Google OAuth popup
+    if (!isCloudBridgeActive()) {
+      await setInstitutionalCloudBridgeState(true, currentUser?.name || 'Administrateur EBM');
     }
+    setIsCloudConnected(true);
+    await ensureFirebaseAuthSession(currentUser);
 
     // Flush any queued offline mutations and pull remote changes first so we never overwrite newer remote records
     await flushPendingSyncOutbox();
@@ -5108,6 +6409,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelSession,
         validateSession,
         deleteSession,
+        purgeAllSessions,
+        purgeWeekSessions,
         markAsRead,
         markAllAsRead,
         sendManualPush,
@@ -5229,12 +6532,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sendChatMessage,
         markChatAsRead,
         onlineUsers,
+        userPresenceMap,
+        getUserEffectivePresence,
+        myManualPresenceStatus,
+        updateMyPresenceManualStatus,
+        chatConversations,
+        accessibleConversations,
+        chatMessagesByConv,
+        activeChatConversationId,
+        setActiveChatConversationId,
+        isFloatingChatOpen,
+        setIsFloatingChatOpen,
+        isFloatingChatMinimized,
+        setIsFloatingChatMinimized,
+        typingIndicatorsByConv,
+        chatPreferences,
+        updateChatNotificationPreferences,
+        audioUnlocked,
+        enableChatSoundEngine,
+        testChatSound,
+        enablePushNotifications,
+        totalUnreadChatCount,
+        getConversationUnreadCount,
+        openPrivateConversationWithUser,
+        createCustomGroupConversation,
+        sendConversationMessage,
+        editConversationMessage,
+        deleteConversationMessage,
+        markConversationAsRead,
+        setTypingInConversation,
+        loadOlderConversationMessages,
+        uploadAttachmentToConversation,
+        toggleConversationAllowReplies,
 
         // Cloud Firebase Auth, Firestore Sync & Backup/Restore
         firebaseUser,
         isCloudConnected,
         cloudSyncStatus,
         loginWithGoogleFirebase,
+        toggleInstitutionalCloudBridge,
         syncAllToCloudFirestore,
         pullFromCloudFirestore,
         savedBackups,

@@ -46,7 +46,7 @@ import {
 import { createGoogleCalendarUrl } from '../utils/calendarExport';
 import { TimetableSession, SemesterCode, GroupPost, HomeworkAssignment } from '../types';
 import { getTeachersForStudent } from '../utils/studentVisibility';
-import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { getAntananarivoDateStr, getAcademicWeekMondayDate } from '../utils/securityAndDateUtils';
 
 export const AndroidSimulator: React.FC = () => {
   const {
@@ -167,12 +167,10 @@ export const AndroidSimulator: React.FC = () => {
 
   // Helper date offset
   const getDateStr = (offset: number) => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const distanceToMonday = (currentDay + 6) % 7;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - distanceToMonday + offset);
-    return getAntananarivoDateStr(monday);
+    const baseMonday = getAcademicWeekMondayDate();
+    const targetDay = new Date(baseMonday);
+    targetDay.setDate(baseMonday.getDate() + offset);
+    return getAntananarivoDateStr(targetDay);
   };
 
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];

@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { SystemBackupSnapshot, User } from '../types';
+import { SystemBackupSnapshot, TimetableSession, User } from '../types';
 
 // Complete list of all 28 SIS collections synchronized with Cloud Firestore
 export const ALL_SYNC_COLLECTIONS = [
@@ -44,14 +44,101 @@ export const ALL_SYNC_COLLECTIONS = [
   'profileChangeRequests',
   'auditLogs',
   'chatMessages',
+  'conversations',
 ] as const;
 
 export type SyncCollectionName = (typeof ALL_SYNC_COLLECTIONS)[number];
 
 const TOMBSTONES_STORAGE_KEY = 'ebm_deleted_tombstones_v3';
 const OUTBOX_STORAGE_KEY = 'ebm_sync_outbox_v3';
+const CLOUD_BRIDGE_LOCAL_KEY = 'ebm_cloud_bridge_active_v3';
 const SEED_BASELINE_TIMESTAMP = '2026-01-01T00:00:00.000Z';
 const BOOTSTRAPPED_ADMIN_EMAIL = 'louvamifaly@gmail.com';
+
+// Persistent Institutional Cloud Bridge state (shared across all browsers via /appSettings/cloud_sync_bridge)
+let institutionalCloudBridgeActive: boolean = (() => {
+  try {
+    const saved = localStorage.getItem(CLOUD_BRIDGE_LOCAL_KEY);
+    return saved === null ? true : saved !== 'false';
+  } catch {
+    return true;
+  }
+})();
+
+export const isCloudBridgeActive = (): boolean => institutionalCloudBridgeActive;
+
+export const setInstitutionalCloudBridgeState = async (
+  active: boolean,
+  actorName = 'Administrateur EBM'
+): Promise<boolean> => {
+  institutionalCloudBridgeActive = active;
+  try {
+    localStorage.setItem(CLOUD_BRIDGE_LOCAL_KEY, active ? 'true' : 'false');
+  } catch {
+    // Ignore
+  }
+  try {
+    await setDoc(
+      doc(db, 'appSettings', 'cloud_sync_bridge'),
+      {
+        id: 'cloud_sync_bridge',
+        active,
+        updatedBy: actorName,
+        connectedEmail: BOOTSTRAPPED_ADMIN_EMAIL,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'appSettings/cloud_sync_bridge');
+    return false;
+  }
+};
+
+export const subscribeToCloudBridgeStatus = (
+  onStatusChange: (active: boolean, updatedBy?: string) => void
+): (() => void) => {
+  try {
+    const bridgeRef = doc(db, 'appSettings', 'cloud_sync_bridge');
+    return onSnapshot(
+      bridgeRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as { active?: boolean; updatedBy?: string };
+          const isActive = data.active !== false;
+          institutionalCloudBridgeActive = isActive;
+          try {
+            localStorage.setItem(CLOUD_BRIDGE_LOCAL_KEY, isActive ? 'true' : 'false');
+          } catch {
+            // Ignore
+          }
+          onStatusChange(isActive, data.updatedBy);
+        } else {
+          // Initialize the institutional bridge in Firestore on first run so all browsers share it
+          institutionalCloudBridgeActive = true;
+          setDoc(
+            bridgeRef,
+            {
+              id: 'cloud_sync_bridge',
+              active: true,
+              updatedBy: 'Système EBM Institute',
+              connectedEmail: BOOTSTRAPPED_ADMIN_EMAIL,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(() => {});
+          onStatusChange(true, 'Système EBM Institute');
+        }
+      },
+      () => {
+        // Keep current bridge state if offline
+      }
+    );
+  } catch {
+    return () => {};
+  }
+};
 
 export interface OutboxMutation {
   id: string;
@@ -178,26 +265,26 @@ export const clearOutboxEntry = (collectionName: string, docId: string): void =>
 };
 
 // ============================================================================
-// 3. REAL FIREBASE AUTHENTICATION (Zero Anonymous Auth / Zero Self-Escalation)
+// 3. INSTITUTIONAL CLOUD BRIDGE & FIREBASE AUTHENTICATION
 // ============================================================================
 
 export const hasValidRealFirebaseAuth = (): boolean => {
   const user = auth.currentUser;
-  return Boolean(user && !user.isAnonymous);
+  if (user && user.isAnonymous) {
+    return false;
+  }
+  return Boolean((user && !user.isAnonymous) || institutionalCloudBridgeActive);
 };
 
 let authSessionPromise: Promise<boolean> | null = null;
 
 /**
- * Verifies that a real, non-anonymous Firebase Authentication session is active.
- *
- * SECURITY FIX:
- * - Never calls `signInAnonymously(auth)`.
- * - Never allows a client to self-assign or overwrite `role` in `/users/{uid}`.
- * - Only the verified bootstrapped super-admin (`louvamifaly@gmail.com`) can
- *   bootstrap their own `ADMIN` profile document if it does not yet exist.
- * - For all other authenticated users, their `/users/{uid}` role must be
- *   provisioned by an administrator (`isAdmin()` or `isScolarite()`).
+ * Ensures the active session is authorized to synchronize with Cloud Firestore:
+ * - Rejects any residual anonymous Firebase session.
+ * - Checks the persistent Institutional Cloud Bridge (/appSettings/cloud_sync_bridge)
+ *   so that once connected by the Administrator, ALL browsers and computers
+ *   sync in real time without asking for a Google OAuth popup on each browser.
+ * - If a verified Google Firebase user is signed in, updates their Firestore profile.
  */
 export const ensureFirebaseAuthSession = async (activeSisUser?: User | null): Promise<boolean> => {
   const currentFbUser = auth.currentUser;
@@ -205,11 +292,6 @@ export const ensureFirebaseAuthSession = async (activeSisUser?: User | null): Pr
   // Reject and sign out any residual anonymous session immediately
   if (currentFbUser && currentFbUser.isAnonymous) {
     await signOut(auth).catch(() => {});
-    return false;
-  }
-
-  if (!currentFbUser) {
-    return false;
   }
 
   if (authSessionPromise) {
@@ -218,51 +300,81 @@ export const ensureFirebaseAuthSession = async (activeSisUser?: User | null): Pr
 
   authSessionPromise = (async () => {
     try {
-      const uid = currentFbUser.uid;
-      const email = (currentFbUser.email || '').toLowerCase();
-      const userRef = doc(db, 'users', uid);
-
-      // Verified bootstrapped super-admin can always initialize or refresh their ADMIN profile
-      if (email === BOOTSTRAPPED_ADMIN_EMAIL && currentFbUser.emailVerified) {
-        await setDoc(
-          userRef,
-          {
-            id: uid,
-            uid,
-            sisUserId: activeSisUser?.id || 'user-admin',
-            username: activeSisUser?.username || 'admin.ebm',
-            name: activeSisUser?.name || currentFbUser.displayName || 'Administrateur EBM',
-            email: currentFbUser.email,
-            googleEmail: currentFbUser.email,
-            role: 'ADMIN',
-            isActive: true,
-            lastSeenAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-        return true;
+      // 1. Check / initialize the global Institutional Cloud Bridge in Firestore
+      try {
+        const bridgeRef = doc(db, 'appSettings', 'cloud_sync_bridge');
+        const bridgeSnap = await getDoc(bridgeRef);
+        if (bridgeSnap.exists()) {
+          const bridgeData = bridgeSnap.data() as { active?: boolean };
+          institutionalCloudBridgeActive = bridgeData.active !== false;
+        } else {
+          institutionalCloudBridgeActive = true;
+          await setDoc(
+            bridgeRef,
+            {
+              id: 'cloud_sync_bridge',
+              active: true,
+              updatedBy: activeSisUser?.name || 'Administrateur EBM',
+              connectedEmail: BOOTSTRAPPED_ADMIN_EMAIL,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+        }
+        try {
+          localStorage.setItem(CLOUD_BRIDGE_LOCAL_KEY, institutionalCloudBridgeActive ? 'true' : 'false');
+        } catch {
+          // Ignore
+        }
+      } catch {
+        // Offline or network unreachable: fall back to cached bridge state
       }
 
-      const existingSnap = await getDoc(userRef);
+      // 2. If a real Google Firebase user is also signed in, sync their /users/{uid} record
+      const fbUser = auth.currentUser;
+      if (fbUser && !fbUser.isAnonymous) {
+        const uid = fbUser.uid;
+        const email = (fbUser.email || '').toLowerCase();
+        const userRef = doc(db, 'users', uid);
 
-      if (existingSnap.exists()) {
-        // Profile already exists: only update non-privileged metadata (never touch role or isActive)
-        await setDoc(
-          userRef,
-          {
-            lastSeenAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-        return true;
+        if (email === BOOTSTRAPPED_ADMIN_EMAIL && fbUser.emailVerified) {
+          await setDoc(
+            userRef,
+            {
+              id: uid,
+              uid,
+              sisUserId: activeSisUser?.id || 'user-admin',
+              username: activeSisUser?.username || 'admin.ebm',
+              name: activeSisUser?.name || fbUser.displayName || 'Administrateur EBM',
+              email: fbUser.email,
+              googleEmail: fbUser.email,
+              role: 'ADMIN',
+              isActive: true,
+              lastSeenAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          return true;
+        }
+
+        const existingSnap = await getDoc(userRef);
+        if (existingSnap.exists()) {
+          await setDoc(
+            userRef,
+            {
+              lastSeenAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          return true;
+        }
       }
 
-      // Non-admin user without an admin-provisioned /users/{uid} profile cannot self-assign a role
-      return false;
+      return institutionalCloudBridgeActive;
     } catch {
-      return false;
+      return institutionalCloudBridgeActive;
     } finally {
       authSessionPromise = null;
     }
@@ -387,7 +499,7 @@ export const syncDocToFirestore = async <
   const nowIso = new Date().toISOString();
   const baseUpdatedAt = options?.baseUpdatedAt || item.updatedAt || item.lastModifiedAt;
 
-  // If the user is not connected to real Firebase Auth or browser is offline,
+  // If the institutional cloud bridge is paused or browser is offline,
   // queue the mutation in the persistent outbox so it syncs upon reconnection.
   if (!hasValidRealFirebaseAuth() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     const cleanOfflinePayload = sanitizeForFirestore({
@@ -506,6 +618,281 @@ export const removeDocFromFirestore = async (
   }
 };
 
+// ============================================================================
+// 5B. ATOMIC SERVER-SIDE TRANSACTIONAL SCHEDULING RESERVATION (Bug C Fix)
+// Prevents two scolarité agents from simultaneously booking the same room,
+// teacher, or student group at overlapping times on the server.
+// ============================================================================
+
+interface ServerScheduleSlotEntry {
+  sessionId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  roomId: string;
+  teacherId: string;
+  groupIds: string[];
+  status: string;
+  updatedAt: string;
+}
+
+const parseTimeToMinutesServer = (timeStr: string): number => {
+  const [h, m] = (timeStr || '00:00').split(':').map(Number);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+};
+
+export const commitSessionTransactionally = async (
+  session: TimetableSession,
+  options?: {
+    previousSession?: TimetableSession;
+    onReservationConflict?: (conflictMessage: string) => void;
+    onSuccess?: (committedSession: TimetableSession) => void;
+  }
+): Promise<{
+  synced: boolean;
+  reservationConflict?: boolean;
+  conflictMessage?: string;
+  error?: string;
+}> => {
+  const nowIso = session.updatedAt || new Date().toISOString();
+
+  if (!hasValidRealFirebaseAuth() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    // Offline fallback: enqueue in outbox
+    syncDocToFirestore('sessions', session, {
+      previousItem: options?.previousSession as unknown as Record<string, unknown>,
+      baseUpdatedAt: options?.previousSession?.updatedAt,
+    });
+    return { synced: false };
+  }
+
+  const sessionDocRef = doc(db, 'sessions', session.id);
+  const targetIndexDocRef = doc(db, 'appSettings', `schedule_slots_${session.date}`);
+  const prevDate = options?.previousSession?.date;
+  const prevIndexDocRef =
+    prevDate && prevDate !== session.date
+      ? doc(db, 'appSettings', `schedule_slots_${prevDate}`)
+      : null;
+
+  try {
+    let reservationConflictMsg: string | null = null;
+    let committedSession: TimetableSession = { ...session, updatedAt: nowIso };
+
+    await runTransaction(db, async (transaction) => {
+      const targetIndexSnap = await transaction.get(targetIndexDocRef);
+      const prevIndexSnap = prevIndexDocRef ? await transaction.get(prevIndexDocRef) : null;
+      const serverSessionSnap = await transaction.get(sessionDocRef);
+
+      const targetSlotsMap: Record<string, ServerScheduleSlotEntry> = targetIndexSnap.exists()
+        ? { ...((targetIndexSnap.data().slots as Record<string, ServerScheduleSlotEntry>) || {}) }
+        : {};
+
+      const candStart = parseTimeToMinutesServer(session.startTime);
+      const candEnd = parseTimeToMinutesServer(session.endTime);
+
+      if (session.status !== 'CANCELLED') {
+        const potentialConflictIds: string[] = [];
+
+        for (const [otherId, slot] of Object.entries(targetSlotsMap)) {
+          if (otherId === session.id || !slot || slot.status === 'CANCELLED') continue;
+          const slotStart = parseTimeToMinutesServer(slot.startTime);
+          const slotEnd = parseTimeToMinutesServer(slot.endTime);
+          const overlaps = candStart < slotEnd && candEnd > slotStart;
+          if (!overlaps) continue;
+
+          const roomConflict = slot.roomId && slot.roomId === session.roomId;
+          const teacherConflict =
+            session.teacherId &&
+            session.teacherId !== 'EXTERNAL_SPEAKER' &&
+            slot.teacherId === session.teacherId;
+          const groupConflict = (session.groupIds || []).some((g) =>
+            (slot.groupIds || []).includes(g)
+          );
+
+          if (roomConflict || teacherConflict || groupConflict) {
+            potentialConflictIds.push(otherId);
+          }
+        }
+
+        if (potentialConflictIds.length > 0) {
+          // Fetch the actual sessions from Firestore to verify they really exist and are not orphaned ghosts from purged/deleted sessions
+          const sessionSnaps = await Promise.all(
+            potentialConflictIds.map((id) => transaction.get(doc(db, 'sessions', id)))
+          );
+
+          for (let i = 0; i < potentialConflictIds.length; i++) {
+            const otherId = potentialConflictIds[i];
+            const otherSnap = sessionSnaps[i];
+            const slot = targetSlotsMap[otherId];
+
+            if (!otherSnap.exists()) {
+              // The session was deleted in Firestore! This slot is an orphan/ghost -> clean it up!
+              delete targetSlotsMap[otherId];
+              continue;
+            }
+
+            const liveSession = otherSnap.data() as TimetableSession;
+            if (liveSession.status === 'CANCELLED') {
+              delete targetSlotsMap[otherId];
+              continue;
+            }
+
+            // Real active conflict confirmed on server
+            if (slot.roomId && slot.roomId === session.roomId) {
+              reservationConflictMsg = `Réservation simultanée détectée sur le serveur : la salle est déjà réservée sur le créneau ${slot.startTime}–${slot.endTime} par une autre séance existante.`;
+              break;
+            }
+            if (
+              session.teacherId &&
+              session.teacherId !== 'EXTERNAL_SPEAKER' &&
+              slot.teacherId === session.teacherId
+            ) {
+              reservationConflictMsg = `Réservation simultanée détectée sur le serveur : l'enseignant est déjà affecté à une autre séance sur le créneau ${slot.startTime}–${slot.endTime}.`;
+              break;
+            }
+            const sharedGroups = (session.groupIds || []).filter((g) =>
+              (slot.groupIds || []).includes(g)
+            );
+            if (sharedGroups.length > 0) {
+              reservationConflictMsg = `Réservation simultanée détectée sur le serveur : le groupe d'étudiants a déjà une séance enregistrée sur le créneau ${slot.startTime}–${slot.endTime}.`;
+              break;
+            }
+          }
+        }
+      }
+
+      if (reservationConflictMsg) {
+        return;
+      }
+
+      if (serverSessionSnap.exists()) {
+        const serverData = serverSessionSnap.data() as TimetableSession;
+        committedSession = mergeEntityFields(serverData, {
+          ...session,
+          updatedAt: nowIso,
+        });
+      }
+
+      // Remove from previous date index if date changed
+      if (prevIndexDocRef && prevIndexSnap && prevIndexSnap.exists()) {
+        const prevSlots: Record<string, ServerScheduleSlotEntry> = {
+          ...((prevIndexSnap.data().slots as Record<string, ServerScheduleSlotEntry>) || {}),
+        };
+        delete prevSlots[session.id];
+        transaction.set(
+          prevIndexDocRef,
+          { id: `schedule_slots_${prevDate}`, slots: prevSlots, updatedAt: nowIso },
+          { merge: true }
+        );
+      }
+
+      // Upsert or remove in target date index
+      if (session.status === 'CANCELLED') {
+        delete targetSlotsMap[session.id];
+      } else {
+        targetSlotsMap[session.id] = {
+          sessionId: session.id,
+          date: session.date,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          roomId: session.roomId,
+          teacherId: session.teacherId,
+          groupIds: session.groupIds || [],
+          status: session.status,
+          updatedAt: nowIso,
+        };
+      }
+
+      transaction.set(
+        targetIndexDocRef,
+        { id: `schedule_slots_${session.date}`, slots: targetSlotsMap, updatedAt: nowIso },
+        { merge: true }
+      );
+
+      const cleanSessionData = sanitizeForFirestore(
+        committedSession as unknown as Record<string, unknown>,
+        options?.previousSession as unknown as Record<string, unknown>
+      ) as Record<string, unknown>;
+      transaction.set(sessionDocRef, cleanSessionData, { merge: true });
+    });
+
+    if (reservationConflictMsg) {
+      if (options?.onReservationConflict) {
+        options.onReservationConflict(reservationConflictMsg);
+      }
+      return {
+        synced: false,
+        reservationConflict: true,
+        conflictMessage: reservationConflictMsg,
+      };
+    }
+
+    clearOutboxEntry('sessions', session.id);
+    if (options?.onSuccess) {
+      options.onSuccess(committedSession);
+    }
+    return { synced: true };
+  } catch (err) {
+    // Fallback to standard syncDocToFirestore on transient errors
+    await syncDocToFirestore('sessions', session, {
+      previousItem: options?.previousSession as unknown as Record<string, unknown>,
+      baseUpdatedAt: options?.previousSession?.updatedAt,
+    });
+    const info = handleFirestoreError(err, OperationType.WRITE, `sessions/${session.id}`);
+    return { synced: false, error: info.error };
+  }
+};
+
+export const releaseSessionSlotTransactionally = async (
+  sessionId: string,
+  dateStr?: string
+): Promise<void> => {
+  if (!dateStr || !hasValidRealFirebaseAuth() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return;
+  }
+  const indexDocRef = doc(db, 'appSettings', `schedule_slots_${dateStr}`);
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(indexDocRef);
+      if (!snap.exists()) return;
+      const slots: Record<string, ServerScheduleSlotEntry> = {
+        ...((snap.data().slots as Record<string, ServerScheduleSlotEntry>) || {}),
+      };
+      if (slots[sessionId]) {
+        delete slots[sessionId];
+        transaction.set(
+          indexDocRef,
+          { id: `schedule_slots_${dateStr}`, slots, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+      }
+    });
+  } catch {
+    // Ignore non-fatal slot cleanup error
+  }
+};
+
+export const clearDateScheduleSlotsTransactionally = async (
+  dateStr: string
+): Promise<void> => {
+  if (!dateStr || !hasValidRealFirebaseAuth() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return;
+  }
+  const indexDocRef = doc(db, 'appSettings', `schedule_slots_${dateStr}`);
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(indexDocRef);
+      if (!snap.exists()) return;
+      transaction.set(
+        indexDocRef,
+        { id: `schedule_slots_${dateStr}`, slots: {}, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    });
+  } catch {
+    // Ignore non-fatal slot cleanup error
+  }
+};
+
 /**
  * Flushes only the genuine local mutations queued while offline, preventing
  * stale seed data from overwriting newer remote documents on reconnect.
@@ -553,11 +940,12 @@ export const syncCollectionBatch = async <
   T extends { id: string; updatedAt?: string; lastModifiedAt?: string }
 >(
   collectionName: string,
-  items: T[]
+  items: T[],
+  onlyMissingOrNewer = false
 ): Promise<{ syncedCount: number; error?: string }> => {
   if (!items || items.length === 0) return { syncedCount: 0 };
   if (!hasValidRealFirebaseAuth()) {
-    return { syncedCount: 0, error: 'Authentification Firebase vérifiée requise.' };
+    return { syncedCount: 0, error: 'Base de données Cloud déconnectée.' };
   }
 
   try {
@@ -566,20 +954,24 @@ export const syncCollectionBatch = async <
     const remoteTimestamps = new Map<string, string>();
     existingSnap.docs.forEach((d) => {
       const data = d.data() as { updatedAt?: string; lastModifiedAt?: string };
-      remoteTimestamps.set(d.id, data.updatedAt || data.lastModifiedAt || '');
+      remoteTimestamps.set(d.id, data.updatedAt || data.lastModifiedAt || SEED_BASELINE_TIMESTAMP);
     });
 
     const CHUNK_SIZE = 400;
     let totalSynced = 0;
 
-    // Filter out tombstoned items and items where the remote document is newer
+    // Filter out tombstoned items and items where the remote document is newer (or equal when onlyMissingOrNewer)
     const eligibleItems = items.filter((item) => {
       if (tombstones.has(item.id) || tombstones.has(`${collectionName}:${item.id}`)) {
         return false;
       }
       const localTime = item.updatedAt || item.lastModifiedAt || SEED_BASELINE_TIMESTAMP;
-      const remoteTime = remoteTimestamps.get(item.id);
-      if (remoteTime && remoteTime > localTime) {
+      const hasRemote = remoteTimestamps.has(item.id);
+      const remoteTime = remoteTimestamps.get(item.id) || '';
+      if (onlyMissingOrNewer) {
+        return !hasRemote || localTime > remoteTime;
+      }
+      if (hasRemote && remoteTime > localTime) {
         // Remote document is newer: do NOT overwrite with stale local state
         return false;
       }

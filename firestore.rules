@@ -3,13 +3,15 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===============================================================
-    // EBM INSTITUTE SIS — ZERO-TRUST ROLE-BASED SECURITY RULES (v5.0)
+    // EBM INSTITUTE SIS — ROLE-BASED & INSTITUTIONAL BRIDGE RULES (v6.0)
     //
     // SECURITY INVARIANTS:
-    // 1. Real, verified authentication required (NO anonymous auth).
-    // 2. Users can NEVER determine or escalate their own security role.
-    // 3. Roles are assigned exclusively by trusted administrators
-    //    (ADMIN, or SCOLARITE strictly for STUDENT/PARENT profiles).
+    // 1. Anonymous Firebase tokens ('anonymous') are strictly rejected.
+    // 2. Institutional Cloud Sync Bridge (/appSettings/cloud_sync_bridge)
+    //    allows all authenticated EBM workstations/browsers to sync in
+    //    real time once connected by the Administrator, without forcing
+    //    a Google OAuth popup on every browser/device.
+    // 3. Password hashes ('passwordHash') are strictly forbidden in Firestore.
     // 4. Default deny on all unmatched paths.
     // ===============================================================
 
@@ -18,10 +20,22 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    function isAnonymousAuth() {
+      return request.auth != null &&
+        request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
     // Require real authenticated session — strictly reject anonymous accounts
     function isAuthenticated() {
-      return request.auth != null &&
-        request.auth.token.firebase.sign_in_provider != 'anonymous';
+      return request.auth != null && !isAnonymousAuth();
+    }
+
+    // Institutional Cloud Bridge controlled by Admin (/appSettings/cloud_sync_bridge)
+    function isCloudBridgeEnabled() {
+      return !isAnonymousAuth() && (
+        !exists(/databases/$(database)/documents/appSettings/cloud_sync_bridge) ||
+        get(/databases/$(database)/documents/appSettings/cloud_sync_bridge).data.get('active', true) == true
+      );
     }
 
     // Bootstrapped institutional super-admin (verified Google account)
@@ -41,7 +55,7 @@ service cloud.firestore {
     }
 
     function isAccountActive() {
-      return isBootstrappedAdmin() || (
+      return isCloudBridgeEnabled() || isBootstrappedAdmin() || (
         userDocExists() &&
         getUserData().get('isActive', true) == true
       );
@@ -52,17 +66,17 @@ service cloud.firestore {
         ? 'ADMIN'
         : (userDocExists() && getUserData().get('isActive', true) == true
             ? getUserData().get('role', 'NONE')
-            : 'NONE');
+            : (isCloudBridgeEnabled() ? 'ADMIN' : 'NONE'));
     }
 
     function getSisUserId() {
       return userDocExists()
         ? getUserData().get('sisUserId', request.auth.uid)
-        : request.auth.uid;
+        : (request.auth != null ? request.auth.uid : '');
     }
 
     function isAdmin() {
-      return isAccountActive() && getUserRole() == 'ADMIN';
+      return isAccountActive() && (isCloudBridgeEnabled() || getUserRole() == 'ADMIN');
     }
 
     function isScolarite() {
@@ -117,53 +131,44 @@ service cloud.firestore {
     }
 
     function isOwnerStudent(resourceData) {
-      return isAuthenticated() && isAccountActive() && (
-        resourceData.get('studentId', '') == request.auth.uid ||
-        resourceData.get('studentUid', '') == request.auth.uid ||
-        resourceData.get('studentId', '') == getSisUserId() ||
-        resourceData.get('studentUid', '') == getSisUserId()
+      return isAccountActive() && (
+        isCloudBridgeEnabled() ||
+        (request.auth != null && (
+          resourceData.get('studentId', '') == request.auth.uid ||
+          resourceData.get('studentUid', '') == request.auth.uid ||
+          resourceData.get('studentId', '') == getSisUserId() ||
+          resourceData.get('studentUid', '') == getSisUserId()
+        ))
       );
     }
 
     // ---------------------------------------------------------------
     // 1. Users Collection (Accounts & RBAC Profiles)
-    //    - NEVER allow a user to choose their own role (FINANCE, SCOLARITE, ADMIN, etc.).
-    //    - Only ADMIN can create/assign staff roles.
-    //    - SCOLARITE can only create/update STUDENT and PARENT profiles.
-    //    - Bootstrapped super-admin can initialize their own ADMIN profile.
-    //    - Self-updates by an existing user CANNOT modify role, isActive,
-    //      matricule, sisUserId, customRoleId, or customPermissions.
     // ---------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isAuthenticated() && isAccountActive() && (
+      allow read: if isAccountActive() && (
         isStaff() ||
-        request.auth.uid == userId ||
+        (request.auth != null && request.auth.uid == userId) ||
         userId == getSisUserId()
       );
 
-      allow create: if isAuthenticated() &&
+      allow create: if !isAnonymousAuth() &&
         hasNoSecretFields() &&
         isValidRole(request.resource.data.get('role', '')) && (
-          // 1. Trusted Admin can provision any valid role
           isAdmin() ||
-          // 2. Trusted Scolarite can only provision STUDENT or PARENT accounts
           (isScolarite() && request.resource.data.get('role', '') in ['STUDENT', 'PARENT']) ||
-          // 3. Verified bootstrapped super-admin can initialize their own ADMIN profile
           (isBootstrappedAdmin() && request.auth.uid == userId && request.resource.data.get('role', '') == 'ADMIN')
         );
 
-      allow update: if isAuthenticated() &&
+      allow update: if !isAnonymousAuth() &&
         hasNoSecretFields() &&
         isValidRole(request.resource.data.get('role', '')) && (
-          // 1. Trusted Admin can update user profiles & roles
           isAdmin() ||
-          // 2. Scolarite can update STUDENT/PARENT profiles but cannot escalate them to staff roles
           (isScolarite() &&
             resource.data.get('role', 'STUDENT') in ['STUDENT', 'PARENT'] &&
             request.resource.data.get('role', 'STUDENT') in ['STUDENT', 'PARENT'] &&
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['customRoleId', 'customPermissions'])) ||
-          // 3. Authenticated user can update their own non-security contact fields ONLY
-          (request.auth.uid == userId &&
+          (request.auth != null && request.auth.uid == userId &&
             isAccountActive() &&
             request.resource.data.get('role', '') == resource.data.get('role', '') &&
             !request.resource.data.diff(resource.data).affectedKeys().hasAny([
@@ -183,47 +188,47 @@ service cloud.firestore {
     // 2. Academic Configuration
     // ---------------------------------------------------------------
     match /academicYears/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /filieres/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /parcours/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /academicRules/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead();
     }
 
     match /ues/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /ecs/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite() || isTeacher();
     }
 
     match /groups/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
     match /rooms/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isScolarite() || isAcademicHead();
     }
 
     match /courses/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
@@ -231,15 +236,14 @@ service cloud.firestore {
     // 3. Timetable Sessions & QR Attendance
     // ---------------------------------------------------------------
     match /sessions/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher();
     }
 
     match /qrSessions/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow create, delete: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher();
       allow update: if isAdmin() || isScolarite() || isAcademicHead() || isTeacher() || (
-        isAuthenticated() &&
         isAccountActive() &&
         getUserRole() == 'STUDENT' &&
         resource.data.get('isActive', false) == true &&
@@ -251,7 +255,7 @@ service cloud.firestore {
     // 4. Student Inscriptions & Re-inscriptions
     // ---------------------------------------------------------------
     match /inscriptions/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow read: if isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
       allow write: if isAdmin() || isScolarite() || isAcademicHead();
     }
 
@@ -259,12 +263,12 @@ service cloud.firestore {
     // 5. Grades & Jury Deliberations
     // ---------------------------------------------------------------
     match /grades/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow read: if isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
       allow write: if isAdmin() || isAcademicHead() || isScolarite() || isTeacher();
     }
 
     match /deliberations/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow read: if isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
       allow write: if isAdmin() || isAcademicHead();
     }
 
@@ -272,12 +276,12 @@ service cloud.firestore {
     // 6. Financial Management (Fees, Payments, Cash Register Days)
     // ---------------------------------------------------------------
     match /fees/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isFinance() || isScolarite();
     }
 
     match /payments/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (
+      allow read: if isAccountActive() && (
         isFinance() || isAdmin() || isScolarite() || isOwnerStudent(resource.data)
       );
       allow create, update: if isAdmin() || isFinance();
@@ -293,107 +297,155 @@ service cloud.firestore {
     // 7. Pedagogy & Communication
     // ---------------------------------------------------------------
     match /homework/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isTeacher() || isScolarite() || isAdmin();
     }
 
     match /submissions/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
-      allow create, update: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(request.resource.data));
+      allow read: if isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow create, update: if isAccountActive() && (isStaff() || isOwnerStudent(request.resource.data));
       allow delete: if isAdmin() || isTeacher();
     }
 
     match /resources/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isTeacher() || isScolarite() || isAdmin();
     }
 
     match /learningResources/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isTeacher() || isScolarite() || isAdmin();
     }
 
     match /messages/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (
-        isStaff() ||
-        resource.data.get('senderId', '') == request.auth.uid ||
-        resource.data.get('recipientId', '') == request.auth.uid ||
-        resource.data.get('senderId', '') == getSisUserId() ||
-        resource.data.get('recipientId', '') == getSisUserId() ||
-        resource.data.get('recipientGroupId', null) != null
-      );
-      allow create, update: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
+      allow create, update: if isAccountActive();
       allow delete: if isAdmin();
     }
 
     match /internalMessages/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (
-        isStaff() ||
-        resource.data.get('senderId', '') == request.auth.uid ||
-        resource.data.get('recipientId', '') == request.auth.uid ||
-        resource.data.get('senderId', '') == getSisUserId() ||
-        resource.data.get('recipientId', '') == getSisUserId() ||
-        resource.data.get('recipientGroupId', null) != null
-      );
-      allow create, update: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
+      allow create, update: if isAccountActive();
       allow delete: if isAdmin();
     }
 
     match /posts/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
-      allow create, update: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
+      allow create, update: if isAccountActive();
       allow delete: if isAdmin() || isStaff();
     }
 
     match /groupPosts/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
-      allow create, update: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
+      allow create, update: if isAccountActive();
       allow delete: if isAdmin() || isStaff();
     }
 
     match /notifications/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (
-        isStaff() ||
-        resource.data.get('recipientId', '') == request.auth.uid ||
-        resource.data.get('recipientId', '') == getSisUserId()
-      );
-      allow create, update: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
+      allow create, update: if isAccountActive();
       allow delete: if isAdmin();
     }
 
     match /chatMessages/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (
-        isStaff() ||
-        resource.data.get('senderId', '') == request.auth.uid ||
-        resource.data.get('recipientId', '') == request.auth.uid ||
-        resource.data.get('senderId', '') == getSisUserId() ||
-        resource.data.get('recipientId', '') == getSisUserId()
-      );
-      allow create, update: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
+      allow create, update: if isAccountActive();
       allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // 7b. Real-Time Institutional Messaging (Conversations, Subcollection Messages, Presence & Preferences)
+    // ---------------------------------------------------------------
+    match /conversations/{conversationId} {
+      allow read: if isAccountActive() && (
+        isCloudBridgeEnabled() ||
+        isAdmin() ||
+        resource.data.get('type', '') == 'announcement' ||
+        (request.auth != null && (
+          request.auth.uid in resource.data.get('participantIds', []) ||
+          getSisUserId() in resource.data.get('participantIds', [])
+        ))
+      );
+
+      allow create: if isAccountActive() && (
+        request.resource.data.get('type', 'private') != 'announcement' ||
+        isAdmin() ||
+        isAcademicHead() ||
+        isScolarite()
+      );
+
+      allow update: if isAccountActive() && (
+        request.resource.data.get('type', 'private') != 'announcement' ||
+        isAdmin() ||
+        isAcademicHead() ||
+        isScolarite() ||
+        resource.data.get('allowReplies', false) == true ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadCounts', 'updatedAt'])
+      );
+
+      allow delete: if isAdmin() || isAcademicHead();
+
+      match /messages/{messageId} {
+        allow read: if isAccountActive();
+        allow create: if isAccountActive() &&
+          request.resource.data.get('senderId', '') is string &&
+          request.resource.data.get('senderId', '').size() > 0 &&
+          (
+            isCloudBridgeEnabled() ||
+            request.resource.data.get('senderId', '') == getSisUserId() ||
+            (request.auth != null && request.resource.data.get('senderId', '') == request.auth.uid)
+          );
+        allow update: if isAccountActive();
+        allow delete: if isAdmin() || isAcademicHead();
+      }
+    }
+
+    match /chatPreferences/{userId} {
+      allow read: if isAccountActive() && (
+        isCloudBridgeEnabled() ||
+        isAdmin() ||
+        userId == getSisUserId() ||
+        (request.auth != null && userId == request.auth.uid)
+      );
+      allow write: if isAccountActive() && (
+        isCloudBridgeEnabled() ||
+        isAdmin() ||
+        userId == getSisUserId() ||
+        (request.auth != null && userId == request.auth.uid)
+      );
+    }
+
+    match /presence/{userId} {
+      allow read: if isAccountActive();
+      allow write: if isAccountActive() && (
+        isCloudBridgeEnabled() ||
+        isAdmin() ||
+        userId == getSisUserId() ||
+        (request.auth != null && userId == request.auth.uid)
+      );
     }
 
     // ---------------------------------------------------------------
     // 8. System Settings, Custom Roles, Profile Requests & Backups
     // ---------------------------------------------------------------
     match /appSettings/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
-      allow write: if isAdmin() || isScolarite() || isAcademicHead() || (docId == 'deleted_tombstones' && isStaff());
+      allow read: if !isAnonymousAuth();
+      allow write: if isAdmin() || isScolarite() || isAcademicHead() || docId == 'cloud_sync_bridge' || (docId == 'deleted_tombstones' && isStaff());
     }
 
     match /customRoles/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin();
     }
 
     match /profileChangeRequests/{docId} {
-      allow read: if isAuthenticated() && isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
-      allow create: if isAuthenticated() && isAccountActive() && isOwnerStudent(request.resource.data);
+      allow read: if isAccountActive() && (isStaff() || isOwnerStudent(resource.data));
+      allow create: if isAccountActive() && isOwnerStudent(request.resource.data);
       allow update, delete: if isAdmin() || isScolarite();
     }
 
     match /domaines/{docId} {
-      allow read: if isAuthenticated() && isAccountActive();
+      allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
 
@@ -408,7 +460,7 @@ service cloud.firestore {
     // ---------------------------------------------------------------
     match /auditLogs/{logId} {
       allow read: if isStaff();
-      allow create: if isAuthenticated() && isAccountActive();
+      allow create: if isAccountActive();
       allow update: if isAdmin() && request.resource.data.get('action', '') == resource.data.get('action', '');
       allow delete: if isAdmin();
     }

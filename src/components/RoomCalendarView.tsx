@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Room } from '../types';
 import { downloadCsvFile } from '../utils/csvExport';
-import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { getAntananarivoDateStr, getAcademicWeekMondayDate } from '../utils/securityAndDateUtils';
 
 interface RoomCalendarViewProps {
   onNavigateToCreate?: () => void;
@@ -98,12 +98,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
   const [assistGroupId, setAssistGroupId] = useState<string>(groups[0]?.id || 'grp-l1-info-a');
   const [assistCourseId, setAssistCourseId] = useState<string>(courses[0]?.id || 'crs-1');
   const [assistDate, setAssistDate] = useState<string>(() => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const distanceToMonday = (currentDay + 6) % 7;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - distanceToMonday);
-    return getAntananarivoDateStr(monday);
+    return getAntananarivoDateStr(getAcademicWeekMondayDate());
   });
   const [assistStartTime, setAssistStartTime] = useState<string>(scheduleConfig.dayStartTime || '07:00');
   const [assistEndTime, setAssistEndTime] = useState<string>('09:00');
@@ -117,12 +112,18 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
   const [modalEquipments, setModalEquipments] = useState<string[]>(activeRoom?.equipment || []);
   const [modalCapacity, setModalCapacity] = useState<number>(activeRoom?.capacity || 30);
   const [modalStatus, setModalStatus] = useState<Room['status']>(activeRoom?.status || 'available');
+  const [modalMaintStart, setModalMaintStart] = useState<string>(activeRoom?.maintenanceStartDate || '');
+  const [modalMaintEnd, setModalMaintEnd] = useState<string>(activeRoom?.maintenanceEndDate || '');
+  const [showAllRoomsMatrix, setShowAllRoomsMatrix] = useState<boolean>(false);
+  const [showReservationHistory, setShowReservationHistory] = useState<boolean>(false);
 
   const openCustomizeModal = () => {
     if (activeRoom) {
       setModalEquipments([...activeRoom.equipment]);
       setModalCapacity(activeRoom.capacity);
       setModalStatus(activeRoom.status);
+      setModalMaintStart(activeRoom.maintenanceStartDate || '');
+      setModalMaintEnd(activeRoom.maintenanceEndDate || '');
       setCustomEquipModalInput('');
       setIsCustomizeModalOpen(true);
     }
@@ -188,6 +189,8 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
       equipment: modalEquipments,
       capacity: Number(modalCapacity) || activeRoom.capacity,
       status: modalStatus,
+      maintenanceStartDate: modalStatus === 'maintenance' ? modalMaintStart || undefined : undefined,
+      maintenanceEndDate: modalStatus === 'maintenance' ? modalMaintEnd || undefined : undefined,
     });
     setIsCustomizeModalOpen(false);
     showNotification(`Équipements et fiche de la salle ${activeRoom.code} mis à jour avec succès !`);
@@ -202,15 +205,13 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
 
   // Helper date for days of selected week (supports weekOffset navigation for upcoming/past weeks)
   const getDayInfo = (offset: number) => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const distanceToMonday = (currentDay + 6) % 7;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - distanceToMonday + weekOffset * 7 + offset);
+    const baseMonday = getAcademicWeekMondayDate();
+    const targetDay = new Date(baseMonday);
+    targetDay.setDate(baseMonday.getDate() + weekOffset * 7 + offset);
     return {
       offset,
-      dateStr: getAntananarivoDateStr(monday),
-      display: monday.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }),
+      dateStr: getAntananarivoDateStr(targetDay),
+      display: targetDay.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }),
       isWeekend: offset >= 5,
     };
   };
@@ -266,6 +267,18 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                   : 'Assistant : Placer les Étudiants dans une Salle'}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowAllRoomsMatrix((prev) => !prev)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                showAllRoomsMatrix
+                  ? 'bg-[#17345B] text-white'
+                  : 'bg-slate-100 text-slate-800 border border-slate-200 hover:bg-slate-200'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              {showAllRoomsMatrix ? 'Vue par salle individuelle' : 'Toutes les salles simultanément'}
+            </button>
             <span className="text-xs font-semibold px-3 py-1.5 bg-blue-50 text-blue-800 rounded-xl border border-blue-200">
               {rooms.length} salles répertoriées
             </span>
@@ -695,6 +708,15 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                 </span>
                 <span className="font-bold text-emerald-700 capitalize">{activeRoom.status}</span>
               </div>
+              {activeRoom.status === 'maintenance' && (activeRoom.maintenanceStartDate || activeRoom.maintenanceEndDate) && (
+                <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                  <span>
+                    Maintenance : <strong>{activeRoom.maintenanceStartDate || 'immédiate'}</strong> →{' '}
+                    <strong>{activeRoom.maintenanceEndDate || 'indéterminée'}</strong>
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-purple-600" /> Réservations :
@@ -1159,6 +1181,149 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                 );
               })}
             </div>
+
+            {/* Historique des réservations & mouvements de la salle (Priorité 3) */}
+            <div className="mt-4 pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReservationHistory((prev) => !prev)}
+                  className="text-xs font-bold text-slate-800 hover:text-blue-700 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <span>
+                    {showReservationHistory
+                      ? 'Masquer l’historique des réservations et changements de cette salle'
+                      : `Afficher l’historique des réservations de ${activeRoom.name} (${roomSessions.length})`}
+                  </span>
+                </button>
+              </div>
+              {showReservationHistory && (
+                <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 max-h-56 overflow-y-auto space-y-1.5 text-xs">
+                  {roomSessions.length === 0 ? (
+                    <p className="text-slate-400 italic">Aucune réservation enregistrée pour cette salle.</p>
+                  ) : (
+                    roomSessions
+                      .slice()
+                      .sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime))
+                      .map((s) => {
+                        const course = courses.find((c) => c.id === s.courseId);
+                        const teacher = users.find((u) => u.id === s.teacherId);
+                        const lastLog = s.history?.[0];
+                        return (
+                          <div
+                            key={s.id}
+                            className="p-2 bg-white rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                          >
+                            <div>
+                              <span className="font-bold text-slate-900">
+                                {s.date} ({s.startTime}–{s.endTime}) — {s.eventTitle || course?.title || 'Séance'}
+                              </span>
+                              <span className="text-slate-500 ml-2">
+                                • {s.eventSpeaker || teacher?.name || 'Intervenant'}
+                              </span>
+                            </div>
+                            {lastLog && (
+                              <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                                {lastLog.action} par {lastLog.authorName} ({new Date(lastLog.timestamp).toLocaleDateString('fr-FR')})
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VUE SIMULTANÉE DE TOUTES LES SALLES (Priorité 3) */}
+      {showAllRoomsMatrix && (
+        <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#17345B]" />
+                Visualisation simultanée de toutes les salles ({weekDays[0]?.display} → {weekDays[weekDays.length - 1]?.display})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Vue synoptique multi-salles permettant de comparer la disponibilité et l’effectif des groupes sur toute la semaine.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="p-2.5 text-left font-bold border border-slate-200 min-w-[170px]">Salle & Capacité</th>
+                  {weekDays.map((day) => (
+                    <th key={day.dateStr} className="p-2.5 text-left font-bold border border-slate-200 min-w-[160px]">
+                      <div>{day.display}</div>
+                      <div className="text-[10px] text-slate-400 font-normal">{day.dateStr}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rooms.map((rm) => (
+                  <tr key={rm.id} className="hover:bg-slate-50/70">
+                    <td className="p-2.5 border border-slate-200 align-top">
+                      <div className="font-bold text-slate-900">{rm.name}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {rm.code} • <strong>{rm.capacity} places</strong>
+                      </div>
+                      <span
+                        className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          rm.status === 'available'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}
+                      >
+                        {rm.status === 'available' ? 'Disponible' : 'Maintenance'}
+                      </span>
+                    </td>
+                    {weekDays.map((day) => {
+                      const cellSessions = sessions
+                        .filter((s) => s.roomId === rm.id && s.date === day.dateStr && s.status !== 'CANCELLED')
+                        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+                      return (
+                        <td key={day.dateStr} className="p-2 border border-slate-200 align-top space-y-1.5">
+                          {cellSessions.length === 0 ? (
+                            <span className="text-[11px] text-emerald-700/80 font-medium">Libre</span>
+                          ) : (
+                            cellSessions.map((cs) => {
+                              const cObj = courses.find((c) => c.id === cs.courseId);
+                              const grpStudents = cs.groupIds.reduce(
+                                (sum, gid) => sum + (groups.find((g) => g.id === gid)?.studentCount || 0),
+                                0
+                              );
+                              return (
+                                <div
+                                  key={cs.id}
+                                  className="p-1.5 rounded-lg bg-blue-50/80 border border-blue-200 text-[11px]"
+                                >
+                                  <div className="font-bold text-[#17345B]">
+                                    {cs.startTime}–{cs.endTime}
+                                  </div>
+                                  <div className="font-semibold text-slate-800 truncate">
+                                    {cs.eventTitle || cObj?.title || 'Séance'}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Effectif: {grpStudents}/{rm.capacity} pl.
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -1327,13 +1492,39 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                   </label>
                   <select
                     value={modalStatus}
-                    onChange={(e) => setModalStatus(e.target.value as any)}
+                    onChange={(e) => setModalStatus(e.target.value as Room['status'])}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold"
                   >
                     <option value="available">Disponible pour cours</option>
                     <option value="maintenance">En maintenance technique</option>
                   </select>
                 </div>
+                {modalStatus === 'maintenance' && (
+                  <>
+                    <div>
+                      <label className="block font-bold text-amber-800 uppercase mb-1">
+                        Début de maintenance (optionnel) :
+                      </label>
+                      <input
+                        type="date"
+                        value={modalMaintStart}
+                        onChange={(e) => setModalMaintStart(e.target.value)}
+                        className="w-full px-3 py-2 bg-amber-50 border border-amber-300 rounded-xl text-xs font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-amber-800 uppercase mb-1">
+                        Fin de maintenance (optionnel) :
+                      </label>
+                      <input
+                        type="date"
+                        value={modalMaintEnd}
+                        onChange={(e) => setModalMaintEnd(e.target.value)}
+                        className="w-full px-3 py-2 bg-amber-50 border border-amber-300 rounded-xl text-xs font-semibold"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
             </div>
