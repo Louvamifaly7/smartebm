@@ -21,8 +21,16 @@ import {
   RotateCcw,
   X,
   Sliders,
+  Calendar,
+  History,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Course, Filiere, Room, StudentGroup, User } from '../types';
+import { CoursesWorkspace } from './data-management/CoursesWorkspace';
+import { UeEcWorkspace } from './data-management/UeEcWorkspace';
+import { AcademicYearManagement } from './AcademicYearManagement';
+import { AuditLogView } from './AuditLogView';
+import { CourseImportExportModal } from './data-management/CourseImportExportModal';
 
 export const DataManagementHub: React.FC = () => {
   const {
@@ -50,11 +58,24 @@ export const DataManagementHub: React.FC = () => {
     addDomaine,
     updateDomaine,
     deleteDomaine,
+    ues,
+    ecs,
     seedBatchDemoData,
     resetToDefaultData,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'ROOMS' | 'COURSES' | 'TEACHERS' | 'GROUPS' | 'FILIERES' | 'GENERATOR'>('COURSES');
+  const [activeTab, setActiveTab] = useState<
+    | 'COURSES'
+    | 'UES_ECS'
+    | 'GROUPS'
+    | 'TEACHERS'
+    | 'ROOMS'
+    | 'FILIERES'
+    | 'CALENDAR'
+    | 'IMPORT_EXPORT'
+    | 'HISTORY'
+    | 'GENERATOR'
+  >('COURSES');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -600,317 +621,141 @@ export const DataManagementHub: React.FC = () => {
           </div>
         )}
 
-        {/* Sub Navigation Bar */}
+        {/* Sub Navigation Bar (10 Espaces de travail Cahier des Charges v1.1) */}
         <div className="flex gap-1.5 overflow-x-auto pt-4 border-t border-slate-100 mt-4 no-scrollbar text-xs font-bold">
           <button
+            type="button"
             onClick={() => setActiveTab('COURSES')}
-            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'COURSES' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            Créer un Cours / Module ({courses.length})
+            1. Cours & Matières ({courses.length})
           </button>
 
           <button
-            onClick={() => setActiveTab('ROOMS')}
-            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              activeTab === 'ROOMS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            type="button"
+            onClick={() => setActiveTab('UES_ECS')}
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'UES_ECS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <MapPin className="w-4 h-4" />
-            Créer une Salle ({rooms.length})
+            <Layers className="w-4 h-4" />
+            2. UE & EC ({ues.length} / {ecs.length})
           </button>
 
           <button
-            onClick={() => setActiveTab('TEACHERS')}
-            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
-              activeTab === 'TEACHERS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            Créer un Enseignant ({teachers.length})
-          </button>
-
-          <button
+            type="button"
             onClick={() => setActiveTab('GROUPS')}
-            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'GROUPS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
             <Users className="w-4 h-4" />
-            Créer un Groupe ({groups.length})
+            3. Groupes & Promotions ({groups.length})
           </button>
 
           <button
+            type="button"
+            onClick={() => setActiveTab('TEACHERS')}
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'TEACHERS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            4. Enseignants ({teachers.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('ROOMS')}
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'ROOMS' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            5. Salles ({rooms.length})
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('FILIERES')}
-            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'FILIERES' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
             <GraduationCap className="w-4 h-4" />
-            Domaines & Mentions ({filieres.length})
+            6. Mentions & Domaines ({filieres.length})
           </button>
 
           <button
+            type="button"
+            onClick={() => setActiveTab('CALENDAR')}
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'CALENDAR' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            7. Années & Semestres
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('IMPORT_EXPORT')}
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'IMPORT_EXPORT' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            8. Import / Export CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('HISTORY')}
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'HISTORY' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            9. Historique & Audit
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('GENERATOR')}
-            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'GENERATOR' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
-            Générateur de Données
+            10. Générateur Démo
           </button>
         </div>
       </div>
 
-      {/* --- TAB 1: COURSES CREATION --- */}
-      {activeTab === 'COURSES' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Creation Form */}
-          <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
-              <PlusCircle className="w-4 h-4 text-blue-600" />
-              <h3 className="font-bold text-sm text-slate-900">
-                Formulaire : Nouveau Cours / Module
-              </h3>
-            </div>
-            <form onSubmit={handleCreateCourse} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Code du Cours * (ex: INF-201)
-                </label>
-                <input
-                  type="text"
-                  value={courseCode}
-                  onChange={(e) => setCourseCode(e.target.value)}
-                  placeholder="INF-201"
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-bold font-mono text-xs focus:ring-1 focus:ring-blue-600"
-                  required
-                />
-              </div>
+      {/* --- TAB 1: COURSES WORKSPACE (Refonte Cahier des Charges v1.1) --- */}
+      {activeTab === 'COURSES' && <CoursesWorkspace />}
 
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Intitulé du Cours *
-                </label>
-                <input
-                  type="text"
-                  value={courseTitle}
-                  onChange={(e) => setCourseTitle(e.target.value)}
-                  placeholder="Ex: Programmation Web Avancée"
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-blue-600"
-                  required
-                />
-              </div>
+      {/* --- TAB 2: UES & ECS WORKSPACE --- */}
+      {activeTab === 'UES_ECS' && <UeEcWorkspace />}
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold uppercase text-slate-700 mb-1">
-                    Volume Total Prévu *
-                  </label>
-                  <input
-                    type="number"
-                    value={courseTotalHours}
-                    onChange={(e) => setCourseTotalHours(Number(e.target.value))}
-                    min={6}
-                    max={120}
-                    step={2}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-xs"
-                    required
-                  />
-                  <span className="text-[10px] text-slate-500">Ex: 30 h</span>
-                </div>
-                <div>
-                  <label className="block font-bold uppercase text-slate-700 mb-1">
-                    Durée standard séance
-                  </label>
-                  <select
-                    value={courseDuration}
-                    onChange={(e) => setCourseDuration(Number(e.target.value))}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-                  >
-                    <option value={1.5}>1h30</option>
-                    <option value={2}>2h00</option>
-                    <option value={3}>3h00</option>
-                    <option value={4}>4h00</option>
-                  </select>
-                </div>
-              </div>
+      {/* --- TAB 7: CALENDAR (Années & Semestres) --- */}
+      {activeTab === 'CALENDAR' && <AcademicYearManagement />}
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold uppercase text-slate-700 mb-1">
-                    Filière
-                  </label>
-                  <select
-                    value={courseFiliere}
-                    onChange={(e) => handleFiliereChangeForCourse(e.target.value, courseLevel)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-                  >
-                    {filieres.map((f) => (
-                      <option key={f.id} value={f.id}>{f.code} - {f.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-bold uppercase text-slate-700 mb-1">
-                    Niveau
-                  </label>
-                  <select
-                    value={courseLevel}
-                    onChange={(e) => {
-                      const nextLvl = e.target.value;
-                      setCourseLevel(nextLvl);
-                      handleFiliereChangeForCourse(courseFiliere, nextLvl);
-                    }}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-                  >
-                    <option value="L1">Licence 1 (L1)</option>
-                    <option value="L2">Licence 2 (L2)</option>
-                    <option value="L3">Licence 3 (L3)</option>
-                    <option value="M1">Master 1 (M1)</option>
-                    <option value="M2">Master 2 (M2)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Enseignant Responsable
-                </label>
-                <select
-                  value={courseTeacherId}
-                  onChange={(e) => setCourseTeacherId(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-                >
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Groupe(s) d'étudiants concerné(s)
-                </label>
-                <select
-                  multiple
-                  value={courseGroupIds}
-                  onChange={(e) => {
-                    const sel = Array.from(e.target.selectedOptions, (opt) => opt.value);
-                    setCourseGroupIds(sel);
-                  }}
-                  className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs h-22"
-                >
-                  {[...groups]
-                    .sort((a, b) => {
-                      const aIsG1A = a.code.trim().toUpperCase() === 'G1A2627' ? 1 : 0;
-                      const bIsG1A = b.code.trim().toUpperCase() === 'G1A2627' ? 1 : 0;
-                      if (aIsG1A !== bIsG1A) return bIsG1A - aIsG1A;
-                      return a.code.localeCompare(b.code);
-                    })
-                    .map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.code} — {g.name} ({g.studentCount} ét.)
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold uppercase text-slate-700 mb-1">
-                  Description / Objectifs pédagogiques
-                </label>
-                <textarea
-                  value={courseDesc}
-                  onChange={(e) => setCourseDesc(e.target.value)}
-                  placeholder="Compétences visées, prérequis..."
-                  rows={2}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                Enregistrer le cours ({courseTotalHours}h)
-              </button>
-            </form>
-          </div>
-
-          {/* Existing Courses List */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-xs border border-slate-200 flex flex-col">
-            <h3 className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100 mb-3">
-              Modules d'enseignement configurés ({courses.length})
-            </h3>
-            <div className="space-y-2.5 overflow-y-auto max-h-[560px] pr-1">
-              {courses.map((c) => {
-                const assignedTeacher = users.find((u) => u.id === c.teacherIds[0]);
-                const courseFil = filieres.find((f) => f.id === c.filiereId);
-                const assignedGroupNames = c.groupIds.map((gId) => groups.find((g) => g.id === gId)?.code).filter(Boolean);
-
-                return (
-                  <div
-                    key={c.id}
-                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start justify-between gap-3 text-xs"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded text-[10px]">
-                          {c.code}
-                        </span>
-                        {courseFil && (
-                          <span className="font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded text-[10px]">
-                            {courseFil.code} • {c.level || 'L1'}
-                          </span>
-                        )}
-                        <h4 className="font-bold text-slate-900 text-sm truncate">{c.title}</h4>
-                        <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-[10px]">
-                          {c.totalHours} h totales
-                        </span>
-                      </div>
-                      <p className="text-slate-600 mt-1">
-                        Filière : <strong>{courseFil?.name || 'Non spécifiée'}</strong> • Professeur : <strong>{assignedTeacher?.name || 'Non assigné'}</strong> • Groupes : {assignedGroupNames.join(', ') || 'Aucun'}
-                      </p>
-                      {c.description && (
-                        <p className="text-slate-500 italic mt-0.5 text-[11px] line-clamp-1">{c.description}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => openEditCourse(c)}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
-                        title="Modifier ce cours / module"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const res = deleteCourse(c.id);
-                          if (!res.success) {
-                            showNotification(res.error || 'Suppression refusée.', true);
-                          } else {
-                            showNotification(`Cours "${c.title}" supprimé.`);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
-                        title="Supprimer ce cours"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      {/* --- TAB 8: IMPORT / EXPORT CSV --- */}
+      {activeTab === 'IMPORT_EXPORT' && (
+        <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200">
+          <CourseImportExportModal
+            isOpen={true}
+            onClose={() => setActiveTab('COURSES')}
+          />
         </div>
       )}
+
+      {/* --- TAB 9: HISTORIQUE & AUDIT --- */}
+      {activeTab === 'HISTORY' && <AuditLogView />}
 
       {/* --- TAB 2: ROOMS CREATION --- */}
       {activeTab === 'ROOMS' && (

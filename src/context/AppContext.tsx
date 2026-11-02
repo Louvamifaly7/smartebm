@@ -227,10 +227,12 @@ interface AppContextType {
   importStudents: (rows: ImportStudentRow[]) => ImportResult;
   toggleGoogleCalendarLink: (userId: string, email?: string) => void;
 
-  // Data Creation and Management CRUD
   addCourse: (data: Omit<Course, 'id'>) => { success: boolean; course?: Course; error?: string };
   updateCourse: (id: string, updates: Partial<Course>) => void;
   deleteCourse: (id: string) => { success: boolean; error?: string };
+  bulkUpdateCourses: (courseIds: string[], updates: Partial<Course>) => { success: boolean; count: number };
+  bulkUpdateCourseGroups: (courseIds: string[], mode: 'REPLACE' | 'ADD' | 'REMOVE', groupIds: string[]) => { success: boolean; count: number };
+  duplicateCourse: (sourceCourseId: string, newCode: string, newTitle?: string) => { success: boolean; course?: Course; error?: string };
 
   addRoom: (data: Omit<Room, 'id'>) => { success: boolean; room?: Room; error?: string };
   updateRoom: (id: string, updates: Partial<Room>) => void;
@@ -2950,6 +2952,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     removeDocFromFirestore('courses', id);
     logAudit('SUPPRESSION_COURS', `Suppression du cours "${course.title || id}"`);
     return { success: true };
+  };
+
+  const bulkUpdateCourses = (courseIds: string[], updates: Partial<Course>) => {
+    if (!courseIds.length) return { success: true, count: 0 };
+    const idSet = new Set(courseIds);
+    let updatedCount = 0;
+    setCourses((prev) =>
+      prev.map((c) => {
+        if (!idSet.has(c.id)) return c;
+        updatedCount++;
+        const updated: Course = { ...c, ...updates };
+        syncDocToFirestore('courses', updated);
+        return updated;
+      })
+    );
+    logAudit('MODIFICATION_GROUPEE_COURS', `Modification groupée de ${courseIds.length} cours (${Object.keys(updates).join(', ')})`);
+    return { success: true, count: updatedCount };
+  };
+
+  const bulkUpdateCourseGroups = (courseIds: string[], mode: 'REPLACE' | 'ADD' | 'REMOVE', targetGroupIds: string[]) => {
+    if (!courseIds.length) return { success: true, count: 0 };
+    const idSet = new Set(courseIds);
+    let updatedCount = 0;
+    setCourses((prev) =>
+      prev.map((c) => {
+        if (!idSet.has(c.id)) return c;
+        updatedCount++;
+        let newGroupIds: string[];
+        if (mode === 'REPLACE') {
+          newGroupIds = [...targetGroupIds];
+        } else if (mode === 'ADD') {
+          newGroupIds = Array.from(new Set([...(c.groupIds || []), ...targetGroupIds]));
+        } else {
+          // REMOVE
+          const removeSet = new Set(targetGroupIds);
+          newGroupIds = (c.groupIds || []).filter((gid) => !removeSet.has(gid));
+        }
+        const updated: Course = { ...c, groupIds: newGroupIds };
+        syncDocToFirestore('courses', updated);
+        return updated;
+      })
+    );
+    logAudit('GESTION_GROUPES_COURS_MASSE', `Modification groupée des groupes d'étudiants (Mode: ${mode}) pour ${courseIds.length} cours.`);
+    return { success: true, count: updatedCount };
+  };
+
+  const duplicateCourse = (sourceCourseId: string, newCode: string, newTitle?: string): { success: boolean; course?: Course; error?: string } => {
+    const source = courses.find((c) => c.id === sourceCourseId);
+    if (!source) {
+      return { success: false, error: 'Cours source introuvable.' };
+    }
+    const cleanCode = newCode.trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, error: 'Le nouveau code de cours est obligatoire.' };
+    }
+    if (courses.some((c) => c.code.trim().toUpperCase() === cleanCode)) {
+      return { success: false, error: `Un cours avec le code "${cleanCode}" existe déjà.` };
+    }
+    const duplicated: Course = {
+      ...source,
+      id: generateUniqueId('crs'),
+      code: cleanCode,
+      title: newTitle?.trim() || `${source.title} (Copie)`,
+    };
+    setCourses((prev) => [...prev, duplicated]);
+    syncDocToFirestore('courses', duplicated);
+    logAudit('DUPLICATION_COURS', `Duplication du cours "${source.code}" vers "${duplicated.code}" sans les séances planifiées.`);
+    return { success: true, course: duplicated };
   };
 
   const addRoom = (data: Omit<Room, 'id'>) => {
@@ -6422,6 +6492,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCourse,
         updateCourse,
         deleteCourse,
+        bulkUpdateCourses,
+        bulkUpdateCourseGroups,
+        duplicateCourse,
         addRoom,
         updateRoom,
         deleteRoom,

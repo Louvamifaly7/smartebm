@@ -1,4 +1,16 @@
-import { ConflictResult, Course, Filiere, Room, StudentGroup, TimetableSession, User } from '../types';
+import {
+  AcademicCalendarEvent,
+  AcademicYear,
+  CalendarWorkedException,
+  ConflictResult,
+  Course,
+  Filiere,
+  Room,
+  StudentGroup,
+  TimetableSession,
+  User,
+  WeeklyWorkingDayConfig,
+} from '../types';
 import { getAntananarivoDateStr } from './securityAndDateUtils';
 
 // Helper to convert "HH:mm" to minutes from midnight
@@ -23,9 +35,26 @@ export function doIntervalsOverlap(startA: string, endA: string, startB: string,
   return Math.max(aStart, bStart) < Math.min(aEnd, bEnd);
 }
 
-const FRENCH_DAYS_BY_INDEX = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+export const FRENCH_DAYS_BY_INDEX = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
-// Jours fériés officiels & périodes de fermeture universitaire (Madagascar / EBM Institute)
+/**
+ * Configuration par défaut des jours ouvrés hebdomadaires (EBM Institute)
+ * Du lundi au samedi matin (fermeture samedi après-midi à partir de 12:30 et dimanche toute la journée)
+ */
+export const DEFAULT_WEEKLY_WORKING_DAYS: WeeklyWorkingDayConfig[] = [
+  { day: 'DIMANCHE', dayIndex: 0, isWorked: false, morningWorked: false, afternoonWorked: false, standardStartTime: '07:30', standardEndTime: '18:30' },
+  { day: 'LUNDI', dayIndex: 1, isWorked: true, morningWorked: true, afternoonWorked: true, standardStartTime: '07:30', standardEndTime: '18:30' },
+  { day: 'MARDI', dayIndex: 2, isWorked: true, morningWorked: true, afternoonWorked: true, standardStartTime: '07:30', standardEndTime: '18:30' },
+  { day: 'MERCREDI', dayIndex: 3, isWorked: true, morningWorked: true, afternoonWorked: true, standardStartTime: '07:30', standardEndTime: '18:30' },
+  { day: 'JEUDI', dayIndex: 4, isWorked: true, morningWorked: true, afternoonWorked: true, standardStartTime: '07:30', standardEndTime: '18:30' },
+  { day: 'VENDREDI', dayIndex: 5, isWorked: true, morningWorked: true, afternoonWorked: true, standardStartTime: '07:30', standardEndTime: '18:30' },
+  { day: 'SAMEDI', dayIndex: 6, isWorked: true, morningWorked: true, afternoonWorked: false, standardStartTime: '07:30', standardEndTime: '12:30' },
+];
+
+/**
+ * Migration préservée des jours fériés légaux et vacances institutionnelles
+ * (Conservés pour rétrocompatibilité totale avec l'ancien système sans perte de données)
+ */
 export const OFFICIAL_UNIVERSITY_HOLIDAYS: {
   monthDay?: string; // MM-DD (récurrent chaque année)
   startDate?: string; // YYYY-MM-DD
@@ -41,7 +70,152 @@ export const OFFICIAL_UNIVERSITY_HOLIDAYS: {
   { startDate: '2026-12-21', endDate: '2027-01-03', label: 'Vacances universitaires de fin d’année' },
 ];
 
-export function checkAcademicHolidayOrVacation(dateStr: string): string | null {
+export const DEFAULT_MALAGASY_HOLIDAYS: AcademicCalendarEvent[] = [
+  {
+    id: 'holiday-nouvel-an',
+    academicYearId: 'ALL',
+    title: "Jour de l’An (Férié légal)",
+    type: 'HOLIDAY',
+    scope: 'ESTABLISHMENT',
+    startDate: '2027-01-01',
+    endDate: '2027-01-01',
+    isFullDay: true,
+    isRecurringAnnual: true,
+    isWorkedExceptionAllowed: false,
+  },
+  {
+    id: 'holiday-29-mars',
+    academicYearId: 'ALL',
+    title: 'Commémoration du 29 Mars 1947 (Férié légal)',
+    type: 'HOLIDAY',
+    scope: 'ESTABLISHMENT',
+    startDate: '2027-03-29',
+    endDate: '2027-03-29',
+    isFullDay: true,
+    isRecurringAnnual: true,
+    isWorkedExceptionAllowed: false,
+  },
+  {
+    id: 'holiday-travail',
+    academicYearId: 'ALL',
+    title: 'Fête du Travail (Férié légal)',
+    type: 'HOLIDAY',
+    scope: 'ESTABLISHMENT',
+    startDate: '2027-05-01',
+    endDate: '2027-05-01',
+    isFullDay: true,
+    isRecurringAnnual: true,
+    isWorkedExceptionAllowed: false,
+  },
+  {
+    id: 'holiday-independance',
+    academicYearId: 'ALL',
+    title: "Fête Nationale de l’Indépendance (Férié légal)",
+    type: 'HOLIDAY',
+    scope: 'ESTABLISHMENT',
+    startDate: '2027-06-26',
+    endDate: '2027-06-26',
+    isFullDay: true,
+    isRecurringAnnual: true,
+    isWorkedExceptionAllowed: false,
+  },
+  {
+    id: 'holiday-assomption',
+    academicYearId: 'ALL',
+    title: 'Assomption (Férié légal)',
+    type: 'HOLIDAY',
+    scope: 'ESTABLISHMENT',
+    startDate: '2026-08-15',
+    endDate: '2026-08-15',
+    isFullDay: true,
+    isRecurringAnnual: true,
+    isWorkedExceptionAllowed: false,
+  },
+  {
+    id: 'holiday-noel',
+    academicYearId: 'ALL',
+    title: 'Noël (Férié légal)',
+    type: 'HOLIDAY',
+    scope: 'ESTABLISHMENT',
+    startDate: '2026-12-25',
+    endDate: '2026-12-25',
+    isFullDay: true,
+    isRecurringAnnual: true,
+    isWorkedExceptionAllowed: false,
+  },
+  {
+    id: 'vacation-noel-2026',
+    academicYearId: '2026-2027',
+    title: 'Vacances universitaires de fin d’année',
+    type: 'VACATION',
+    scope: 'ESTABLISHMENT',
+    startDate: '2026-12-21',
+    endDate: '2027-01-03',
+    isFullDay: true,
+    isRecurringAnnual: false,
+    isWorkedExceptionAllowed: true,
+  },
+];
+
+/**
+ * Détermine si un groupe d'étudiants donné est concerné par la portée d'un événement du calendrier
+ */
+export function isGroupAffectedByCalendarScope(
+  group: StudentGroup,
+  event: AcademicCalendarEvent,
+  allGroups: StudentGroup[] = []
+): boolean {
+  if (!event || !group) return false;
+  if (event.scope === 'ESTABLISHMENT') {
+    return true;
+  }
+  if (event.scope === 'FILIERE') {
+    return !!(event.targetFiliereId && group.filiereId === event.targetFiliereId);
+  }
+  if (event.scope === 'LEVEL') {
+    const groupLevel = (group.level || '').toUpperCase().trim();
+    const targetLevel = (event.targetLevel || '').toUpperCase().trim();
+    return groupLevel === targetLevel;
+  }
+  if (event.scope === 'GROUP') {
+    if (event.targetGroupId && event.targetGroupId === group.id) return true;
+    if (Array.isArray(event.targetGroupIds) && event.targetGroupIds.includes(group.id)) return true;
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Recherche si une dérogation de travail exceptionnelle autorisée et active couvre ce groupe à cette date
+ */
+export function findApprovedCalendarException(
+  dateStr: string,
+  group: StudentGroup | undefined,
+  exceptions: CalendarWorkedException[] = []
+): CalendarWorkedException | undefined {
+  if (!dateStr || !exceptions || exceptions.length === 0) return undefined;
+  return exceptions.find((exc) => {
+    if (exc.status !== 'APPROVED') return false;
+    if (exc.date !== dateStr) return false;
+    if (exc.scope === 'ESTABLISHMENT') return true;
+    if (!group) return false;
+    if (exc.scope === 'FILIERE' && exc.targetFiliereId === group.filiereId) return true;
+    if (exc.scope === 'LEVEL' && (exc.targetLevel || '').toUpperCase() === (group.level || '').toUpperCase()) return true;
+    if (exc.scope === 'GROUP') {
+      if (exc.targetGroupId === group.id) return true;
+      if (Array.isArray(exc.targetGroupIds) && exc.targetGroupIds.includes(group.id)) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Vérifie si une date correspond à un jour férié ou une vacance (rétrocompatibilité)
+ */
+export function checkAcademicHolidayOrVacation(
+  dateStr: string,
+  calendarEvents: AcademicCalendarEvent[] = DEFAULT_MALAGASY_HOLIDAYS
+): string | null {
   if (!dateStr || dateStr.length < 10) return null;
   const mmDd = dateStr.slice(5, 10);
   for (const h of OFFICIAL_UNIVERSITY_HOLIDAYS) {
@@ -50,6 +224,14 @@ export function checkAcademicHolidayOrVacation(dateStr: string): string | null {
     }
     if (h.startDate && h.endDate && dateStr >= h.startDate && dateStr <= h.endDate) {
       return h.label;
+    }
+  }
+  for (const ev of calendarEvents) {
+    if (ev.isRecurringAnnual && ev.startDate.slice(5) === mmDd) {
+      return ev.title;
+    }
+    if (ev.startDate && ev.endDate && dateStr >= ev.startDate && dateStr <= ev.endDate) {
+      return ev.title;
     }
   }
   return null;
@@ -175,6 +357,61 @@ export interface ConflictDetectionOptions {
   includeSuggestions?: boolean;
   courses?: Course[];
   filieres?: Filiere[];
+  academicYears?: AcademicYear[];
+  activeAcademicYear?: AcademicYear;
+  calendarEvents?: AcademicCalendarEvent[];
+  calendarExceptions?: CalendarWorkedException[];
+  workingDays?: WeeklyWorkingDayConfig[];
+}
+
+export function resolveCalendarForDate(
+  dateStr: string,
+  options: ConflictDetectionOptions = {}
+): {
+  activeYear?: AcademicYear;
+  workingDays: WeeklyWorkingDayConfig[];
+  calendarEvents: AcademicCalendarEvent[];
+  calendarExceptions: CalendarWorkedException[];
+} {
+  let matchedYear = options.activeAcademicYear;
+  if (!matchedYear && Array.isArray(options.academicYears) && options.academicYears.length > 0) {
+    if (dateStr) {
+      matchedYear = options.academicYears.find(
+        (y) => y.startDate && y.endDate && dateStr >= y.startDate && dateStr <= y.endDate
+      );
+    }
+    if (!matchedYear) {
+      matchedYear = options.academicYears.find((y) => y.isCurrent) || options.academicYears[0];
+    }
+  }
+
+  const workingDays =
+    options.workingDays ||
+    matchedYear?.workingDays ||
+    DEFAULT_WEEKLY_WORKING_DAYS;
+
+  let calendarEvents: AcademicCalendarEvent[] = [];
+  if (Array.isArray(options.calendarEvents) && options.calendarEvents.length > 0) {
+    calendarEvents = [...options.calendarEvents];
+  } else if (Array.isArray(matchedYear?.calendarEvents) && matchedYear.calendarEvents.length > 0) {
+    calendarEvents = [...matchedYear.calendarEvents];
+  } else {
+    calendarEvents = [...DEFAULT_MALAGASY_HOLIDAYS];
+  }
+
+  let calendarExceptions: CalendarWorkedException[] = [];
+  if (Array.isArray(options.calendarExceptions)) {
+    calendarExceptions = [...options.calendarExceptions];
+  } else if (Array.isArray(matchedYear?.calendarExceptions)) {
+    calendarExceptions = [...matchedYear.calendarExceptions];
+  }
+
+  return {
+    activeYear: matchedYear,
+    workingDays,
+    calendarEvents,
+    calendarExceptions,
+  };
 }
 
 export function detectSessionConflicts(
@@ -228,16 +465,113 @@ export function detectSessionConflicts(
   const existingSelf = candidate.id ? existingSessions.find((s) => s.id === candidate.id) : undefined;
   const todayStr = getAntananarivoDateStr();
 
-  // 0c. Check academic holidays & university vacations (unless validating/editing an existing past session on the same date)
+  // 0c. Check academic calendar (Weekly working days, holidays, vacations, exam periods, pedagogical closures)
   if (options.enforceHolidays !== false && candidate.date) {
-    const isUnchangedExistingDate = existingSelf && existingSelf.date === candidate.date;
-    if (!isUnchangedExistingDate) {
-      const holidayLabel = checkAcademicHolidayOrVacation(candidate.date);
-      if (holidayLabel) {
-        conflicts.push({
-          type: 'HOLIDAY',
-          message: `Planification impossible le ${candidate.date} : ${holidayLabel}.`,
-        });
+    const isUnchangedExistingSchedule =
+      existingSelf &&
+      existingSelf.date === candidate.date &&
+      existingSelf.startTime === candidate.startTime &&
+      existingSelf.endTime === candidate.endTime;
+
+    if (!isUnchangedExistingSchedule) {
+      const calendar = resolveCalendarForDate(candidate.date, options);
+      const candidateDateObj = new Date(`${candidate.date}T12:00:00`);
+      const dayOfWeekIndex = candidateDateObj.getDay(); // 0 = Dimanche, 1 = Lundi, ...
+      const dayConfig = calendar.workingDays.find((w) => w.dayIndex === dayOfWeekIndex);
+      const frenchDayName = FRENCH_DAYS_BY_INDEX[dayOfWeekIndex] || '';
+
+      const candidateGroups = groups.filter((g) => candidate.groupIds.includes(g.id));
+
+      // 0c-1: Check Weekly Working Day status (e.g. Dimanche, Samedi après-midi)
+      if (dayConfig) {
+        if (!dayConfig.isWorked) {
+          const unexemptedGroups = candidateGroups.filter(
+            (grp) => !findApprovedCalendarException(candidate.date, grp, calendar.calendarExceptions)
+          );
+          if (candidateGroups.length === 0 || unexemptedGroups.length > 0) {
+            const grpNote = unexemptedGroups.length > 0 ? ` (groupe(s) : ${unexemptedGroups.map((g) => g.code || g.name).join(', ')})` : '';
+            conflicts.push({
+              type: 'CALENDAR_CLOSURE',
+              message: `Jour non travaillé : le ${frenchDayName} est configuré comme jour de fermeture hebdomadaire${grpNote}. Aucune dérogation validée.`,
+            });
+          }
+        } else if (!dayConfig.afternoonWorked && candidateEndMin > 12 * 60 + 30) {
+          const unexemptedGroups = candidateGroups.filter(
+            (grp) => !findApprovedCalendarException(candidate.date, grp, calendar.calendarExceptions)
+          );
+          if (candidateGroups.length === 0 || unexemptedGroups.length > 0) {
+            const grpNote = unexemptedGroups.length > 0 ? ` (groupe(s) : ${unexemptedGroups.map((g) => g.code || g.name).join(', ')})` : '';
+            conflicts.push({
+              type: 'CALENDAR_CLOSURE',
+              message: `Après-midi non travaillée : le ${frenchDayName} après-midi (au-delà de 12:30) n'est pas ouvré${grpNote}. Aucune dérogation validée.`,
+            });
+          }
+        }
+      }
+
+      // 0c-2: Check Academic Calendar Events (Holidays, Vacations, Exams, Closures)
+      for (const event of calendar.calendarEvents) {
+        const isDateMatch =
+          (event.isRecurringAnnual && event.startDate.slice(5) === candidate.date.slice(5)) ||
+          (candidate.date >= event.startDate && candidate.date <= event.endDate);
+
+        if (!isDateMatch) continue;
+
+        // Check time overlap if partial day
+        if (!event.isFullDay && event.startTime && event.endTime) {
+          if (!doIntervalsOverlap(candidate.startTime, candidate.endTime, event.startTime, event.endTime)) {
+            continue;
+          }
+        }
+
+        // Determine if candidate groups are affected by this event scope
+        const affectedGroups = candidateGroups.filter((grp) =>
+          isGroupAffectedByCalendarScope(grp, event, groups)
+        );
+
+        // If candidate has groups and NONE of them are affected by this scoped event, DO NOT block!
+        if (candidateGroups.length > 0 && affectedGroups.length === 0 && event.scope !== 'ESTABLISHMENT') {
+          continue;
+        }
+
+        // Filter out groups with approved exceptions
+        const unexemptedAffectedGroups = affectedGroups.filter(
+          (grp) => !findApprovedCalendarException(candidate.date, grp, calendar.calendarExceptions)
+        );
+
+        if (unexemptedAffectedGroups.length > 0 || (candidateGroups.length === 0 && event.scope === 'ESTABLISHMENT')) {
+          const typeLabels: Record<string, string> = {
+            HOLIDAY: 'Jour Férié',
+            VACATION: 'Vacances Universitaires',
+            EXAM: "Période d'Examens",
+            PEDAGOGICAL_CLOSURE: 'Fermeture Pédagogique',
+            INSTITUTIONAL_EVENT: 'Événement Institutionnel',
+          };
+          const typeLabel = typeLabels[event.type] || event.type;
+
+          let scopeDetail = '';
+          if (event.scope === 'ESTABLISHMENT') {
+            scopeDetail = 'Tout l’établissement';
+          } else if (event.scope === 'FILIERE') {
+            const fil = options.filieres?.find((f) => f.id === event.targetFiliereId);
+            scopeDetail = `Filière ${fil ? `${fil.code} - ${fil.name}` : event.targetFiliereId}`;
+          } else if (event.scope === 'LEVEL') {
+            scopeDetail = `Promotion ${event.targetLevel}`;
+          } else if (event.scope === 'GROUP') {
+            const affectedCodes = unexemptedAffectedGroups.map((g) => g.code || g.name).join(', ');
+            scopeDetail = `Groupe(s) ${affectedCodes}`;
+          }
+
+          const partialNote =
+            candidateGroups.length > unexemptedAffectedGroups.length && unexemptedAffectedGroups.length > 0
+              ? ` (Attention : seuls ${unexemptedAffectedGroups.length}/${candidateGroups.length} groupe(s) sélectionnés sont concernés par cette fermeture)`
+              : '';
+
+          conflicts.push({
+            type: event.type === 'HOLIDAY' ? 'HOLIDAY' : 'CALENDAR_CLOSURE',
+            message: `Planification impossible le ${candidate.date} : ${event.title} [${typeLabel}] (${scopeDetail})${partialNote}.`,
+          });
+        }
       }
     }
   }
@@ -508,10 +842,16 @@ export function findAlternativeSlots(
   for (let dayOffset = 0; dayOffset <= 10; dayOffset++) {
     const checkDate = new Date(candidateDate);
     checkDate.setDate(candidateDate.getDate() + dayOffset);
-    if (checkDate.getDay() === 0) continue; // Skip Sunday
-
     const dateStr = getAntananarivoDateStr(checkDate);
-    if (checkAcademicHolidayOrVacation(dateStr)) continue;
+
+    // Fast pre-check: verify if date is a workable day in academic calendar
+    const calendar = resolveCalendarForDate(dateStr, options);
+    const dayConfig = calendar.workingDays.find((w) => w.dayIndex === checkDate.getDay());
+    if (dayConfig && !dayConfig.isWorked) {
+      const candidateGroups = groups.filter((g) => candidate.groupIds.includes(g.id));
+      const hasException = candidateGroups.some((grp) => findApprovedCalendarException(dateStr, grp, calendar.calendarExceptions));
+      if (!hasException) continue;
+    }
 
     for (const slotStart of candidateStarts) {
       const startMin = timeToMinutes(slotStart);

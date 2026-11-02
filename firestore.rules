@@ -185,9 +185,24 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // 2. Academic Configuration
+    // 2. Academic Configuration & Calendar
     // ---------------------------------------------------------------
     match /academicYears/{docId} {
+      allow read: if isAccountActive();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+
+      match /{subcollection=**} {
+        allow read: if isAccountActive();
+        allow write: if isAdmin() || isAcademicHead() || isScolarite();
+      }
+    }
+
+    match /academicCalendarEvents/{docId} {
+      allow read: if isAccountActive();
+      allow write: if isAdmin() || isAcademicHead() || isScolarite();
+    }
+
+    match /academicCalendarExceptions/{docId} {
       allow read: if isAccountActive();
       allow write: if isAdmin() || isAcademicHead() || isScolarite();
     }
@@ -375,12 +390,16 @@ service cloud.firestore {
       );
 
       allow update: if isAccountActive() && (
-        request.resource.data.get('type', 'private') != 'announcement' ||
         isAdmin() ||
         isAcademicHead() ||
         isScolarite() ||
-        resource.data.get('allowReplies', false) == true ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadCounts', 'updatedAt'])
+        (
+          request.resource.data.get('type', 'private') != 'announcement' && (
+            resource.data.get('allowReplies', false) == true ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'unreadCounts', 'updatedAt'])
+          )
+        ) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'unreadCounts', 'updatedAt'])
       );
 
       allow delete: if isAdmin() || isAcademicHead();

@@ -321,6 +321,12 @@ export interface Course {
   defaultSessionDuration: number; // e.g. 2h or 3h
   color: string;
   description?: string;
+  semester?: SemesterCode;
+  ueId?: string;
+  ecId?: string;
+  parcoursId?: string;
+  courseType?: 'CM' | 'TD' | 'TP' | 'AUTRE' | string;
+  status?: 'ACTIVE' | 'ARCHIVED';
 }
 
 export type SessionActivityType = 'COURSE' | 'CONFERENCE' | 'SEMINAIRE' | 'SOUTENANCE' | 'EXAMEN' | 'AUTRE_EVENEMENT';
@@ -382,7 +388,7 @@ export interface AppNotification {
 export interface ConflictResult {
   hasConflict: boolean;
   conflicts: {
-    type: 'TIME' | 'ROOM' | 'TEACHER' | 'GROUP' | 'CAPACITY' | 'AVAILABILITY' | 'QUOTA' | 'HOLIDAY';
+    type: 'TIME' | 'ROOM' | 'TEACHER' | 'GROUP' | 'CAPACITY' | 'AVAILABILITY' | 'QUOTA' | 'HOLIDAY' | 'CALENDAR_CLOSURE';
     message: string;
     conflictingSession?: TimetableSession;
   }[];
@@ -432,6 +438,73 @@ export interface AuditLog {
 
 export type SemesterCode = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8' | 'S9' | 'S10' | string;
 
+export type AcademicCalendarEventType =
+  | 'HOLIDAY'             // Jour férié national / officiel
+  | 'VACATION'            // Vacances universitaires (Toussaint, Noël, Pâques, intersemestre)
+  | 'EXAM'                // Période d'examens / rattrapages
+  | 'PEDAGOGICAL_CLOSURE' // Fermeture pédagogique / administrative exceptionnelle
+  | 'INSTITUTIONAL_EVENT'; // Rentrée solennelle, forum, diplomation
+
+export type AcademicCalendarScope =
+  | 'ESTABLISHMENT' // Tout l'établissement (toutes les filières et groupes)
+  | 'FILIERE'       // Une filière spécifique
+  | 'LEVEL'         // Une promotion / niveau (ex: L1, L2, L3, M1, M2)
+  | 'GROUP';        // Un groupe ou sous-groupe d'étudiants spécifique
+
+export type WeeklyDayOfWeek = 'LUNDI' | 'MARDI' | 'MERCREDI' | 'JEUDI' | 'VENDREDI' | 'SAMEDI' | 'DIMANCHE';
+
+export interface WeeklyWorkingDayConfig {
+  day: WeeklyDayOfWeek;
+  dayIndex: number;           // 0=Dimanche, 1=Lundi, ..., 6=Samedi
+  isWorked: boolean;          // Est-ce un jour ouvré ?
+  morningWorked: boolean;     // Matinée travaillée
+  afternoonWorked: boolean;   // Après-midi travaillée
+  standardStartTime: string;  // e.g. "07:30"
+  standardEndTime: string;    // e.g. "18:30"
+}
+
+export interface AcademicCalendarEvent {
+  id: string;
+  academicYearId: string;     // ID ou code de l'année académique
+  title: string;              // e.g. "Vacances de fin d'année", "Période d'Examens S1"
+  description?: string;
+  type: AcademicCalendarEventType;
+  scope: AcademicCalendarScope;
+  targetFiliereId?: string;   // Si scope === 'FILIERE'
+  targetLevel?: string;       // Si scope === 'LEVEL'
+  targetGroupId?: string;     // Si scope === 'GROUP'
+  targetGroupIds?: string[];  // Multiples groupes cibles
+  startDate: string;          // YYYY-MM-DD
+  endDate: string;            // YYYY-MM-DD
+  isFullDay: boolean;
+  startTime?: string;         // e.g. "07:30" si demi-journée ou fermeture partielle
+  endTime?: string;           // e.g. "12:30"
+  isRecurringAnnual?: boolean;// Recalculé sur chaque année
+  isWorkedExceptionAllowed?: boolean; // Autorise-t-il une dérogation de travail ?
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CalendarWorkedException {
+  id: string;
+  academicYearId: string;
+  eventId?: string;           // Référence à l'événement de fermeture / vacance exempté
+  title: string;              // e.g. "Rattrapage exceptionnel Droit Fiscal L3"
+  date: string;               // YYYY-MM-DD
+  reason: string;             // Justification obligatoire
+  scope: AcademicCalendarScope;
+  targetFiliereId?: string;
+  targetLevel?: string;
+  targetGroupId?: string;
+  targetGroupIds?: string[];
+  approvedBy: string;         // Nom ou UID de l'approbateur (Admin ou Scolarité)
+  approvedByRole: UserRole;
+  approvedAt: string;         // ISO timestamp
+  status: 'APPROVED' | 'REVOKED';
+  createdAt: string;
+}
+
 export interface AcademicYear {
   id: string;
   code: string;            // e.g. "2026-2027"
@@ -447,6 +520,9 @@ export interface AcademicYear {
     endDate: string;
     isActive: boolean;
   }[];
+  workingDays?: WeeklyWorkingDayConfig[];
+  calendarEvents?: AcademicCalendarEvent[];
+  calendarExceptions?: CalendarWorkedException[];
 }
 
 export type MaquetteStatus = 'DRAFT' | 'IN_REVIEW' | 'VALIDATED' | 'PUBLISHED' | 'ARCHIVED';
@@ -801,6 +877,8 @@ export interface ChatConversationMessage {
   deletedBy?: string;
   deliveredTo: Record<string, string>; // sisUserId -> ISO timestamp
   readBy: Record<string, string>;      // sisUserId -> ISO timestamp
+  deliveryStatus?: 'SENDING' | 'SENT' | 'FAILED'; // Statut réel de confirmation distante Firestore
+  sendError?: string;                              // Motif en cas d'erreur de transmission
   updatedAt?: string;
 }
 

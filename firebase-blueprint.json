@@ -131,6 +131,42 @@
         "platform": { "type": "string" }
       },
       "required": ["id", "timestamp", "userId", "action", "details"]
+    },
+    "AcademicCalendarEvent": {
+      "title": "AcademicCalendarEvent",
+      "description": "Calendar closure, holiday, vacation or exam period with scope and date range",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "academicYearId": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["HOLIDAY", "VACATION", "EXAM", "PEDAGOGICAL_CLOSURE", "INSTITUTIONAL_EVENT"] },
+        "scope": { "type": "string", "enum": ["ESTABLISHMENT", "FILIERE", "LEVEL", "GROUP"] },
+        "targetFiliereId": { "type": "string" },
+        "targetLevel": { "type": "string" },
+        "targetGroupId": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "isFullDay": { "type": "boolean" }
+      },
+      "required": ["id", "academicYearId", "title", "type", "scope", "startDate", "endDate"]
+    },
+    "CalendarWorkedException": {
+      "title": "CalendarWorkedException",
+      "description": "Traceable authorized exception for working on non-working or holiday dates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "academicYearId": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string" },
+        "reason": { "type": "string" },
+        "scope": { "type": "string", "enum": ["ESTABLISHMENT", "FILIERE", "LEVEL", "GROUP"] },
+        "approvedBy": { "type": "string" },
+        "approvedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["APPROVED", "REVOKED"] }
+      },
+      "required": ["id", "academicYearId", "date", "reason", "scope", "approvedBy", "status"]
     }
   },
   "firestore": {
@@ -141,6 +177,14 @@
     "/academicYears/{yearId}": {
       "schema": { "$ref": "#/entities/AcademicYear" },
       "description": "Academic years and semester configurations"
+    },
+    "/academicCalendarEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/AcademicCalendarEvent" },
+      "description": "Academic calendar events, holidays, and vacations"
+    },
+    "/academicCalendarExceptions/{exceptionId}": {
+      "schema": { "$ref": "#/entities/CalendarWorkedException" },
+      "description": "Authorized worked day exceptions with audit trail"
     },
     "/parcours/{parcoursId}": {
       "schema": { "$ref": "#/entities/Parcours" },
