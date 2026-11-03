@@ -92,6 +92,9 @@ const BackupAndSecurityView = lazy(() =>
 const ParentPortalView = lazy(() =>
   import('./components/ParentPortalView').then((m) => ({ default: m.ParentPortalView }))
 );
+const CoursePortalView = lazy(() =>
+  import('./components/CoursePortalView').then((m) => ({ default: m.CoursePortalView }))
+);
 const AndroidSimulator = lazy(() =>
   import('./components/AndroidSimulator').then((m) => ({ default: m.AndroidSimulator }))
 );
@@ -127,6 +130,18 @@ const BREADCRUMB_MAP: Record<
     title: 'Emplois du temps',
     siblings: [
       { id: 'TIMETABLE', label: 'Emplois du temps' },
+      { id: 'MY_COURSES', label: 'Portail des cours' },
+      { id: 'ROOMS', label: 'Salles & disponibilités' },
+      { id: 'VOLUMES', label: 'Volumes horaires' },
+    ],
+  },
+  MY_COURSES: {
+    section: 'Planning & salles',
+    sectionDefaultTab: 'TIMETABLE',
+    title: 'Portail des cours & parcours',
+    siblings: [
+      { id: 'TIMETABLE', label: 'Emplois du temps' },
+      { id: 'MY_COURSES', label: 'Portail des cours' },
       { id: 'ROOMS', label: 'Salles & disponibilités' },
       { id: 'VOLUMES', label: 'Volumes horaires' },
     ],
@@ -619,6 +634,8 @@ const AppContent: React.FC = () => {
                     onOpenCancelModal={handleOpenCancel}
                   />
                 )}
+
+                {currentTab === 'MY_COURSES' && <CoursePortalView />}
 
                 {currentTab === 'ROOMS' && (
                   <RoomCalendarView onNavigateToCreate={() => setCurrentTab('DATA_MANAGEMENT')} />

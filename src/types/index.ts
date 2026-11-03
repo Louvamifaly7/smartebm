@@ -42,18 +42,234 @@ export interface CustomRoleDefinition {
   createdAt: string;
 }
 
+export type ParentContactRelation =
+  | 'PERE'
+  | 'MERE'
+  | 'TUTEUR'
+  | 'TUTRICE'
+  | 'FRERE'
+  | 'SOEUR'
+  | 'CONJOINT'
+  | 'AUTRE';
+
 export interface ParentContact {
   id: string;
   nom: string;
   prenoms: string;
   phone: string;
+  secondaryPhone?: string;
   email: string;
-  relation: 'PERE' | 'MERE' | 'TUTEUR' | 'AUTRE';
+  relation: ParentContactRelation;
   profession?: string;
   address?: string;
+  isPrimaryContact?: boolean;
+  isEmergencyContact?: boolean;
+  isLegalGuardian?: boolean;
+  receiveAcademicInfo?: boolean;
 }
 
 export type ParentContactEntry = ParentContact;
+
+export interface StudentAddress {
+  addressLine?: string;
+  lotNumber?: string;
+  neighborhood?: string;
+  commune?: string;
+  district?: string;
+  region?: string;
+  country?: string;
+  postalCode?: string;
+}
+
+export type DocumentVerificationStatus =
+  | 'MANQUANT'
+  | 'DEPOSE'
+  | 'EN_ATTENTE'
+  | 'VALIDE'
+  | 'REJETE'
+  | 'A_REMPLACER'
+  | 'EXPIRE';
+
+export type PreviousDiplomaCategory =
+  | 'BACCALAUREAT'
+  | 'LICENCE'
+  | 'MASTER'
+  | 'AUTRE_UNIVERSITAIRE'
+  | 'PROFESSIONNEL';
+
+export interface StudentPreviousDiploma {
+  id: string;
+  category: PreviousDiplomaCategory;
+  title: string;
+  institution: string;
+  country: string;
+  year: string;
+  series?: string;
+  diplomaNumber?: string;
+  honors?: string;
+  documentName?: string;
+  documentUrl?: string;
+  verificationStatus?: DocumentVerificationStatus;
+}
+
+export type StudentAdminDocumentType =
+  | 'PHOTO_IDENTITE'
+  | 'PIECE_IDENTITE'
+  | 'ACTE_NAISSANCE'
+  | 'DIPLOME_BAC'
+  | 'RELEVE_BAC'
+  | 'DIPLOME_UNIV'
+  | 'RELEVE_UNIV'
+  | 'ATTESTATION'
+  | 'AUTRE';
+
+export interface StudentAdminDocument {
+  id: string;
+  type: StudentAdminDocumentType;
+  label: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileSize?: string;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  status: DocumentVerificationStatus;
+  rejectionReason?: string;
+}
+
+// ===============================================================
+// DOSSIER ENSEIGNANT UNIFIÉ EN 7 ONGLETS (Cahier des charges EBM)
+// ===============================================================
+
+export interface TeacherEmergencyContact {
+  id: string;
+  fullName: string;
+  relation: string;
+  primaryPhone: string;
+  secondaryPhone?: string;
+  email?: string;
+  address?: string;
+}
+
+export interface TeacherAcademicDiploma {
+  id: string;
+  title: string;
+  field: string;
+  specialty: string;
+  level:
+    | 'BACCALAUREAT'
+    | 'BAC_PLUS_2'
+    | 'LICENCE'
+    | 'MASTER_1'
+    | 'MASTER_2'
+    | 'DOCTORAT'
+    | 'HDR'
+    | 'AUTRE'
+    | string;
+  institution: string;
+  country: string;
+  year: string;
+  honors?: string;
+  diplomaNumber?: string;
+  documentName?: string;
+  documentUrl?: string;
+  verificationStatus: DocumentVerificationStatus;
+  rejectionReason?: string;
+}
+
+export interface TeacherComplementaryTraining {
+  id: string;
+  category:
+    | 'CERTIFICAT'
+    | 'CERTIFICATION_PRO'
+    | 'FORMATION_SPECIALISEE'
+    | 'FORMATION_PEDAGOGIQUE'
+    | 'FORMATION_EN_LIGNE'
+    | 'FORMATION_CONTINUE'
+    | 'AUTRE';
+  title: string;
+  organization: string;
+  date: string;
+  duration?: string;
+  skillsAcquired?: string;
+  documentName?: string;
+  documentUrl?: string;
+  verificationStatus?: DocumentVerificationStatus;
+}
+
+export interface TeacherWorkExperience {
+  id: string;
+  jobTitle: string;
+  organization: string;
+  sector: string;
+  country: string;
+  city: string;
+  startDate: string;
+  endDate?: string;
+  isCurrent: boolean;
+  responsibilities: string;
+  achievements?: string;
+  documentName?: string;
+  documentUrl?: string;
+}
+
+export interface TeacherTeachingExperience {
+  id: string;
+  institution: string;
+  roleTitle: string;
+  taughtDomain: string;
+  teachingLevel: string;
+  startDate: string;
+  endDate?: string;
+  yearsOfExperience: number;
+  trainingTypes: string;
+  references?: string;
+}
+
+export interface TeacherLanguageSkill {
+  id: string;
+  language: string;
+  level: 'DEBUTANT' | 'INTERMEDIAIRE' | 'AVANCE' | 'COURANT' | 'LANGUE_MATERNELLE';
+}
+
+export interface TeacherPedagogicalResponsibility {
+  id: string;
+  type:
+    | 'RESPONSABLE_FILIERE'
+    | 'RESPONSABLE_PARCOURS'
+    | 'COORDINATEUR_PEDAGOGIQUE'
+    | 'RESPONSABLE_UE'
+    | 'DIRECTEUR_MEMOIRE'
+    | 'ENCADREUR_STAGE'
+    | 'AUTRE';
+  title: string;
+  scope?: string;
+  startDate: string;
+  endDate?: string;
+  isActive: boolean;
+}
+
+export type TeacherDocumentCategory =
+  | 'IDENTITE'
+  | 'DIPLOMES_QUALIFICATIONS'
+  | 'PROFESSIONNEL'
+  | 'ADMINISTRATIF_EBM';
+
+export interface TeacherAdminDocument {
+  id: string;
+  category: TeacherDocumentCategory;
+  type: string;
+  label: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileSize?: string;
+  uploadedAt?: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  expiryDate?: string;
+  status: DocumentVerificationStatus;
+  rejectionReason?: string;
+}
 
 export interface UserModificationLog {
   id: string;
@@ -71,15 +287,18 @@ export interface ProfileChangeRequest {
   studentUid?: string;
   studentName: string;
   matricule: string;
+  userRole?: UserRole;
   requestedAt: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
   changes: {
-    field: 'name' | 'lastName' | 'firstName' | 'birthDate' | 'birthPlace';
+    field: string;
     label: string;
     oldValue: string;
     newValue: string;
   }[];
   reason: string;
+  supportingDocName?: string;
+  supportingDocUrl?: string;
   reviewedBy?: string;
   reviewedAt?: string;
   reviewComment?: string;
@@ -127,6 +346,7 @@ export interface User {
   id: string;
   uid?: string;            // Firebase Auth UID when linked
   matricule?: string;      // RG-02: login for students (e.g. EBM-2026-0042)
+  staffMatricule?: string; // Matricule du personnel enseignant / administratif (ex: ENS-EBM-0014)
   username: string;
   name: string;
   civilite?: 'M.' | 'Mme' | 'Mlle' | 'Dr.' | 'Prof.';
@@ -184,7 +404,13 @@ export interface User {
   subjects?: string[];     // For teachers: taught subjects
   weeklyMaxHours?: number; // For teachers: contract quota
   hourlyRateAr?: number;   // For teachers: taux horaire en Ariary (Ar/h) pour la paie et comptabilité
-  contractType?: 'PERMANENT' | 'VACATAIRE' | 'MISSIONNAIRE';
+  contractType?:
+    | 'PERMANENT'
+    | 'VACATAIRE'
+    | 'CONTRACTUEL'
+    | 'CONSULTANT'
+    | 'INTERVENANT_EXTERNE'
+    | 'MISSIONNAIRE';
   availabilities?: TeacherAvailabilitySlot[]; // Disponibilités hebdomadaires pour l'emploi du temps (07h-17h)
   specialty?: string;
   academicRank?: string;   // Grade universitaire (Professeur Titulaire, Maître de Conférences, Docteur / HDR, Chargé de cours, Assistant)
@@ -193,13 +419,121 @@ export interface User {
   secondaryPhone?: string; // Téléphone secondaire / WhatsApp
   orcidUrl?: string;       // Lien ORCID / Google Scholar / ResearchGate
   hireDate?: string;       // Date de prise de fonction à EBM Institute
+  recruitmentDate?: string; // Date de recrutement
+  contractDuration?: string; // Durée du contrat
+  contractEndDate?: string;  // Date de fin de contrat
+  supervisorName?: string;   // Responsable hiérarchique
+  teacherStatus?: 'ACTIF' | 'SUSPENDU' | 'INACTIF' | 'ANCIEN_ENSEIGNANT';
   emergencyContact?: string; // Contact d'urgence (Nom & Téléphone)
+  emergencyContacts?: TeacherEmergencyContact[]; // Contacts d'urgence multiples (Section 3 - Onglet 2.D)
   cin?: string;
   bankRib?: string;
   cvFileName?: string;     // Nom du fichier CV téléversé (ex: CV_Prof_Rakotoarisoa.pdf)
   cvFileUrl?: string;      // URL / DataURL du CV téléversé
   cvUploadedAt?: string;   // Date de mise à jour du CV
   updatedAt?: string;      // Horodatage ISO pour la synchronisation temps réel Cloud
+
+  // ===============================================================
+  // DOSSIER ÉTUDIANT & ENSEIGNANT UNIFIÉ EN 7 ONGLETS (Cahier des charges EBM)
+  // ===============================================================
+  // Onglet 1 – Identité & État civil
+  preferredName?: string;          // Nom d'usage
+  gender?: 'M' | 'F' | 'AUTRE';    // Sexe
+  birthCountry?: string;           // Pays de naissance
+  nationality?: string;            // Nationalité principale
+  secondaryNationality?: string;   // Nationalité secondaire
+  maritalStatus?: 'CELIBATAIRE' | 'MARIE' | 'DIVORCE' | 'VEUF' | 'AUTRE';
+  identityDocType?: 'CIN' | 'PASSEPORT' | 'AUTRE';
+  identityDocOtherLabel?: string;  // Précision si AUTRE
+  identityIssueDate?: string;      // Date de délivrance
+  identityIssuePlace?: string;     // Lieu de délivrance
+  identityIssuingAuthority?: string; // Autorité de délivrance
+  identityIssuingCountry?: string; // Pays émetteur
+  identityExpiryDate?: string;     // Date d'expiration (Passeport / Autre)
+  identityFrontName?: string;      // Copie recto (nom fichier)
+  identityFrontUrl?: string;       // Copie recto (URL/DataURL)
+  identityBackName?: string;       // Copie verso (nom fichier)
+  identityBackUrl?: string;        // Copie verso (URL/DataURL)
+  identityVerificationStatus?: DocumentVerificationStatus;
+  preferredLanguage?: string;      // Langue préférée
+  administrativeNotes?: string;    // Autres informations administratives
+
+  // Onglet 2 – Coordonnées
+  personalEmail?: string;          // Email personnel (distinct de l'email institutionnel)
+  whatsappPhone?: string;          // Numéro WhatsApp
+  websiteUrl?: string;             // Site personnel ou portfolio
+  permanentAddress?: StudentAddress; // Adresse permanente structurée
+  currentAddress?: StudentAddress;   // Adresse actuelle structurée
+  sameAsPermanentAddress?: boolean;  // Case « Identique à l'adresse permanente »
+
+  // Onglet 3 (Enseignant) – Formation, Diplômes & Qualifications
+  teacherDiplomas?: TeacherAcademicDiploma[];
+  complementaryTrainings?: TeacherComplementaryTraining[];
+  academicSpecialties?: string[];
+  secondarySpecialties?: string[];
+
+  // Onglet 4 (Étudiant) – Parcours académique & Synchronisation inscriptions annuelles
+  filiereId?: string;              // Mention / Filière active synchronisée
+  currentLevel?: string;           // Niveau d'études actif synchronisé (L1, L2, L3, M1, M2)
+  academicYearJoined?: string;     // Année académique d'entrée (ex: 2026-2027)
+  studyMode?: 'PRESENTIEL' | 'HYBRIDE' | 'EN_LIGNE' | 'ALTERNANCE' | 'FORMATION_CONTINUE' | string;
+  administrativeFolderStatus?: 'COMPLET' | 'INCOMPLET';
+  enrollmentDate?: string;         // Date d'inscription active synchronisée
+  enrollmentStatus?: 'CONFIRMED' | 'PENDING' | 'DRAFT' | 'REJECTED' | 'SUSPENDED' | string;
+  firstRegistrationDate?: string;  // Date de première inscription
+  reRegistrationDate?: string;     // Date de réinscription
+  admissionType?: 'CONCOURS' | 'DOSSIER' | 'EQUIVALENCE' | 'TRANSFERT' | 'REINSCRIPTION';
+  registrationStatus?: 'CONFIRMED' | 'PENDING' | 'SUSPENDED';
+  trainingMode?: 'PRESENTIEL' | 'HYBRIDE' | 'EN_LIGNE' | 'ALTERNANCE';
+  targetDegree?: 'LICENCE' | 'MASTER' | 'INGENIEUR' | 'CERTIFICAT';
+  currentSemesterCode?: 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8' | 'S9' | 'S10';
+  trainingRegime?: 'INITIAL' | 'CONTINU' | 'SALARIE';
+  previousDiplomas?: StudentPreviousDiploma[];
+
+  // Onglet 4 (Enseignant) / Onglet 5 (Étudiant) – Expérience & Situation professionnelle
+  employmentStatus?:
+    | 'ETUDIANT_TEMPS_PLEIN'
+    | 'SALARIE'
+    | 'ENTREPRENEUR'
+    | 'FONCTIONNAIRE'
+    | 'CONSULTANT'
+    | 'ENSEIGNANT_CHERCHEUR'
+    | 'STAGIAIRE'
+    | 'RECHERCHE_EMPLOI'
+    | 'AUTRE';
+  profession?: string;
+  employer?: string;
+  jobFunction?: string;
+  activitySector?: string;
+  workAddress?: string;
+  workPhone?: string;
+  workEmail?: string;
+  workExperience?: string;
+  professionalExperiences?: TeacherWorkExperience[];
+  teachingExperiences?: TeacherTeachingExperience[];
+  isWorkingStudent?: boolean;      // Statut étudiant salarié
+  isEntrepreneur?: boolean;        // Entrepreneur ou indépendant
+  isContinuingEducation?: boolean; // Formation continue
+  secondFiliere?: string;          // Deuxième filière éventuelle
+
+  // Onglet 5 (Enseignant) – Compétences, Spécialités & Responsabilités pédagogiques
+  competenceDomains?: string[];
+  technicalSkills?: string[];
+  pedagogicalSkills?: string[];
+  languagesSpoken?: TeacherLanguageSkill[];
+  softwareTools?: string[];
+  pedagogicalResponsibilities?: TeacherPedagogicalResponsibility[];
+
+  // Onglet 6 – Documents & Justificatifs
+  studentDocuments?: StudentAdminDocument[];
+  teacherDocuments?: TeacherAdminDocument[];
+
+  // Onglet 7 – Compte & Sécurité
+  moodleUsername?: string;         // Compte Moodle associé
+  moodleLinked?: boolean;
+  createdAt?: string;              // Date de création du compte
+  lastLoginAt?: string;            // Dernière connexion
+  emailVerified?: boolean;         // Vérification de l'email
 }
 
 export interface Filiere {
@@ -287,6 +621,8 @@ export interface StudentGroup {
   level: string;          // L1, L2, L3, M1, M2
   academicYear: string;   // e.g. 2026-2027
   studentCount: number;
+  maxCapacity?: number;   // Capacité maximale (ex: 40 places)
+  status?: 'ACTIVE' | 'ARCHIVED';
   subGroups: { id: string; code: string; name: string; studentCount: number }[];
 }
 
@@ -350,6 +686,12 @@ export interface TimetableSession {
   notes?: string;
   cancellationReason?: string;
   cancellationDate?: string;
+  cancellationCategory?:
+    | 'ABSENT_UNNOTIFIED'
+    | 'ABSENT_NOTIFIED'
+    | 'TECHNICAL_ISSUE'
+    | 'FORCE_MAJEURE'
+    | 'OTHER';
   rescheduledFrom?: {
     originalDate: string;
     originalStartTime: string;
@@ -358,15 +700,166 @@ export interface TimetableSession {
   };
   validatedAt?: string;
   validatedBy?: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  isRealizedConfirmed?: boolean;   // Confirmation explicite que la séance a bien eu lieu (même si CR en attente/manquant)
+  report?: {
+    content: string;               // Contenu réellement enseigné / Résumé du cours
+    chapterTitle?: string;         // Chapitre ou thème traité
+    objectives?: string;           // Objectifs de la séance
+    plannedContent?: string;       // Contenu initialement prévu
+    keyTakeaways?: string;         // Points essentiels à retenir
+    pedagogicalMethods?: string;   // Méthodes pédagogiques utilisées
+    exercisesAndPracticalWork?: string; // Exercices et travaux pratiques réalisés
+    difficultiesEncountered?: string;   // Difficultés rencontrées (masqué côté étudiant)
+    remarks?: string;              // Observations de l'enseignant (masqué côté étudiant)
+    directionObservations?: string; // Observations de la Direction (masqué côté étudiant)
+    actualHours: number;           // Durée effective réellement dispensée
+    teacherPresence?:
+      | 'PRESENT'
+      | 'LATE'
+      | 'REPLACED'
+      | 'ABSENT_UNNOTIFIED'
+      | 'ABSENT_NOTIFIED';
+    replacementName?: string;
+    incident?: string;
+    homework?: string;             // Travail à préparer pour la prochaine séance
+    nextSessionPlan?: string;      // Préparation de la prochaine séance
+    attachments?: SessionReportAttachment[]; // Supports, exercices, TP, justificatifs
+    reportStatus?: SessionReportStatus;      // Brouillon, Soumis, À corriger, Validé, Publié, Rejeté
+    createdAt?: string;
+    submittedAt?: string;
+    submittedBy?: string;
+    validatedAt?: string;
+    validatedBy?: string;
+    publishedAt?: string;
+    publishedBy?: string;
+    writtenBy: string;
+    writtenAt: string;
+    updatedAt?: string;
+    revisions?: SessionReportRevision[];
+  };
+  correctionRequested?: boolean;
+  correctionReason?: string;
+  correctionRequestedAt?: string;
+  correctionRequestedBy?: string;
+  anomalyReports?: SessionAnomalyReport[]; // Signalements d'anomalies (Section 3.7)
   updatedAt?: string;
   history: SessionHistoryItem[];
+}
+
+export type SessionReportStatus =
+  | 'DRAFT'                 // Brouillon (enseignant en cours de rédaction)
+  | 'SUBMITTED'             // Soumis (en attente de validation administrative)
+  | 'CORRECTION_REQUESTED'  // À corriger (demande de correction)
+  | 'REJECTED'              // Rejeté avec motif
+  | 'VALIDATED'             // Validé par l'administration / Direction
+  | 'PUBLISHED';            // Publié officiellement (visible par les étudiants inscrits)
+
+export type SessionReportAttachmentCategory =
+  | 'SUPPORT_COURS'
+  | 'EXERCICES'
+  | 'TP'
+  | 'COMPLEMENTAIRE'
+  | 'JUSTIFICATIF';
+
+export interface SessionReportAttachment {
+  id: string;
+  title: string;
+  category: SessionReportAttachmentCategory;
+  fileName: string;
+  fileUrl?: string;
+  fileSize?: string;
+  allowStudentDownload: boolean;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export type SessionAnomalyCategory =
+  | 'SESSION_NOT_HELD'      // Séance indiquée comme réalisée alors qu'elle n'a pas eu lieu
+  | 'WRONG_DATE_TIME'       // Date ou horaire incorrect
+  | 'INACCESSIBLE_REPORT'   // Compte rendu inaccessible
+  | 'MISSING_DOCUMENT'      // Document manquant
+  | 'CONTENT_ERROR'         // Erreur concernant le contenu publié
+  | 'OTHER';
+
+export interface SessionAnomalyReport {
+  id: string;
+  sessionId: string;
+  courseId: string;
+  reportedById: string;
+  reportedByName: string;
+  reportedByRole: UserRole;
+  reportedByMatricule?: string;
+  reportedAt: string;
+  category: SessionAnomalyCategory;
+  description: string;
+  status: 'OPEN' | 'RESOLVED' | 'REJECTED';
+  resolutionNote?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+}
+
+export interface SessionReportRevision {
+  id: string;
+  versionNumber: number;
+  modifiedAt: string;
+  modifiedBy: string;
+  modifiedByRole?: UserRole;
+  reason?: string;
+  previousContent: string;
+  previousChapterTitle?: string;
+  previousObjectives?: string;
+  previousActualHours: number;
+  previousHomework?: string;
+  previousNextSessionPlan?: string;
+  previousRemarks?: string;
+  previousDifficulties?: string;
+  previousDirectionObservations?: string;
+  previousIncident?: string;
+  previousTeacherPresence?:
+    | 'PRESENT'
+    | 'LATE'
+    | 'REPLACED'
+    | 'ABSENT_UNNOTIFIED'
+    | 'ABSENT_NOTIFIED';
+  previousReplacementName?: string;
+  previousReportStatus?: SessionReportStatus;
+}
+
+export interface SessionPrivateReport {
+  id: string;
+  sessionId: string;
+  remarks?: string;
+  difficultiesEncountered?: string;
+  directionObservations?: string;
+  rejectionReason?: string;
+  cancellationCategory?:
+    | 'ABSENT_UNNOTIFIED'
+    | 'ABSENT_NOTIFIED'
+    | 'TECHNICAL_ISSUE'
+    | 'FORCE_MAJEURE'
+    | 'OTHER';
+  teacherPresence:
+    | 'PRESENT'
+    | 'LATE'
+    | 'REPLACED'
+    | 'ABSENT_UNNOTIFIED'
+    | 'ABSENT_NOTIFIED';
+  replacementName?: string;
+  incident?: string;
+  internalNotes?: string;
+  writtenBy: string;
+  writtenAt: string;
+  updatedAt?: string;
+  revisions?: SessionReportRevision[];
 }
 
 export interface SessionHistoryItem {
   id: string;
   timestamp: string;
   authorName: string;
-  action: string;         // 'CREATION', 'MODIFICATION', 'REPORT', 'ANNULATION', 'VALIDATION'
+  action: string;         // 'CREATION', 'MODIFICATION', 'REPORT', 'ANNULATION', 'VALIDATION', 'PUBLICATION', 'SOUMISSION', 'ANOMALIE'
   details: string;
   reason?: string;
 }
@@ -406,10 +899,17 @@ export interface ImportStudentRow {
   nom: string;
   prenom: string;
   dateNaissance: string;  // JJ/MM/AAAA or AAAA-MM-JJ
+  lieuNaissance?: string;
+  cin?: string;
+  telephone?: string;
   email: string;
+  adresse?: string;
+  anneeAcademique?: string;
   filiere: string;
+  parcours?: string;
   niveau: string;
   groupe: string;
+  typeAdmission?: StudentInscription['inscriptionType'];
 }
 
 export interface ImportResult {
@@ -559,17 +1059,76 @@ export interface ElementConstitutif {
   status: 'ACTIVE' | 'ARCHIVED';
 }
 
+export interface EnrollmentHistoryItem {
+  id: string;
+  timestamp: string;
+  authorId?: string;
+  authorName: string;
+  action:
+    | 'CREATION'
+    | 'VALIDATION'
+    | 'AFFECTATION_INITIALE'
+    | 'CHANGEMENT_GROUPE'
+    | 'CHANGEMENT_PARCOURS'
+    | 'CHANGEMENT_NIVEAU'
+    | 'CHANGEMENT_STATUT'
+    | 'REORIENTATION'
+    | 'SUSPENSION'
+    | 'REPRISE'
+    | 'MODIFICATION_DOSSIER';
+  previousGroupId?: string;
+  newGroupId?: string;
+  previousParcoursId?: string;
+  newParcoursId?: string;
+  previousLevel?: string;
+  newLevel?: string;
+  previousStatus?: string;
+  newStatus?: string;
+  isDerogation?: boolean;
+  reason?: string;
+}
+
+export type EnrollmentAdmissionType =
+  | 'PREMIERE_INSCRIPTION'
+  | 'ADMISSION_DOSSIER'
+  | 'CONCOURS'
+  | 'EQUIVALENCE'
+  | 'TRANSFERT'
+  | 'REINSCRIPTION'
+  | 'REINSCRIPTION_INTERRUPTION'
+  | 'REORIENTATION'
+  | 'INSCRIPTION';
+
+export type EnrollmentSpecialCase =
+  | 'NORMAL'
+  | 'PASSAGE_SUPERIEUR'
+  | 'REDOUBLEMENT'
+  | 'PASSAGE_CONDITIONNEL'
+  | 'REORIENTATION'
+  | 'CHANGEMENT_PARCOURS'
+  | 'CHANGEMENT_GROUPE'
+  | 'TRANSFERT'
+  | 'INTERRUPTION'
+  | 'REPRISE'
+  | 'DIPLOME';
+
 export interface StudentInscription {
   id: string;
   studentId: string;
   studentUid?: string;
-  academicYear: string;    // e.g. "2026-2027"
+  registrationReference?: string; // Clé unique studentId + academicYear
+  academicYear: string;           // e.g. "2026-2027"
   filiereId: string;
   parcoursId?: string;
   level: string;
-  groupId: string;
-  inscriptionType?: 'INSCRIPTION' | 'REINSCRIPTION';
-  academicStatus?: 'NOUVEAU' | 'PASSANT' | 'PASSAGE_CONDITIONNEL' | 'REDOUBLANT' | 'DIPLOME';
+  groupId: string;                // ID du groupe ou '' si "Sans affectation immédiate" (Optionnel)
+  inscriptionType?: EnrollmentAdmissionType;
+  trainingMode?: 'PRESENTIEL' | 'HYBRIDE' | 'EN_LIGNE' | 'ALTERNANCE';
+  trainingRegime?: 'INITIAL' | 'CONTINU' | 'SALARIE';
+  academicStatus?: 'NOUVEAU' | 'PASSANT' | 'PASSAGE_CONDITIONNEL' | 'REDOUBLANT' | 'DIPLOME' | 'REORIENTE' | 'TRANSFERE' | 'SUSPENDU';
+  specialCaseType?: EnrollmentSpecialCase;
+  referenceDecision?: string;
+  validationReason?: string;
   dossierComplete?: boolean;
   documents?: {
     cinOrBirthCert: boolean;
@@ -577,10 +1136,22 @@ export interface StudentInscription {
     photosId: boolean;
     medicalCert: boolean;
     financialClearance: boolean;
+    equivalenceOrTransferDoc?: boolean;
+    registrationFormSigned?: boolean;
   };
   inscriptionDate: string;
-  status: 'CONFIRMED' | 'PENDING' | 'SUSPENDED';
+  status: 'DRAFT' | 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'SUSPENDED';
+  agentId?: string;
+  agentName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  validatedAt?: string;
+  notes?: string;
+  history?: EnrollmentHistoryItem[];
 }
+
+export type StudentEnrollment = StudentInscription;
 
 export interface EcGrade {
   id: string;

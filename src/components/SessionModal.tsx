@@ -52,6 +52,10 @@ export const SessionModal: React.FC<SessionModalProps> = ({
 
   const teachers = useMemo(() => users.filter((u) => u.role === 'TEACHER'), [users]);
 
+  const sortedRooms = useMemo(() => {
+    return [...rooms].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rooms]);
+
   const scheduleConfig = appSettings.scheduleSettings || {
     dayStartTime: '07:00',
     dayEndTime: '18:00',
@@ -888,7 +892,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                     onChange={(e) => setRescheduleRoomId(e.target.value)}
                     className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm"
                   >
-                    {rooms.map((r) => (
+                    {sortedRooms.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name} ({r.capacity} pl.)
                       </option>
@@ -1306,7 +1310,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                     className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     required
                   >
-                    {rooms.map((r) => (
+                    {sortedRooms.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name} ({r.capacity} pl.{r.status === 'maintenance' ? ' - Maintenance' : ''})
                       </option>
@@ -1327,7 +1331,7 @@ export const SessionModal: React.FC<SessionModalProps> = ({
                     <span>
                       Capacité salle :{' '}
                       <strong className="text-slate-800">
-                        {rooms.find((r) => r.id === roomId)?.capacity || 0} places
+                        {sortedRooms.find((r) => r.id === roomId)?.capacity || 0} places
                       </strong>
                     </span>
                   </div>

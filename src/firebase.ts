@@ -12,7 +12,7 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import {
-  getFirestore,
+  initializeFirestore,
   doc,
   getDocFromServer,
 } from 'firebase/firestore';
@@ -24,8 +24,12 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize Firebase SDK
 export const app = initializeApp(firebaseConfig);
 
-// Initialize Cloud Firestore with the provisioned database ID
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Initialize Cloud Firestore with the provisioned database ID and ignoreUndefinedProperties
+export const db = initializeFirestore(
+  app,
+  { ignoreUndefinedProperties: true },
+  firebaseConfig.firestoreDatabaseId
+);
 
 // Initialize Firebase Authentication
 export const auth = getAuth(app);

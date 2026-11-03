@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   MapPin,
@@ -50,7 +50,16 @@ const PRESET_EQUIPMENT_CATALOG = [
 
 export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateToCreate }) => {
   const { rooms, sessions, courses, users, groups, updateRoom, addSession, updateSession, currentUser, appSettings } = useApp();
-  const [selectedRoomId, setSelectedRoomId] = useState<string>(rooms[0]?.id || '');
+
+  const sortedRooms = React.useMemo(() => {
+    return [...rooms].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rooms]);
+
+  const sortedGroups = React.useMemo(() => {
+    return [...groups].sort((a, b) => a.code.localeCompare(b.code));
+  }, [groups]);
+
+  const [selectedRoomId, setSelectedRoomId] = useState<string>(sortedRooms[0]?.id || '');
   const [isCustomizeModalOpen, setIsCustomizeModalOpen] = useState<boolean>(false);
   const [inlineEquipInput, setInlineEquipInput] = useState<string>('');
   const [customEquipModalInput, setCustomEquipModalInput] = useState<string>('');
@@ -72,10 +81,10 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
   });
 
   // Configurable time slots from Paramètres (default: 07:00 to 18:00 every 30 minutes)
-  const scheduleConfig = appSettings.scheduleSettings || {
-    dayStartTime: '07:00',
-    dayEndTime: '18:00',
-    slotIntervalMinutes: 30,
+  const scheduleConfig = {
+    dayStartTime: appSettings.scheduleSettings?.dayStartTime || '07:00',
+    dayEndTime: appSettings.scheduleSettings?.dayEndTime || '18:00',
+    slotIntervalMinutes: 15,
   };
 
   const configurableTimeSlots = (() => {
@@ -103,10 +112,27 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
   const [assistStartTime, setAssistStartTime] = useState<string>(scheduleConfig.dayStartTime || '07:00');
   const [assistEndTime, setAssistEndTime] = useState<string>('09:00');
 
+  useEffect(() => {
+    const selectedGrp = groups.find((g) => g.id === assistGroupId);
+    if (!selectedGrp) return;
+    const matched = courses.filter((c) => {
+      if (c.groupIds && c.groupIds.includes(selectedGrp.id)) return true;
+      if (c.filiereId === selectedGrp.filiereId && (!c.level || c.level === selectedGrp.level)) return true;
+      if (c.filiereId === selectedGrp.filiereId) return true;
+      return false;
+    });
+    const available = matched.length > 0 ? matched : courses;
+    if (!available.some((c) => c.id === assistCourseId)) {
+      if (available[0]) {
+        setAssistCourseId(available[0].id);
+      }
+    }
+  }, [assistGroupId, courses, groups]);
+
   const isStudent = currentUser.role === 'STUDENT';
   const isTeacher = currentUser.role === 'TEACHER';
   const canUseSmartAssistant = !isStudent && !isTeacher;
-  const activeRoom = rooms.find((r) => r.id === selectedRoomId) || rooms[0];
+  const activeRoom = sortedRooms.find((r) => r.id === selectedRoomId) || sortedRooms[0];
 
   // Temp editing state for modal
   const [modalEquipments, setModalEquipments] = useState<string[]>(activeRoom?.equipment || []);
@@ -320,7 +346,15 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
 
           {(() => {
             const selectedGrp = groups.find((g) => g.id === assistGroupId) || groups[0];
-            const selectedCrs = courses.find((c) => c.id === assistCourseId) || courses[0];
+            const matchedCourses = courses.filter((c) => {
+              if (!selectedGrp) return true;
+              if (c.groupIds && c.groupIds.includes(selectedGrp.id)) return true;
+              if (c.filiereId === selectedGrp.filiereId && (!c.level || c.level === selectedGrp.level)) return true;
+              if (c.filiereId === selectedGrp.filiereId) return true;
+              return false;
+            });
+            const availableCourses = matchedCourses.length > 0 ? matchedCourses : courses;
+            const selectedCrs = courses.find((c) => c.id === assistCourseId) || availableCourses[0] || courses[0];
             const teacher = users.find((u) => u.id === selectedCrs?.teacherIds?.[0]);
             const enrolledStudentsCount =
               users.filter((u) => u.role === 'STUDENT' && u.groupId === selectedGrp?.id).length ||
@@ -364,7 +398,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
             );
 
             // Evaluate all rooms
-            const evaluatedRooms = rooms
+            const evaluatedRooms = sortedRooms
               .map((rm) => {
                 const enoughCapacity = rm.capacity >= requiredSeats;
                 const isAvailableStatus = rm.status === 'available';
@@ -440,7 +474,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                       onChange={(e) => setAssistGroupId(e.target.value)}
                       className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg font-bold text-white"
                     >
-                      {groups.map((g) => (
+                      {sortedGroups.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.code} ({g.studentCount} étudiants)
                         </option>
@@ -457,7 +491,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
                       onChange={(e) => setAssistCourseId(e.target.value)}
                       className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg font-semibold text-white"
                     >
-                      {courses.map((c) => (
+                      {availableCourses.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.code} — {c.title}
                         </option>
@@ -630,7 +664,7 @@ export const RoomCalendarView: React.FC<RoomCalendarViewProps> = ({ onNavigateTo
 
       {/* Room Selection Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-        {rooms.map((room) => {
+        {sortedRooms.map((room) => {
           const isSelected = room.id === activeRoom?.id;
           const assignedCount = sessions.filter((s) => s.roomId === room.id && s.status !== 'CANCELLED').length;
 

@@ -41,6 +41,7 @@ import { downloadCsvFile, downloadMultiSheetExcelWorkbook } from '../utils/csvEx
 import { getAntananarivoDateStr, getDefaultPlanningDateStr } from '../utils/securityAndDateUtils';
 import { detectSessionConflicts } from '../utils/conflictDetector';
 import { showAppToast, requestAppConfirm } from './ToastAndConfirmCenter';
+import { SessionValidationModal } from './SessionValidationModal';
 
 interface TimetableGridProps {
   onOpenCreateModal: () => void;
@@ -133,6 +134,8 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     currentUser.role === 'SCOLARITE' ||
     currentUser.role === 'SCHEDULER' ||
     currentUser.role === 'ACADEMIC_HEAD';
+
+  const canValidate = canManage || currentUser.role === 'TEACHER';
 
   // For PARENT role, find all groupIds of linked children
   const parentChildrenGroups = useMemo(
@@ -228,6 +231,7 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     isTeacher ? currentUser.id : selectedTeacherId !== 'ALL' ? selectedTeacherId : ''
   );
   const [isSyncingNow, setIsSyncingNow] = useState<boolean>(false);
+  const [validationModalSessionId, setValidationModalSessionId] = useState<string | null>(null);
 
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1310,16 +1314,20 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
               </>
             )}
 
-            {(currentUser.role === 'ACADEMIC_HEAD' || currentUser.role === 'ADMIN') &&
+            {canValidate &&
               !isValidated &&
               !isCancelled && (
                 <button
                   type="button"
-                  onClick={() => validateSession(session.id)}
-                  title="Valider les heures effectuées"
-                  className="px-2 py-1 bg-emerald-600 text-white font-semibold rounded-lg text-[10px] hover:bg-emerald-700 transition-colors cursor-pointer"
+                  onClick={() => setValidationModalSessionId(session.id)}
+                  title="Valider avec compte rendu et cahier de textes"
+                  className={`px-2 py-1 font-semibold rounded-lg text-[10px] transition-colors cursor-pointer flex items-center gap-1 ${
+                    session.report
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
                 >
-                  Valider
+                  {session.report ? '📄 Rédigé / Valider' : 'Valider'}
                 </button>
               )}
 
@@ -2765,6 +2773,12 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
           </div>
         </div>
       )}
+
+      <SessionValidationModal
+        isOpen={Boolean(validationModalSessionId)}
+        onClose={() => setValidationModalSessionId(null)}
+        sessionId={validationModalSessionId || ''}
+      />
     </div>
   );
 };

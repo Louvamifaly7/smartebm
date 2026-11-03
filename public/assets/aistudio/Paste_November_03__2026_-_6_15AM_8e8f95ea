@@ -1,0 +1,1055 @@
+CAHIER DES CHARGES FONCTIONNEL ET TECHNIQUE
+MODULE : GESTION DES COMPTES, DES ACCÈS ET DES PORTAILS PERSONNELS
+EBM INSTITUTE – Engineering and Business Malagasy
+Version : 1.0 – Cahier des charges de référence Nature du projet : Extension de l'application de gestion académique EBM Institute 
+
+1. PRÉSENTATION GÉNÉRALE
+1.1. Contexte
+EBM Institute dispose d'une application centralisée de gestion scolaire et universitaire. Pour améliorer la communication, l'autonomie des utilisateurs et la sécurité des données, l'application doit intégrer un système complet de gestion des comptes et des accès.
+Ce module permettra de créer, activer, administrer et sécuriser les comptes des différentes catégories d'utilisateurs :
+* Étudiants.
+* Enseignants.
+* Parents et tuteurs légaux.
+* Agents de scolarité.
+* Responsables pédagogiques.
+* Personnel administratif.
+* Direction et administrateurs.
+Chaque utilisateur disposera d'un espace personnel adapté à son rôle et à ses autorisations.
+1.2. Objectifs
+Le module doit permettre de :
+1. Créer automatiquement ou manuellement les comptes utilisateurs.
+2. Utiliser des identifiants permanents et faciles à communiquer.
+3. Activer les comptes au moyen d'un code à usage unique.
+4. Permettre à chaque utilisateur de choisir son propre mot de passe.
+5. Générer et imprimer des badges d'activation.
+6. Gérer les comptes individuellement ou en masse.
+7. Permettre la récupération et la réinitialisation sécurisée des accès.
+8. Fournir un portail personnel aux étudiants.
+9. Fournir un portail professionnel aux enseignants.
+10. Fournir un portail spécifique aux parents et tuteurs.
+11. Contrôler les droits d'accès selon le profil de chaque utilisateur.
+12. Conserver les historiques académiques et administratifs même après la désactivation d'un compte.
+1.3. Principes fondamentaux
+L'architecture doit impérativement distinguer trois éléments :
+Élément	Fonction
+Profil personnel	Identité et informations permanentes de la personne
+Inscription académique	Situation de l'étudiant pour une année universitaire
+Compte utilisateur	Identifiants, authentification, rôles et autorisations
+La suppression ou la modification d'un compte ne doit jamais entraîner automatiquement la suppression du profil personnel, des inscriptions, des notes, des présences ou des historiques.
+Un même utilisateur doit conserver son compte d'une année universitaire à l'autre.
+
+2. ARCHITECTURE GÉNÉRALE DU MODULE
+2.1. Comptes centralisés
+Le système doit disposer d'une gestion centralisée des identités et des authentifications.
+Les différents portails ne doivent pas constituer des bases de données indépendantes. Ils doivent exploiter les mêmes données centrales avec des permissions différentes.
+Architecture fonctionnelle :
+* Gestion centrale des identités et des comptes.
+* Portail étudiant.
+* Portail enseignant.
+* Portail parent.
+* Interface administrative et direction.
+2.2. Catégories de comptes
+Catégorie	Identifiant recommandé
+Étudiant	Matricule EBM
+Enseignant	Code enseignant EBM
+Parent/tuteur	Identifiant parent EBM ou adresse électronique vérifiée
+Personnel administratif	Identifiant professionnel EBM
+Administrateur	Identifiant professionnel EBM
+Les identifiants doivent être uniques et permanents.
+Un changement de filière, de niveau, de groupe ou d'année universitaire ne doit jamais modifier le matricule d'un étudiant.
+2.3. Règles de correspondance des profils
+* Un étudiant possède un profil personnel et, si nécessaire, un compte utilisateur.
+* Un enseignant possède un profil professionnel et un compte utilisateur.
+* Un parent possède son propre compte, indépendant du compte de son enfant.
+* Un parent peut être associé à plusieurs étudiants.
+* Un étudiant peut être associé à plusieurs parents ou tuteurs autorisés.
+* Un même compte ne doit pas être créé plusieurs fois pour une même personne.
+
+3. TABLEAU DE BORD – GESTION DES COMPTES
+3.1. Interface principale
+Créer une rubrique :
+Administration → Gestion des accès → Tableau de bord
+Cette interface doit présenter les indicateurs suivants :
+* Nombre total de comptes.
+* Comptes étudiants.
+* Comptes enseignants.
+* Comptes parents.
+* Comptes administratifs.
+* Comptes actifs.
+* Comptes non activés.
+* Comptes suspendus.
+* Comptes désactivés.
+* Codes d'activation en attente.
+* Codes expirés.
+* Demandes de réinitialisation en attente.
+3.2. Filtres
+L'administration doit pouvoir filtrer les comptes par :
+* Catégorie de compte.
+* Année académique.
+* Filière.
+* Parcours.
+* Niveau.
+* Groupe ou promotion.
+* Statut du compte.
+* Date de création.
+* Date d'activation.
+* Compte activé ou non.
+* Compte associé à un profil existant ou non.
+3.3. Recherche
+Une barre de recherche doit permettre de retrouver rapidement un utilisateur à partir de :
+* Nom et prénom.
+* Matricule.
+* Code enseignant.
+* Identifiant parent.
+* Adresse électronique.
+* Numéro de téléphone.
+3.4. Actions administratives
+Pour chaque compte, prévoir :
+* Consulter le compte.
+* Consulter le profil associé.
+* Créer le compte.
+* Activer ou désactiver le compte.
+* Suspendre ou réactiver le compte.
+* Générer un nouveau code d'activation.
+* Révoquer un code.
+* Demander une réinitialisation du mot de passe.
+* Consulter l'historique des connexions.
+* Consulter l'historique des modifications.
+* Consulter les rôles et autorisations.
+Les actions doivent être soumises aux permissions de l'utilisateur connecté.
+
+4. CRÉATION ET GÉNÉRATION DES COMPTES
+4.1. Création individuelle
+L'administration doit pouvoir créer un compte à partir d'un profil existant.
+Exemple pour un étudiant :
+1. Rechercher le matricule.
+2. Vérifier l'existence du profil.
+3. Vérifier si un compte existe déjà.
+4. Créer le compte si nécessaire.
+5. Générer un code d'activation.
+6. Préparer le badge.
+7. Remettre les informations d'activation à l'étudiant.
+La création d'un compte ne doit jamais créer un deuxième profil étudiant si celui-ci existe déjà.
+4.2. Création en masse
+L'administration doit pouvoir sélectionner plusieurs utilisateurs et générer leurs comptes simultanément.
+Exemples :
+* Tous les étudiants d'une filière.
+* Tous les étudiants d'un niveau.
+* Tous les étudiants d'un groupe.
+* Tous les étudiants inscrits pour une année académique.
+* Tous les enseignants.
+* Tous les parents associés à des étudiants.
+Le système doit vérifier les comptes déjà existants.
+Il ne doit pas créer de doublons.
+4.3. Génération automatique
+Une option doit permettre de créer automatiquement les comptes lors de certaines opérations :
+* Validation d'une première inscription.
+* Création d'un nouveau profil étudiant.
+* Ajout d'un nouvel enseignant.
+* Création d'un compte parent après validation de son association avec un étudiant.
+Cette automatisation doit être configurable.
+La création du profil, la validation de l'inscription et l'activation du compte doivent rester trois opérations distinctes.
+
+5. IDENTIFIANTS DE CONNEXION
+5.1. Étudiants
+Le matricule EBM doit constituer l'identifiant permanent de connexion.
+Exemple :
+* Matricule : EBM-2026-0045.
+* Identifiant de connexion : EBM-2026-0045.
+Le matricule ne doit pas changer lors d'une réinscription ou d'un changement de parcours.
+5.2. Enseignants
+Utiliser un code professionnel permanent.
+Exemple :
+* Code enseignant : ENS-2026-0012.
+* Identifiant : ENS-2026-0012.
+Si EBM utilise déjà une nomenclature pour ses enseignants, le système doit la reprendre.
+5.3. Parents
+Chaque parent doit disposer d'un compte personnel.
+L'identifiant peut être :
+* Un identifiant parent EBM.
+* Une adresse électronique vérifiée.
+Il ne faut pas utiliser automatiquement le matricule de l'enfant comme identifiant du parent.
+
+6. SYSTÈME D'ACTIVATION PAR CODE À USAGE UNIQUE
+6.1. Principe
+Le système doit privilégier un code d'activation temporaire plutôt que l'impression d'un mot de passe provisoire.
+Le code sert uniquement à prouver que la personne dispose des informations remises par EBM et à autoriser la première activation de son compte.
+Après validation, l'utilisateur choisit lui-même son mot de passe personnel.
+Le code devient immédiatement inutilisable.
+6.2. Génération du code
+Chaque code doit :
+* Être généré aléatoirement par un mécanisme cryptographiquement sécurisé.
+* Être suffisamment complexe pour éviter les devinettes.
+* Être unique.
+* Être associé à un seul compte.
+* Être utilisable une seule fois.
+* Être associé à une date de création.
+* Être associé à une date d'expiration.
+* Pouvoir être révoqué.
+* Ne jamais être réutilisé après consommation.
+Exemple de présentation :
+8KQ4-M9TX
+Ce code est uniquement un exemple illustratif.
+6.3. Durée de validité paramétrable
+La durée de validité ne doit pas être fixée dans le code informatique.
+Elle doit être configurable dans les paramètres de l'application.
+Exemples de durées possibles :
+* 1 jour.
+* 3 jours.
+* 7 jours.
+* 15 jours.
+* 30 jours.
+* 60 jours.
+* Durée personnalisée.
+L'administration doit pouvoir définir une durée en nombre de jours.
+Paramètres à prévoir :
+* Durée de validité par défaut.
+* Durée spécifique aux étudiants.
+* Durée spécifique aux enseignants.
+* Durée spécifique aux parents.
+* Durée spécifique au personnel administratif.
+* Nombre maximal de tentatives incorrectes.
+* Délai de blocage après trop de tentatives.
+* Nombre de codes actifs autorisés par compte.
+Valeur initiale recommandée : 7 jours, modifiable par l'administration.
+Toute modification de la durée doit s'appliquer aux nouveaux codes générés. Les codes déjà émis conservent leur date d'expiration, sauf action administrative explicite.
+6.4. Parcours d'activation
+Créer une page publique :
+Activer mon compte EBM
+Champs :
+* Catégorie de compte.
+* Identifiant ou matricule.
+* Code d'activation.
+* Nouveau mot de passe.
+* Confirmation du mot de passe.
+Fonctionnement :
+1. L'utilisateur saisit son identifiant.
+2. Il saisit son code.
+3. Le serveur vérifie le code.
+4. Le serveur vérifie la date d'expiration.
+5. Le serveur vérifie que le code n'a pas été utilisé.
+6. Le serveur vérifie que le compte peut être activé.
+7. L'utilisateur choisit son mot de passe.
+8. Le compte est activé.
+9. Le code est immédiatement marqué comme consommé.
+10. L'utilisateur peut se connecter au portail correspondant.
+L'ensemble de la consommation du code et de l'activation doit être réalisé de manière sécurisée et atomique côté serveur.
+6.5. États des codes
+État	Signification
+Généré	Code créé
+En attente	Code utilisable
+Utilisé	Activation réalisée
+Expiré	Durée dépassée
+Révoqué	Code invalidé par l'administration
+Bloqué	Trop de tentatives incorrectes
+Un code utilisé ne peut jamais être réactivé.
+6.6. Régénération
+Si un utilisateur perd son code ou si celui-ci expire :
+* L'administration peut révoquer le code précédent.
+* Elle peut générer un nouveau code.
+* Le nouveau code doit avoir sa propre date d'expiration.
+* L'ancien code doit rester dans l'historique.
+* La génération doit être journalisée.
+Un utilisateur déjà activé ne doit pas pouvoir utiliser un code d'activation pour remplacer son mot de passe.
+Il doit passer par la procédure de récupération ou de réinitialisation.
+
+7. IMPRESSION DES BADGES ET IDENTIFIANTS
+7.1. Interface
+Créer une rubrique :
+Administration → Gestion des accès → Badges et identifiants
+7.2. Fonctionnalités
+L'administration doit pouvoir :
+* Filtrer les étudiants par année académique.
+* Filtrer par filière.
+* Filtrer par parcours.
+* Filtrer par niveau.
+* Filtrer par groupe.
+* Filtrer par état du compte.
+* Sélectionner individuellement les étudiants.
+* Sélectionner tous les résultats filtrés.
+* Générer les codes d'activation.
+* Prévisualiser les badges.
+* Imprimer un badge individuel.
+* Imprimer plusieurs badges.
+* Exporter les badges en PDF.
+Les mêmes possibilités doivent exister pour les enseignants et les parents.
+7.3. Modèle de badge étudiant
+Le badge d'activation doit contenir :
+EBM INSTITUTE – ENGINEERING AND BUSINESS MALAGASY
+* Nom et prénom.
+* Matricule.
+* Filière et niveau, si disponibles.
+* Identifiant de connexion.
+* Code d'activation.
+* Date d'expiration du code.
+* Adresse du portail étudiant.
+* Instructions d'activation.
+Message de sécurité :
+« Ce code est personnel, confidentiel et utilisable une seule fois. Ne le communiquez à personne. »
+7.4. Format d'impression
+Prévoir :
+* Format A4.
+* Plusieurs badges par page.
+* Impression individuelle.
+* Impression par groupe.
+* Impression par filière.
+* Impression par niveau.
+* Mise en page propre et professionnelle.
+* Possibilité d'ajouter le logo EBM Institute.
+7.5. Sécurité des impressions
+Les codes d'activation doivent être affichés uniquement pendant la génération et la préparation de l'impression autorisée.
+Ils ne doivent pas être consultables ultérieurement depuis l'historique.
+L'application ne doit pas conserver une copie permanente des codes en clair.
+Les PDF contenant des codes doivent être traités comme des documents confidentiels et ne doivent pas être accessibles publiquement.
+Une fois les badges distribués, les fichiers de travail contenant les codes doivent être supprimés selon la procédure de conservation définie par EBM.
+Important : le badge d'identité étudiant et le badge d'activation sont deux documents distincts. Le premier peut être conservé comme carte d'étudiant. Le second contient des informations confidentielles et doit être remis individuellement.
+
+8. GESTION DES MOTS DE PASSE
+8.1. Création
+Chaque utilisateur choisit son propre mot de passe lors de la première activation.
+Le système doit imposer des exigences minimales configurables, avec notamment :
+* Longueur minimale recommandée de 10 caractères.
+* Contrôle de la confirmation.
+* Refus des mots de passe trop courants ou compromis lorsque le service le permet.
+* Protection contre les tentatives répétées.
+8.2. Changement du mot de passe
+Chaque utilisateur doit pouvoir modifier son mot de passe depuis son espace personnel.
+Champs :
+* Mot de passe actuel.
+* Nouveau mot de passe.
+* Confirmation du nouveau mot de passe.
+Le système doit vérifier l'identité de l'utilisateur avant le changement.
+8.3. Mot de passe oublié
+Créer une page :
+Mot de passe oublié ?
+Procédure :
+1. L'utilisateur saisit son identifiant.
+2. Le système identifie le compte.
+3. L'utilisateur suit une procédure de vérification de son identité.
+4. Un lien sécurisé ou un code de récupération lui est transmis par un canal vérifié.
+5. Il définit un nouveau mot de passe.
+6. Les sessions anciennes peuvent être révoquées selon la politique de sécurité.
+Le système ne doit jamais afficher ou envoyer l'ancien mot de passe.
+8.4. Intervention de l'administration
+L'administration peut déclencher une réinitialisation.
+Elle ne peut jamais consulter le mot de passe personnel d'un utilisateur.
+Elle ne doit pas pouvoir imposer un mot de passe définitif à la place de l'utilisateur.
+
+9. STATUTS DES COMPTES
+Prévoir les états suivants :
+Statut	Description
+À créer	Aucun compte utilisateur créé
+En attente d'activation	Compte préparé, activation non effectuée
+Actif	Compte utilisable
+Suspendu	Accès temporairement bloqué
+Désactivé	Accès retiré par décision administrative
+À vérifier	Identité ou association en attente de validation
+Le système doit distinguer le statut du compte du statut de l'inscription académique.
+Exemple : un étudiant peut avoir un compte actif mais une inscription suspendue. Les droits d'accès à ses informations académiques doivent alors être adaptés.
+La désactivation ne doit pas supprimer les données historiques.
+
+10. PORTAIL PERSONNEL ÉTUDIANT
+10.1. Accès
+Créer ou intégrer un espace :
+Portail Étudiant EBM
+Connexion avec le matricule et le mot de passe personnel.
+Chaque étudiant ne peut accéder qu'à ses propres informations.
+10.2. Tableau de bord
+Afficher :
+* Nom et prénom.
+* Matricule.
+* Photo de profil si disponible.
+* Année académique.
+* Filière.
+* Parcours.
+* Niveau.
+* Groupe, si attribué.
+* État de l'inscription.
+* Notifications.
+* Prochains cours.
+* Informations administratives importantes.
+10.3. Rubriques
+A. Mon profil
+* Informations personnelles.
+* Coordonnées.
+* Photo.
+* Informations de contact.
+* Possibilité de demander une correction de certaines informations.
+Les modifications sensibles doivent nécessiter une validation administrative.
+B. Mon inscription
+* Année académique.
+* Filière.
+* Parcours.
+* Niveau.
+* Type d'inscription.
+* Statut de validation.
+* Historique des inscriptions.
+* Documents administratifs associés.
+C. Mon emploi du temps
+* Calendrier des cours.
+* Date et heure.
+* Matière.
+* Enseignant.
+* Salle.
+* Groupe.
+* Modifications et annulations.
+* Notifications de changement.
+Si l'étudiant n'a pas encore de groupe, afficher un message :
+« Votre affectation à un groupe est en attente. Votre emploi du temps de groupe sera disponible après cette affectation. »
+Ne jamais afficher les emplois du temps d'autres groupes comme s'ils concernaient l'étudiant.
+D. Mes présences
+* Historique des séances.
+* Présent.
+* Absent.
+* Retard.
+* Absence justifiée.
+* Consultation des justificatifs et observations autorisés.
+* Statistiques de présence.
+Les étudiants ne doivent pas pouvoir modifier eux-mêmes les présences officielles.
+E. Mes notes et résultats
+* Notes par matière.
+* Résultats par semestre.
+* Moyennes.
+* Résultats annuels.
+* Matières validées.
+* Matières à rattraper.
+* Décisions pédagogiques publiées.
+Les notes non publiées ne doivent pas être accessibles.
+F. Ma situation financière
+* Frais d'inscription.
+* Frais de scolarité.
+* Échéances.
+* Paiements effectués.
+* Paiements en attente de validation.
+* Reste à payer.
+* Historique des transactions.
+* Reçus téléchargeables.
+Les données financières doivent provenir du module Finance existant.
+L'étudiant ne doit jamais pouvoir modifier lui-même un paiement ou un solde.
+G. Mes documents
+* Attestations disponibles.
+* Certificats autorisés.
+* Relevés de notes publiés.
+* Documents administratifs.
+* Téléchargement sécurisé.
+H. Discussions et notifications
+* Messages de l'administration.
+* Messages des enseignants autorisés.
+* Discussions disponibles pour l'étudiant.
+* Notifications concernant les cours.
+* Notifications financières.
+* Notifications administratives.
+Cette rubrique doit utiliser le système de discussion et de notification existant.
+I. Mon compte
+* Identifiant.
+* Changement du mot de passe.
+* Gestion des sessions.
+* Historique de connexion autorisé.
+* Déconnexion.
+
+11. PORTAIL PERSONNEL ENSEIGNANT
+11.1. Accès
+Créer ou intégrer :
+Portail Enseignant EBM
+Connexion avec le code enseignant et le mot de passe personnel.
+11.2. Tableau de bord
+Afficher :
+* Nom et prénom.
+* Code enseignant.
+* Matières attribuées.
+* Groupes concernés.
+* Prochains cours.
+* Séances à effectuer.
+* Notifications.
+* Discussions.
+11.3. Rubriques
+A. Mon profil professionnel
+* Identité.
+* Coordonnées professionnelles.
+* Spécialités.
+* Informations administratives autorisées.
+B. Mes cours
+* Matières attribuées.
+* Filières.
+* Parcours.
+* Niveaux.
+* Groupes.
+* Volume horaire.
+* Progression pédagogique.
+C. Mon emploi du temps
+* Calendrier des cours.
+* Salle.
+* Horaire.
+* Groupe.
+* Historique des modifications.
+D. Registre des séances
+* Liste des séances réalisées.
+* Date et heure.
+* Matière.
+* Groupe.
+* Thème abordé.
+* Compte rendu.
+* Progression.
+* Séances non réalisées.
+E. Gestion des présences
+* Consultation des étudiants affectés à ses groupes.
+* Enregistrement des présences selon les permissions.
+* Consultation de l'historique.
+* Signalement d'une erreur.
+F. Gestion des évaluations et notes
+* Création d'évaluations si autorisée.
+* Saisie des notes.
+* Modification dans les délais autorisés.
+* Soumission des notes.
+* Consultation des résultats de ses étudiants.
+G. Discussions et notifications
+* Communication avec les étudiants autorisés.
+* Communication avec la scolarité.
+* Communication avec les responsables pédagogiques.
+* Notifications de changements de cours.
+11.4. Restrictions
+Un enseignant ne doit accéder qu'aux matières, groupes, étudiants et données pour lesquels il possède une autorisation.
+La suspension de son compte ne doit pas supprimer ses anciennes notes, présences, séances ou comptes rendus.
+
+12. GESTION DES COMPTES PARENTS ET TUTEURS
+12.1. Objectif
+Permettre aux parents ou tuteurs légaux de suivre la situation scolaire et universitaire des étudiants pour lesquels ils disposent d'une autorisation.
+Le compte parent est indépendant du compte étudiant.
+12.2. Création du profil parent
+Informations :
+* Nom et prénom.
+* Téléphone.
+* Adresse électronique.
+* Adresse.
+* Type de relation avec l'étudiant.
+* Informations de vérification.
+* Statut de validation.
+Le système doit permettre de créer plusieurs liens entre un parent et plusieurs étudiants.
+Un étudiant peut également être associé à plusieurs parents ou tuteurs.
+12.3. Validation du lien familial
+Le lien entre parent et étudiant doit être validé par l'administration.
+Prévoir :
+* Demande d'association.
+* Vérification des informations.
+* Validation par un agent autorisé.
+* Refus motivé.
+* Révocation du lien.
+* Historique des changements.
+Un parent ne doit jamais pouvoir consulter les informations d'un étudiant simplement en connaissant son matricule.
+12.4. Portail parent
+Créer :
+Portail Parent EBM
+Le tableau de bord doit présenter les enfants associés au compte.
+Pour chaque étudiant :
+* Identité.
+* Matricule.
+* Filière.
+* Parcours.
+* Niveau.
+* Groupe.
+* Année académique.
+* Situation administrative.
+12.5. Rubriques du portail parent
+A. Situation académique
+* Inscriptions.
+* Résultats publiés.
+* Notes autorisées.
+* Moyennes.
+* Matières validées.
+* Décisions pédagogiques publiées.
+B. Emploi du temps
+* Horaires.
+* Matières.
+* Salles.
+* Changements de programmation.
+C. Suivi des présences
+* Présences.
+* Absences.
+* Retards.
+* Absences justifiées.
+* Alertes éventuelles.
+D. Situation financière
+* Frais de scolarité.
+* Échéances.
+* Paiements enregistrés.
+* Reste à payer.
+* Reçus accessibles.
+E. Notifications
+* Informations administratives.
+* Changements de calendrier.
+* Alertes d'absence.
+* Publication des résultats.
+* Échéances financières.
+F. Communication
+* Possibilité de contacter les services autorisés.
+* Messages de la scolarité.
+* Messages administratifs.
+* Historique des échanges.
+12.6. Restrictions
+Le parent ne doit pas pouvoir :
+* Modifier les notes.
+* Modifier les présences.
+* Modifier l'inscription.
+* Modifier le groupe.
+* Modifier les informations académiques officielles.
+* Consulter les données d'un autre étudiant non associé.
+Les droits d'accès doivent être configurables selon la nature de l'autorisation et la situation juridique de l'étudiant.
+
+13. GESTION DES RÔLES ET AUTORISATIONS
+13.1. Principe
+Mettre en place un système de permissions centralisé de type RBAC (Role-Based Access Control).
+Chaque compte possède un ou plusieurs rôles et des autorisations précises.
+13.2. Rôles principaux
+* SUPER ADMIN.
+* ADMIN.
+* DIRECTION.
+* SCOLARITÉ.
+* RESPONSABLE PÉDAGOGIQUE.
+* ENSEIGNANT.
+* ÉTUDIANT.
+* PARENT/TUTEUR.
+13.3. Gestion des permissions
+L'administration doit pouvoir configurer les autorisations selon les fonctions.
+Exemples :
+Fonction	ADMIN	SCOLARITÉ	RESPONSABLE PÉDAGOGIQUE	ENSEIGNANT
+Créer un compte étudiant	Oui	Selon permission	Non	Non
+Générer les badges	Oui	Oui	Non	Non
+Suspendre un compte	Oui	Selon permission	Non	Non
+Gérer les profils enseignants	Oui	Selon permission	Selon permission	Non
+Consulter les comptes	Oui	Selon permission	Selon périmètre	Non
+Modifier les rôles sensibles	Oui	Non	Non	Non
+Les permissions doivent pouvoir être adaptées sans modifier le code.
+Les parents et étudiants disposent uniquement des accès de leur portail.
+13.4. Principe de moindre privilège
+Un utilisateur ne doit avoir que les droits nécessaires à ses fonctions.
+Toute opération sensible doit être vérifiée côté serveur, et non uniquement par masquage des boutons dans l'interface.
+
+14. PARAMÈTRES DU MODULE
+Créer une rubrique :
+Paramètres → Gestion des comptes et des accès
+14.1. Paramètres d'activation
+* Activer ou désactiver l'activation par code unique.
+* Durée de validité par défaut.
+* Durée par catégorie d'utilisateur.
+* Nombre maximal de tentatives.
+* Délai de blocage.
+* Nombre de codes actifs autorisés.
+* Autoriser ou non la génération automatique.
+* Autoriser ou non la génération en masse.
+* Exiger une validation administrative avant activation.
+14.2. Paramètres des identifiants
+* Préfixe des matricules.
+* Préfixe des codes enseignants.
+* Préfixe des identifiants parents.
+* Format des identifiants administratifs.
+* Règles de génération.
+* Vérification des doublons.
+La modification d'un préfixe ne doit pas modifier les identifiants déjà attribués.
+14.3. Paramètres de sécurité
+* Longueur minimale du mot de passe.
+* Politique de complexité.
+* Nombre de tentatives de connexion.
+* Durée de blocage.
+* Durée maximale d'une session.
+* Déconnexion automatique après inactivité.
+* Politique de révocation des sessions.
+* Exigences d'authentification renforcée pour les administrateurs.
+14.4. Paramètres des portails
+* Activer ou désactiver chaque portail.
+* Personnaliser les rubriques visibles.
+* Configurer les notifications.
+* Définir les informations accessibles.
+* Définir les permissions des parents.
+* Configurer l'adresse des portails.
+14.5. Paramètres des badges
+* Logo EBM.
+* Couleurs.
+* Mise en page.
+* Nombre de badges par page.
+* Format d'impression.
+* Informations affichées.
+* Adresse du portail.
+
+15. NOTIFICATIONS ET COMMUNICATION
+Le système doit pouvoir notifier les utilisateurs lors des événements importants.
+15.1. Notifications étudiants
+* Création du compte.
+* Code d'activation généré.
+* Code bientôt expiré.
+* Code expiré.
+* Compte activé.
+* Mot de passe modifié.
+* Inscription validée.
+* Nouveau cours ou modification d'emploi du temps.
+* Publication des résultats.
+* Nouvelle échéance financière.
+15.2. Notifications enseignants
+* Création du compte.
+* Activation.
+* Affectation à une matière.
+* Modification de l'emploi du temps.
+* Nouvelle séance.
+* Message administratif.
+15.3. Notifications parents
+* Association validée.
+* Nouvelle absence.
+* Publication des résultats.
+* Échéance financière.
+* Message de la scolarité.
+15.4. Canaux
+Prévoir une architecture permettant :
+* Notifications dans l'application.
+* Courriel.
+* SMS, si un prestataire est intégré.
+* Notifications push, si l'application les prend en charge.
+L'absence de service SMS ou de messagerie externe ne doit pas empêcher l'utilisation du module.
+
+16. MODÈLE DE DONNÉES TECHNIQUE
+Les noms ci-dessous sont des propositions à adapter aux conventions du code existant. Il faut éviter de créer une deuxième source de vérité lorsqu'une collection ou un modèle équivalent existe déjà.
+16.1. Collection userAccounts
+Contient les informations de gestion du compte.
+Champs recommandés :
+* id
+* profileId
+* profileType
+* authUid
+* loginIdentifier
+* roles
+* permissions
+* accountStatus
+* isActivated
+* createdAt
+* createdBy
+* activatedAt
+* lastLoginAt
+* suspendedAt
+* suspendedBy
+* deactivatedAt
+* deactivatedBy
+* updatedAt
+16.2. Collection activationCodes
+Contient les informations relatives aux codes.
+Champs recommandés :
+* id
+* accountId
+* codeHash
+* status
+* createdAt
+* expiresAt
+* usedAt
+* revokedAt
+* revokedBy
+* attemptCount
+* maxAttempts
+* createdBy
+* generationBatchId
+Le code original ne doit jamais être stocké en clair dans Firestore.
+16.3. Collection parentStudentLinks
+Champs recommandés :
+* id
+* parentProfileId
+* studentId
+* relationshipType
+* authorizationStatus
+* validatedBy
+* validatedAt
+* permissions
+* createdAt
+* revokedAt
+* revokedBy
+16.4. Collection accountSecurityLogs
+Champs recommandés :
+* id
+* accountId
+* eventType
+* performedBy
+* eventDate
+* ipAddress, si légalement et techniquement disponible
+* deviceInformation, si disponible
+* result
+* reason
+Événements à journaliser :
+* Création.
+* Activation.
+* Échec d'activation.
+* Révocation d'un code.
+* Réinitialisation.
+* Changement de mot de passe.
+* Connexion.
+* Déconnexion.
+* Suspension.
+* Réactivation.
+* Modification des permissions.
+16.5. Collection accountSettings
+Doit contenir les paramètres configurables du module.
+Exemples :
+* Durée d'activation.
+* Paramètres par catégorie.
+* Politique de mot de passe.
+* Nombre de tentatives.
+* Durée de blocage.
+* Configuration des portails.
+* Configuration des badges.
+Les paramètres sensibles ne doivent être modifiables que par les rôles autorisés.
+
+17. EXIGENCES TECHNIQUES ET SÉCURITÉ
+17.1. Authentification
+L'application utilise Firebase Authentication ou un mécanisme sécurisé équivalent.
+Point technique important : Firebase Authentication ne prend pas nativement un matricule comme identifiant classique pour une connexion par mot de passe.
+Il faut donc mettre en place une résolution sécurisée de l'identifiant :
+1. L'utilisateur saisit son matricule ou son code professionnel.
+2. Le serveur vérifie cet identifiant.
+3. Il retrouve le compte d'authentification correspondant.
+4. Il autorise la procédure de connexion.
+5. Firebase Authentication valide les identifiants selon l'architecture retenue.
+Deux approches sont possibles :
+* Utiliser un service serveur sécurisé qui résout le matricule en identité Firebase.
+* Utiliser Firebase Custom Authentication avec des jetons générés côté serveur.
+Le choix doit être documenté avant l'implémentation. Ne jamais exposer au navigateur une table permettant de retrouver directement les identifiants internes d'authentification.
+17.2. Sécurité des mots de passe
+* Ne jamais stocker les mots de passe en clair.
+* Ne jamais afficher le mot de passe d'un utilisateur à l'administration.
+* Ne jamais exporter les mots de passe.
+* Utiliser Firebase Authentication ou un fournisseur d'authentification sécurisé.
+* Protéger les procédures de changement et de récupération.
+* Révoquer les sessions après certaines opérations sensibles.
+17.3. Sécurité des codes d'activation
+* Génération cryptographiquement sécurisée.
+* Stockage sous forme hachée.
+* Vérification côté serveur.
+* Expiration contrôlée côté serveur.
+* Usage unique garanti.
+* Protection contre les attaques par force brute.
+* Limitation des tentatives.
+* Révocation immédiate possible.
+* Journalisation des opérations.
+17.4. Cloud Firestore
+Les règles Firestore doivent être mises à jour pour empêcher :
+* Un étudiant de consulter les données d'un autre étudiant.
+* Un parent de consulter un étudiant non associé.
+* Un enseignant d'accéder à des groupes non attribués.
+* Un utilisateur de modifier ses propres rôles.
+* Un utilisateur de modifier directement son statut administratif.
+* Un utilisateur de consulter les codes d'activation d'autres comptes.
+* Un utilisateur de modifier les journaux de sécurité.
+Les opérations privilégiées doivent être réalisées par des fonctions serveur sécurisées utilisant les droits administratifs appropriés.
+17.5. Protection des opérations
+Les opérations suivantes doivent être protégées contre les doublons et les exécutions simultanées :
+* Création d'un compte.
+* Génération d'un code.
+* Consommation d'un code.
+* Activation.
+* Révocation.
+* Réinitialisation.
+Utiliser des transactions ou des mécanismes équivalents lorsque cela est nécessaire.
+17.6. Authentification renforcée
+Prévoir la possibilité d'imposer une authentification multifacteur aux administrateurs et aux utilisateurs disposant de droits sensibles.
+
+18. INTÉGRATION AVEC LES MODULES EXISTANTS
+Le nouveau module doit s'intégrer à l'application actuelle sans casser les fonctionnalités existantes.
+Module existant	Intégration attendue
+Gestion des étudiants	Liaison entre profil, matricule et compte
+Inscriptions	Activation des droits après validation de l'inscription
+Gestion des groupes	Affichage du groupe attribué
+Emplois du temps	Consultation des cours correspondant au groupe
+Gestion des enseignants	Liaison avec les comptes enseignants
+Présences et QR Code	Consultation des présences par les personnes autorisées
+Notes et évaluations	Consultation des résultats publiés
+Finance	Consultation des paiements et soldes
+Documents	Téléchargement sécurisé
+Discussion en ligne	Accès selon les rôles et permissions
+Notifications	Alertes personnelles
+Calendrier académique	Consultation des dates et événements autorisés
+18.1. Gestion des inscriptions
+Le compte et l'inscription doivent rester indépendants.
+Cas à prendre en charge :
+* Profil créé sans inscription.
+* Inscription en attente.
+* Inscription validée.
+* Inscription suspendue.
+* Inscription clôturée.
+* Réinscription d'un étudiant existant.
+Un étudiant qui se réinscrit doit conserver son compte et son mot de passe.
+18.2. Accès sans groupe
+Un étudiant peut avoir une inscription validée sans affectation à un groupe.
+Son portail doit rester accessible, mais les informations propres à un groupe ne doivent pas être affichées tant que l'affectation n'est pas effectuée.
+
+19. INTERFACE ET EXPÉRIENCE UTILISATEUR
+Le module doit respecter la charte graphique de l'application EBM existante.
+19.1. Principes UI/UX
+* Interface moderne et professionnelle.
+* Navigation simple.
+* Tableaux lisibles.
+* Recherche instantanée.
+* Filtres combinables.
+* Sélection multiple.
+* Actions groupées.
+* Fenêtres de confirmation pour les opérations sensibles.
+* Messages d'erreur explicites.
+* Notifications de succès.
+* Adaptation aux ordinateurs, tablettes et téléphones.
+19.2. Ergonomie des tableaux
+Chaque tableau doit proposer :
+* Tri des colonnes.
+* Recherche.
+* Pagination.
+* Filtrage.
+* Sélection individuelle.
+* Sélection de tous les résultats filtrés.
+* Export des données autorisées.
+* Actions groupées.
+19.3. Portails
+Les portails doivent présenter uniquement les rubriques pertinentes pour chaque rôle.
+Ne pas créer une interface surchargée avec toutes les fonctionnalités administratives visibles pour les étudiants ou les parents.
+
+20. MIGRATION ET COMPATIBILITÉ AVEC LES COMPTES EXISTANTS
+Avant le déploiement, effectuer un audit du système actuel.
+Il faut identifier :
+* Les utilisateurs existants.
+* Les comptes Firebase existants.
+* Les matricules.
+* Les codes enseignants.
+* Les rôles.
+* Les profils associés.
+* Les doublons éventuels.
+* Les utilisateurs sans profil.
+* Les profils sans compte.
+20.1. Migration
+La migration doit :
+1. Identifier les comptes existants.
+2. Associer chaque compte à son profil.
+3. Conserver les UID Firebase existants lorsque cela est possible.
+4. Préserver les rôles et permissions existants.
+5. Détecter les doublons.
+6. Produire un rapport de migration.
+7. Ne pas supprimer les comptes existants automatiquement.
+20.2. Compatibilité
+Le déploiement ne doit pas interrompre :
+* Les connexions existantes.
+* Les fonctions de gestion des étudiants.
+* Les fonctions de gestion des enseignants.
+* Les emplois du temps.
+* Les présences.
+* Les notes.
+* Les fonctions financières.
+* Les discussions.
+Prévoir un plan de retour arrière en cas de problème.
+
+21. TESTS ET CRITÈRES DE VALIDATION
+Le module ne pourra être considéré comme terminé qu'après validation des scénarios suivants.
+21.1. Comptes étudiants
+* Création d'un compte pour un nouvel étudiant.
+* Création d'un compte pour un étudiant existant.
+* Refus d'un doublon.
+* Connexion par matricule.
+* Activation par code unique.
+* Choix du mot de passe personnel.
+* Réinscription sans création d'un nouveau compte.
+* Accès au portail sans groupe.
+* Affichage du groupe après affectation.
+21.2. Codes d'activation
+* Code valide accepté.
+* Code expiré refusé.
+* Code utilisé une deuxième fois refusé.
+* Code révoqué refusé.
+* Code associé à un autre compte refusé.
+* Blocage après le nombre de tentatives configuré.
+* Durée modifiable dans les paramètres.
+* Modification de durée sans changement involontaire des codes déjà émis.
+* Impossible de consommer deux fois le même code lors de deux requêtes simultanées.
+21.3. Sécurité
+* Aucun mot de passe en clair dans Firestore.
+* Aucun code d'activation en clair dans Firestore.
+* Aucun accès aux données d'un autre étudiant.
+* Aucun accès non autorisé aux données des parents.
+* Aucun enseignant ne peut consulter des groupes non attribués.
+* Un utilisateur ne peut pas s'attribuer un rôle administratif.
+* Les actions sensibles sont journalisées.
+* Les règles Firestore bloquent les modifications non autorisées.
+21.4. Portail parent
+* Création d'un parent.
+* Association à un étudiant.
+* Validation administrative.
+* Association à plusieurs enfants.
+* Consultation des données autorisées.
+* Refus d'accès aux étudiants non associés.
+* Révocation du lien parent-étudiant.
+21.5. Gestion administrative
+* Création individuelle.
+* Création en masse.
+* Génération des badges.
+* Impression PDF.
+* Filtrage par année, filière, niveau et groupe.
+* Révocation des codes.
+* Suspension et réactivation.
+* Historique des actions.
+21.6. Tests de non-régression
+Vérifier que les modules existants continuent à fonctionner normalement après l'intégration.
+
+22. PHASAGE DE DÉVELOPPEMENT
+Le développement doit être réalisé par étapes pour réduire les risques.
+Phase	Contenu
+Phase 1	Audit de l'authentification et des profils existants
+Phase 2	Architecture centrale des comptes et des rôles
+Phase 3	Génération des codes d'activation
+Phase 4	Interface d'activation et choix du mot de passe
+Phase 5	Gestion administrative et tableau de bord
+Phase 6	Génération et impression des badges
+Phase 7	Portail étudiant
+Phase 8	Portail enseignant
+Phase 9	Gestion des parents et associations
+Phase 10	Portail parent
+Phase 11	Notifications et récupération des accès
+Phase 12	Sécurisation, migration et tests de non-régression
+Chaque phase doit être testée avant de passer à la suivante.
+
+23. LIVRABLES ATTENDUS
+Le développeur doit fournir :
+1. Le module complet intégré à l'application.
+2. Les interfaces administratives.
+3. Les interfaces d'activation.
+4. Le système de génération des codes.
+5. Le système de badges PDF.
+6. Le portail étudiant.
+7. Le portail enseignant.
+8. Le portail parent.
+9. Le système de gestion des rôles.
+10. Les paramètres configurables.
+11. Les fonctions serveur nécessaires.
+12. Les règles Firestore mises à jour.
+13. Les journaux de sécurité.
+14. Les scripts de migration si nécessaires.
+15. La documentation technique.
+16. Un guide d'utilisation pour l'administration.
+17. Un guide d'activation pour les étudiants, enseignants et parents.
+18. Un rapport de tests et de validation.
+
+24. RÈGLES DE GESTION NON NÉGOCIABLES
+Les règles suivantes constituent les exigences fondamentales du module :
+1. Un étudiant conserve le même matricule pendant toute sa scolarité à EBM.
+2. Un étudiant conserve son compte lors de ses réinscriptions.
+3. Un compte utilisateur est distinct d'une inscription académique.
+4. Un code d'activation est associé à un seul compte.
+5. Un code d'activation ne peut être utilisé qu'une seule fois.
+6. La durée de validité des codes est configurable dans l'application.
+7. Un code expiré ou révoqué ne peut plus être utilisé.
+8. L'utilisateur choisit lui-même son mot de passe personnel.
+9. L'administration ne peut jamais consulter les mots de passe personnels.
+10. Les mots de passe ne doivent jamais être stockés en clair.
+11. Les codes d'activation ne doivent jamais être stockés en clair.
+12. Les badges d'activation ne doivent pas être accessibles publiquement.
+13. Les profils et historiques académiques ne sont pas supprimés lors de la désactivation d'un compte.
+14. Un parent doit être explicitement associé et autorisé pour accéder aux informations d'un étudiant.
+15. Les enseignants ne voient que les données correspondant à leurs affectations et autorisations.
+16. Chaque portail respecte strictement les permissions de son utilisateur.
+17. Les opérations sensibles doivent être vérifiées côté serveur.
+18. Le nouveau module ne doit pas détériorer les fonctionnalités déjà présentes dans l'application.
+
+25. RÉSULTAT FINAL ATTENDU
+À l'issue du développement, EBM Institute doit disposer d'un système centralisé permettant à chaque acteur de l'établissement d'accéder à son propre espace numérique.
+Pour les étudiants : un portail personnel donnant accès à leur inscription, leurs cours, leurs présences, leurs notes, leur situation financière et leurs documents.
+Pour les enseignants : un espace professionnel donnant accès à leurs cours, emplois du temps, groupes, registres de séances, présences et évaluations.
+Pour les parents : un espace de suivi permettant de consulter les informations autorisées de leurs enfants.
+Pour l'administration : un outil centralisé pour créer, gérer, sécuriser et contrôler tous les comptes, imprimer les badges d'activation et suivre les accès.
+L'ensemble doit fonctionner sur une architecture commune, sécurisée, évolutive et intégrée à l'application EBM Institute existante.
+Objectif final : faire de l'application EBM le portail numérique central de l'établissement, avec un accès personnel, sécurisé et adapté à chaque membre de sa communauté universitaire.

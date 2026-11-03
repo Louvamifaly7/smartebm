@@ -364,7 +364,14 @@ export const HomePage: React.FC<HomePageProps> = ({
                     Emploi du temps consultable hors ligne, devoirs à remettre et situation financière.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => onNavigateTab('MY_COURSES')}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#17345B] hover:bg-blue-950 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Suivi des cours & CR</span>
+                  </button>
                   <button
                     onClick={() => onNavigateTab('HOMEWORK_RESOURCES')}
                     className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"

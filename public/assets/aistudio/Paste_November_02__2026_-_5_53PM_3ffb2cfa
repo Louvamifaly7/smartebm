@@ -1,0 +1,1014 @@
+# CAHIER DES CHARGES FONCTIONNEL ET UI/UX
+# MODULE « MES COURS » – EBM INSTITUTE
+
+## 1. Présentation générale et objectifs
+
+### 1.1. Contexte
+
+Le module « Mes cours » a pour vocation de centraliser le suivi pédagogique des enseignements au sein de la plateforme EBM Institute.
+
+Il doit permettre à chaque utilisateur de consulter, selon son rôle et ses autorisations, les informations relatives aux cours, aux séances, aux volumes horaires, à l'assiduité, aux devoirs et aux résultats académiques.
+
+Ce module ne doit pas être une simple liste de cours. Il doit constituer un véritable tableau de bord pédagogique, donnant une vision claire de la progression des enseignements et de leur réalisation effective.
+
+### 1.2. Objectifs
+
+- Permettre aux étudiants de suivre leur parcours pédagogique.
+- Permettre aux enseignants de suivre leurs enseignements et leurs obligations pédagogiques.
+- Permettre à l'administration de contrôler l'exécution des programmes.
+- Faciliter le suivi des volumes horaires prévus et réalisés.
+- Améliorer la transparence concernant les séances effectivement dispensées.
+- Centraliser les informations relatives aux présences, devoirs et résultats.
+- Identifier rapidement les retards, anomalies et insuffisances pédagogiques.
+
+### 1.3. Principes fondamentaux
+
+Le module doit respecter les principes suivants :
+
+1. Une interface différente selon le rôle de l'utilisateur.
+2. Une présentation visuelle, moderne et intuitive.
+3. Une navigation rapide entre les cours et leurs séances.
+4. Des données actualisées à partir des collections existantes.
+5. Une séparation stricte entre données publiques et données internes.
+6. Une conception responsive, adaptée aux ordinateurs, tablettes et smartphones.
+7. Une traçabilité des opérations sensibles.
+
+---
+
+# 2. Organisation générale de l'interface
+
+## 2.1. Nouvel onglet dans le menu principal
+
+Ajouter ou finaliser l'onglet `MY_COURSES`.
+
+Le libellé et le contenu doivent être adaptés au rôle :
+
+| Rôle | Libellé |
+|---|---|
+| STUDENT | Mon parcours |
+| TEACHER | Mes enseignements |
+| ADMIN | Pilotage des cours |
+| ACADEMIC_HEAD | Pilotage des cours |
+| SCOLARITE | Suivi des enseignements |
+| SCHEDULER | Suivi des enseignements |
+
+L'onglet doit apparaître dans la navigation principale et respecter les permissions RBAC.
+
+Ne pas créer un accès pour les rôles qui ne sont pas concernés.
+
+## 2.2. Architecture de navigation
+
+L'interface doit comporter trois niveaux :
+
+- Vue générale : tableau de bord avec les principaux indicateurs.
+- Vue détaillée : liste des cours et informations associées.
+- Vue individuelle d'un cours : historique des séances, progression, devoirs et autres informations pertinentes.
+
+La navigation entre ces niveaux doit être fluide, sans obliger l'utilisateur à quitter le module.
+
+## 2.3. Principes graphiques
+
+Adopter le langage visuel déjà utilisé dans EBM Institute afin de conserver une identité graphique cohérente.
+
+Recommandations :
+
+- Cartes de synthèse avec coins légèrement arrondis.
+- Indicateurs chiffrés accompagnés d'icônes explicites.
+- Barres de progression horizontales.
+- Graphiques simples et lisibles.
+- Couleurs cohérentes pour les statuts.
+- Espacement généreux entre les sections.
+- Typographie hiérarchisée.
+- Boutons d'action clairement identifiables.
+- Tableaux avec recherche, filtres et pagination lorsque nécessaire.
+
+Les couleurs des statuts doivent être uniformes dans tout le module :
+
+- Vert : réalisé et validé.
+- Bleu : séance planifiée.
+- Orange : en attente de validation ou action requise.
+- Rouge : anomalie ou retard important.
+- Gris : information indisponible ou non renseignée.
+
+Éviter de surcharger les écrans avec trop de graphiques ou d'indicateurs simultanés.
+
+---
+
+# 3. Livraison progressive
+
+Le développement sera réalisé en trois phases indépendantes.
+
+### Phase 1 : Portail étudiant – « Mon parcours »
+
+Priorité absolue.
+
+### Phase 2 : Portail enseignant – « Mes enseignements »
+
+Deuxième priorité.
+
+### Phase 3 : Portail administratif – « Pilotage des cours »
+
+Troisième priorité.
+
+Chaque phase doit pouvoir être livrée, testée et mise en production indépendamment des autres.
+
+---
+
+# 4. Architecture technique et données
+
+## 4.1. Architecture des composants
+
+Créer ou compléter :
+
+`src/components/CoursePortalView.tsx`
+
+Ce composant sert de point d'entrée et distribue automatiquement l'affichage selon le rôle de l'utilisateur connecté.
+
+Sous-composants :
+
+- `StudentCoursesView.tsx`
+- `TeacherCoursesView.tsx`
+- `AdminCoursesView.tsx`
+
+Créer ou compléter les composants réutilisables suivants :
+
+- `CourseSummaryCard.tsx` : carte de présentation d'un cours.
+- `CourseProgressBar.tsx` : progression du volume horaire.
+- `CourseSessionTimeline.tsx` : historique des séances.
+- `CourseSessionDetail.tsx` : détail d'une séance.
+- `CourseStatsCards.tsx` : indicateurs de synthèse.
+- `CourseAttendanceSummary.tsx` : indicateurs d'assiduité.
+
+Ces composants peuvent être regroupés dans un sous-dossier si cela améliore l'organisation du projet.
+
+## 4.2. Sources de données
+
+Réutiliser exclusivement les sources existantes lorsque cela est possible :
+
+| Collection / source | Utilisation |
+|---|---|
+| `sessions` | Séances planifiées et validées |
+| `courses` | Informations sur les cours |
+| `qrSessions` | Données de pointage QR, via une couche de confidentialité |
+| `grades` | Notes et résultats académiques |
+| `homework` | Devoirs |
+| `resources` / `learningResources` | Supports pédagogiques |
+| `ues` / `ecs` | Maquette académique |
+| `groups` | Groupes d'étudiants |
+| `users` | Informations sur les étudiants et enseignants |
+| `getStudentUeSummary` | Synthèse académique des UE |
+
+Aucune nouvelle collection de données métier ne doit être créée sans justification.
+
+Des fonctions de calcul pures seront regroupées dans :
+
+`src/utils/coursePortalStats.ts`
+
+Ces fonctions doivent être indépendantes de React et facilement testables.
+
+## 4.3. Gestion des heures
+
+Règle fondamentale :
+
+**Une heure réalisée correspond exclusivement à une heure déclarée dans le compte rendu d'une séance ayant le statut `COMPLETED_VALIDATED`.**
+
+Formule :
+
+Heures réalisées = Somme des `report.actualHours` des séances validées.
+
+Ne jamais utiliser la durée prévue (`durationHours`) comme valeur de remplacement lorsque `actualHours` est absent.
+
+Une séance validée sans valeur exploitable de `actualHours` doit être signalée comme anomalie de données et non comptabilisée automatiquement.
+
+---
+
+# 5. Confidentialité et sécurité des données
+
+Cette section constitue un prérequis obligatoire avant la mise en production du portail étudiant.
+
+## 5.1. Séparation des comptes rendus
+
+Actuellement, le type `report` de `TimetableSession` contient des informations pédagogiques et des informations internes.
+
+Il faut séparer ces deux catégories.
+
+### Données publiques dans `sessions.report`
+
+- `content`
+- `homework`
+- `nextSessionPlan`
+- `actualHours`
+- `writtenAt`
+
+Ces données peuvent être consultées par les étudiants concernés après validation de la séance.
+
+### Données privées dans `sessionPrivateReports/{sessionId}`
+
+- `remarks`
+- `incident`
+- `teacherPresence`
+- `replacementName`
+- Informations internes de suivi.
+- Éventuelles observations administratives.
+
+Accès réservé au personnel autorisé.
+
+La validation d'une séance doit enregistrer séparément les données publiques et privées.
+
+Il faut adapter :
+- Le formulaire de compte rendu.
+- La fenêtre de validation.
+- La fonction `validateSession`.
+- Les types TypeScript.
+- La synchronisation Firestore.
+- Les règles de sécurité Firestore.
+
+Important : la séparation doit être réelle dans Firestore. Il ne suffit pas de masquer les propriétés privées dans les composants React.
+
+## 5.2. Protection des présences QR
+
+Les documents `qrSessions` peuvent contenir les enregistrements de plusieurs étudiants.
+
+Un étudiant ne doit jamais pouvoir consulter les enregistrements de ses camarades en lisant directement Firestore.
+
+Mettre en place une lecture sécurisée des présences individuelles, par exemple au moyen de documents de présence individuels associés à l'identifiant de l'étudiant, avec des règles Firestore appropriées.
+
+La même règle s'applique à la feuille d'appel.
+
+Les étudiants ne peuvent consulter que leurs propres enregistrements.
+
+## 5.3. Contrôle d'accès
+
+Les restrictions doivent être appliquées simultanément :
+
+- Dans les composants React.
+- Dans les fonctions du contexte.
+- Dans les règles Firestore.
+- Dans les requêtes de données.
+
+Les règles Firestore ne doivent jamais être considérées comme de simples restrictions d'affichage.
+
+Les requêtes doivent respecter les contraintes d'accès : Firestore ne filtre pas automatiquement les documents interdits à l'intérieur d'une requête globale.
+
+---
+
+# 6. PHASE 1 – PORTAIL ÉTUDIANT « MON PARCOURS »
+
+## 6.1. Objectif
+
+Permettre à chaque étudiant de consulter son parcours académique et de comprendre facilement :
+
+- Les cours inscrits dans sa maquette.
+- Les séances déjà réalisées.
+- Le volume horaire accompli.
+- Les séances à venir.
+- Sa présence à chaque séance.
+- Ses devoirs et supports.
+- Ses résultats académiques.
+
+L'étudiant dispose exclusivement d'un accès en consultation.
+
+## 6.2. Écran principal : tableau de bord
+
+L'écran d'accueil doit commencer par un message personnalisé :
+
+« Bonjour [Prénom], voici l'état de votre parcours académique. »
+
+Afficher ensuite une sélection de cartes statistiques.
+
+### A. Cartes de synthèse
+
+**Carte 1 – Assiduité globale**
+
+Afficher :
+- Pourcentage de présence.
+- Nombre de séances suivies.
+- Nombre d'absences.
+- Nombre de retards.
+
+**Carte 2 – Progression pédagogique**
+
+Afficher :
+- Nombre de cours suivis.
+- Nombre de cours commencés.
+- Nombre de cours terminés, le cas échéant.
+
+**Carte 3 – Crédits académiques**
+
+Afficher :
+- Crédits validés.
+- Total des crédits du parcours.
+- Pourcentage de validation.
+
+Utiliser les résultats réels de `getStudentUeSummary` et les règles de validation académique.
+
+**Carte 4 – Prochaine séance**
+
+Afficher :
+- Intitulé du cours.
+- Date.
+- Heure.
+- Enseignant.
+- Salle.
+
+Si aucune séance n'est programmée, afficher un état vide approprié.
+
+### B. Progression des enseignements
+
+Afficher un graphique de progression générale des volumes horaires.
+
+Pour chaque cours :
+
+`Heures réalisées / Volume horaire total`
+
+Exemple :
+
+Cours : Droit constitutionnel
+
+[████████░░] 80 %
+
+24 h réalisées sur 30 h.
+
+Les pourcentages ne doivent jamais dépasser 100 % visuellement, même si le volume horaire réalisé dépasse le volume théorique.
+
+## 6.3. Liste des cours
+
+Afficher les cours de la maquette correspondant à l'inscription académique effective de l'étudiant.
+
+Ne pas se limiter à la recherche de cours par `groupId` : tenir également compte de la filière, du parcours, du niveau, du semestre, de l'année académique et des inscriptions validées.
+
+Chaque cours doit être présenté sous forme de carte contenant :
+
+- Code du cours.
+- Intitulé.
+- UE associée.
+- Enseignant(s).
+- Volume horaire total.
+- Heures réalisées.
+- Progression.
+- Note publiée, si disponible.
+- Statut de l'enseignement.
+
+Exemple de présentation :
+
+**DROIT CONSTITUTIONNEL**
+
+UE : Institutions politiques
+
+Enseignant : Nom de l'enseignant
+
+24 h / 30 h réalisées
+
+Barre de progression : 80 %
+
+Note : 14/20
+
+Action : « Consulter le cours »
+
+### Filtres
+
+Prévoir des filtres par :
+
+- Semestre.
+- UE.
+- État d'avancement.
+- Année académique.
+
+Ajouter une recherche par code ou intitulé du cours.
+
+## 6.4. Détail d'un cours
+
+Lorsqu'un étudiant clique sur une carte, ouvrir une page détaillée ou un panneau latéral adapté à la taille de l'écran.
+
+L'écran doit comporter les sections suivantes.
+
+### Section A – Informations générales
+
+- Intitulé du cours.
+- Code.
+- UE.
+- Enseignant.
+- Volume horaire total.
+- Volume réalisé.
+- Progression.
+- Note publiée.
+
+### Section B – Historique des séances
+
+Afficher les séances réalisées dans l'ordre chronologique inverse.
+
+Chaque séance doit présenter :
+
+- Date.
+- Heure de début et de fin.
+- Enseignant.
+- Salle, si disponible.
+- Contenu abordé.
+- Devoirs donnés.
+- Ma présence.
+
+La présence doit être représentée par un statut facilement identifiable :
+
+- Présent.
+- En retard.
+- Absent.
+- Absence justifiée.
+- Non renseigné.
+
+Les données doivent provenir des enregistrements de présence QR et de la feuille d'appel, avec une règle de priorité clairement définie en cas de divergence.
+
+Ne jamais déduire une présence à partir du simple fait qu'un étudiant a participé à un pointage QR : seul le résultat officiel de présence doit être affiché.
+
+### Section C – Séances à venir
+
+Présenter les prochaines séances sous forme de liste chronologique.
+
+Informations :
+- Date.
+- Horaire.
+- Enseignant.
+- Salle.
+- État de la séance.
+
+Ne pas afficher les séances annulées comme des séances à venir.
+
+### Section D – Devoirs et travaux
+
+Afficher les devoirs associés au cours :
+
+- Intitulé.
+- Description.
+- Date de publication.
+- Date limite.
+- Consignes.
+- Pièces jointes.
+- Statut de remise.
+- Note ou appréciation, si publiée.
+
+Prévoir un lien vers le module existant de gestion des devoirs pour consulter ou remettre un travail, si cette fonctionnalité est disponible pour l'étudiant.
+
+### Section E – Supports pédagogiques
+
+Afficher les ressources associées :
+
+- Documents PDF.
+- Présentations.
+- Fichiers.
+- Liens pédagogiques.
+- Autres supports autorisés.
+
+Réutiliser le système de ressources existant.
+
+## 6.5. États particuliers
+
+Prévoir des états visuels adaptés :
+
+- Aucun cours inscrit.
+- Aucune séance réalisée pour l'instant.
+- Aucune séance à venir.
+- Aucun devoir publié.
+- Note non encore publiée.
+- Présence non renseignée.
+
+Ne jamais afficher une erreur technique à la place d'un état vide normal.
+
+---
+
+# 7. PHASE 2 – PORTAIL ENSEIGNANT « MES ENSEIGNEMENTS »
+
+## 7.1. Objectif
+
+Permettre à chaque enseignant de piloter ses enseignements et de suivre ses obligations pédagogiques.
+
+L'interface doit être orientée vers l'action : l'enseignant doit immédiatement identifier ce qu'il doit préparer, compléter ou corriger.
+
+## 7.2. Tableau de bord enseignant
+
+Message d'accueil :
+
+« Bonjour [Nom], voici le suivi de vos enseignements. »
+
+### Cartes de synthèse
+
+1. Nombre de cours attribués.
+2. Heures validées.
+3. Heures prévues.
+4. Prochaine séance.
+5. Séances en attente de compte rendu.
+6. Séances en attente de validation ou correction.
+
+Ajouter une représentation graphique de la progression des heures réalisées par rapport aux volumes prévus.
+
+## 7.3. Mes cours
+
+Afficher les cours affectés à l'enseignant par `teacherIds` ou tout autre champ d'affectation effectivement utilisé.
+
+Chaque carte doit afficher :
+
+- Intitulé.
+- Code.
+- UE.
+- Filière et niveau.
+- Groupe(s) concerné(s).
+- Volume horaire total.
+- Heures réalisées.
+- Heures restantes.
+- Prochaine séance.
+
+Prévoir une vue par cours et une vue regroupée par semestre.
+
+## 7.4. Mes séances
+
+Créer une section avec deux catégories :
+
+**Séances réalisées**
+
+- Date.
+- Horaire.
+- Cours.
+- Groupe.
+- Heures déclarées.
+- Statut de validation.
+
+**Séances à venir**
+
+- Date.
+- Horaire.
+- Cours.
+- Groupe.
+- Salle.
+
+## 7.5. Mes tâches et actions à effectuer
+
+Créer une section prioritaire intitulée « À faire ».
+
+Elle doit afficher :
+
+- Séances passées sans compte rendu.
+- Comptes rendus à compléter.
+- Séances en attente de validation.
+- Corrections demandées par le responsable pédagogique.
+- Notes à saisir.
+- Devoirs à corriger, si le système permet leur suivi.
+
+Chaque élément doit posséder une action directe.
+
+Exemples :
+
+- « Compléter le compte rendu »
+- « Corriger le rapport »
+- « Saisir les notes »
+- « Consulter la séance »
+
+Les corrections demandées doivent être accompagnées du motif et de la date de la demande.
+
+## 7.6. Suivi de l'assiduité
+
+Pour chaque séance, afficher :
+
+- Nombre d'étudiants inscrits.
+- Présents.
+- Retards.
+- Absents.
+- Absences justifiées.
+- Taux de présence.
+
+L'enseignant ne doit consulter que les groupes et les séances qui lui sont affectés, conformément aux autorisations.
+
+## 7.7. Historique et statistiques
+
+Prévoir :
+
+- Heures validées par mois.
+- Heures validées par cours.
+- Nombre de séances réalisées.
+- Taux moyen de présence des groupes.
+- Historique des comptes rendus.
+
+L'accès aux comptes rendus privés doit respecter les autorisations de l'enseignant : il peut consulter les rapports qu'il a rédigés et les informations nécessaires à ses fonctions, sans accès généralisé aux observations confidentielles des autres personnels.
+
+---
+
+# 8. PHASE 3 – PORTAIL ADMINISTRATION « PILOTAGE DES COURS »
+
+## 8.1. Objectif
+
+Fournir à l'administration et à la direction pédagogique une vision globale de l'exécution des programmes de formation.
+
+Cette vue doit permettre de répondre rapidement aux questions suivantes :
+
+- Les cours sont-ils dispensés conformément aux programmes ?
+- Les volumes horaires sont-ils respectés ?
+- Quels groupes présentent un retard ?
+- Quels enseignants ont des comptes rendus en attente ?
+- Quelles séances présentent des anomalies ?
+- Quel est le niveau d'assiduité des étudiants ?
+
+## 8.2. Tableau de bord général
+
+### Cartes de synthèse
+
+Afficher :
+
+1. Nombre total de cours actifs.
+2. Nombre total de séances planifiées.
+3. Nombre de séances réalisées et validées.
+4. Total des heures validées.
+5. Nombre de séances en attente de validation.
+6. Nombre de cours présentant un retard.
+7. Taux moyen d'assiduité.
+
+Les indicateurs doivent être calculés sur l'année académique sélectionnée.
+
+### Graphiques
+
+Prévoir :
+
+- Progression générale des volumes horaires.
+- Heures réalisées par filière.
+- Progression par niveau.
+- Progression par semestre.
+- Taux d'assiduité par groupe.
+- Comparaison entre heures prévues et heures validées.
+
+Tous les graphiques doivent être interactifs lorsque cela est pertinent : un clic sur une filière ou un groupe permet d'accéder au détail correspondant.
+
+## 8.3. Pilotage par filière, niveau et groupe
+
+Organiser le suivi selon la hiérarchie académique :
+
+Filière → Parcours → Niveau → Semestre → UE → EC/Cours → Groupe.
+
+Chaque niveau doit pouvoir être développé pour consulter les informations du niveau inférieur.
+
+Pour chaque cours, afficher :
+
+- Volume horaire théorique.
+- Heures planifiées restantes.
+- Heures effectivement réalisées.
+- Pourcentage de réalisation.
+- Enseignant(s).
+- Nombre de séances validées.
+- Nombre de séances en attente.
+- Écart par rapport au calendrier pédagogique.
+
+### Détection des retards
+
+Le système doit identifier les cours dont l'avancement est inférieur à la progression théoriquement attendue.
+
+Le seuil d'alerte est configurable, avec une valeur par défaut de 15 % de retard.
+
+Il faut comparer l'avancement réel à l'avancement attendu à la date de consultation, et non simplement considérer qu'un cours ayant moins de 85 % de son volume horaire est en retard.
+
+Les cours non encore programmés ou dont le calendrier n'est pas défini doivent être identifiés séparément.
+
+## 8.4. Centre des anomalies
+
+Créer une section intitulée « Alertes et anomalies ».
+
+Catégories :
+
+- Séances passées non validées.
+- Séances sans compte rendu.
+- Séances avec compte rendu incomplet.
+- Séances dont les heures déclarées sont incohérentes.
+- Enseignants absents.
+- Enseignants remplacés.
+- Incidents signalés.
+- Cours en retard sur leur volume horaire.
+- Séances présentant des problèmes de salle.
+
+Chaque anomalie doit afficher :
+
+- Type d'anomalie.
+- Cours concerné.
+- Enseignant.
+- Groupe.
+- Date.
+- Niveau de priorité.
+- Statut de traitement.
+
+Prévoir un accès direct à la séance concernée.
+
+Les incidents et observations internes sont réservés aux rôles autorisés.
+
+## 8.5. Suivi de l'assiduité
+
+Afficher les statistiques par groupe, cours et période.
+
+Indicateurs :
+
+- Taux de présence.
+- Nombre de retards.
+- Nombre d'absences.
+- Nombre d'absences justifiées.
+- Évolution de l'assiduité.
+
+Prévoir une recherche par étudiant et un accès au détail de ses présences uniquement pour les personnels autorisés.
+
+## 8.6. Filtres généraux
+
+Les filtres doivent être disponibles dans l'ensemble du tableau de bord :
+
+- Année académique.
+- Filière.
+- Parcours.
+- Niveau.
+- Semestre.
+- UE.
+- Cours.
+- Groupe.
+- Enseignant.
+- Période.
+
+Les filtres sélectionnés doivent rester cohérents lors de la navigation entre les tableaux et les détails.
+
+## 8.7. Exportation
+
+Prévoir un export CSV des tableaux de pilotage.
+
+L'export doit respecter les filtres actifs et les permissions de l'utilisateur.
+
+Les données sensibles ne doivent jamais être exportées par un rôle qui n'est pas autorisé à les consulter.
+
+---
+
+# 9. Gestion des rôles et permissions
+
+### ADMIN
+
+Accès complet au pilotage, aux indicateurs, aux anomalies et aux informations autorisées.
+
+### ACADEMIC_HEAD
+
+Accès complet au pilotage pédagogique, aux volumes horaires, aux présences et aux anomalies nécessaires à ses responsabilités.
+
+### SCOLARITE
+
+Accès au suivi administratif des enseignements, des séances et des volumes horaires.
+
+Pas d'accès aux observations confidentielles relatives aux enseignants, sauf autorisation spécifique.
+
+### SCHEDULER
+
+Accès au suivi de la planification, des séances, des volumes horaires et des anomalies de calendrier.
+
+Pas d'accès aux informations confidentielles relatives aux enseignants.
+
+### TEACHER
+
+Accès exclusivement à ses enseignements, ses séances, ses comptes rendus et aux données pédagogiques nécessaires à ses missions.
+
+### STUDENT
+
+Accès exclusivement à son parcours, ses cours, ses séances, ses propres présences, ses devoirs et ses notes publiées.
+
+### PARENT
+
+Ne pas modifier le fonctionnement du portail parent existant. Le module `PARENT_PORTAL` demeure la référence pour le suivi parental.
+
+---
+
+# 10. Règles de calcul et de gestion
+
+Les règles suivantes sont obligatoires.
+
+### 10.1. Progression horaire
+
+Progression = (Heures validées / Volume horaire total) × 100.
+
+- Une séance non validée ne compte pas.
+- Une séance annulée ne compte pas.
+- Une séance reportée ne compte pas deux fois.
+- Seules les heures `actualHours` sont comptabilisées.
+- Une valeur absente ou invalide doit générer une anomalie de données.
+- Un cours sans séance validée affiche 0 %.
+
+### 10.2. Assiduité
+
+Assiduité = Nombre de séances avec présence confirmée / Nombre de séances auxquelles l'étudiant devait effectivement assister × 100.
+
+Les absences justifiées doivent rester visibles séparément.
+
+Une séance sans relevé de présence ne doit pas être considérée automatiquement comme une absence.
+
+Les séances annulées ne doivent pas être incluses dans le calcul.
+
+### 10.3. Crédits
+
+Les crédits sont calculés selon les règles LMD existantes.
+
+Un crédit n'est considéré comme validé que lorsque les conditions académiques de validation de l'UE ou de l'EC sont satisfaites.
+
+Ne pas assimiler la progression horaire à la validation académique.
+
+### 10.4. Notes
+
+Les notes doivent respecter le statut de publication.
+
+Une note en cours de saisie ou non publiée ne doit pas apparaître dans le portail étudiant.
+
+### 10.5. Dates
+
+Toutes les dates doivent être présentées selon le format local :
+
+JJ/MM/AAAA.
+
+Les horaires doivent utiliser le format 24 heures.
+
+Utiliser le fuseau horaire `Indian/Antananarivo` pour les opérations liées aux dates et horaires locaux, tout en conservant des valeurs temporelles cohérentes dans les données.
+
+---
+
+# 11. Expérience utilisateur et responsive design
+
+Le module doit offrir une expérience homogène sur ordinateur, tablette et smartphone.
+
+### Ordinateur
+
+- Tableau de bord en plusieurs colonnes.
+- Cartes statistiques alignées.
+- Graphiques de progression.
+- Tableaux détaillés.
+- Navigation latérale ou par onglets.
+
+### Tablette
+
+- Cartes adaptées à deux colonnes.
+- Tableaux avec défilement horizontal si nécessaire.
+- Navigation simplifiée.
+
+### Smartphone
+
+- Une colonne principale.
+- Cartes empilées.
+- Indicateurs essentiels en priorité.
+- Navigation par onglets ou sections.
+- Filtres accessibles sans encombrer l'écran.
+- Détails de cours sous forme de panneaux ou de pages dédiées.
+- Boutons suffisamment grands pour une utilisation tactile.
+
+Éviter les tableaux trop larges sur mobile.
+
+Les informations essentielles doivent rester visibles sans devoir effectuer de nombreux défilements.
+
+### États de chargement et erreurs
+
+Prévoir :
+
+- Skeleton loaders pendant le chargement.
+- Message clair en cas d'absence de données.
+- Message explicite en cas d'erreur de synchronisation.
+- Possibilité de réessayer le chargement.
+- Indication de la dernière actualisation des données.
+
+---
+
+# 12. Performance et qualité technique
+
+- Réutiliser le contexte global `AppContext`.
+- Éviter les lectures Firestore répétitives pour chaque carte ou chaque cours.
+- Mutualiser les données déjà chargées.
+- Utiliser `useMemo` pour les calculs coûteux.
+- Limiter les requêtes aux données réellement nécessaires.
+- Prévoir une pagination pour les historiques importants.
+- Éviter les recalculs inutiles lors des changements de filtres.
+- Ne pas dupliquer les données métier.
+- Conserver la compatibilité avec le système de synchronisation existant.
+
+Les fonctions de calcul doivent être testables indépendamment de l'interface.
+
+---
+
+# 13. Tests et critères d'acceptation
+
+Le module sera considéré comme acceptable lorsque les conditions suivantes seront remplies.
+
+### Sécurité
+
+1. Chaque rôle accède uniquement aux fonctionnalités qui lui sont autorisées.
+2. Un étudiant ne consulte jamais les données d'un autre groupe ou d'un autre étudiant.
+3. Un étudiant ne peut jamais lire les observations privées d'un compte rendu, même directement depuis Firestore.
+4. Un étudiant ne peut pas consulter les présences QR de ses camarades.
+5. Les notes non publiées restent invisibles.
+6. Les restrictions sont appliquées dans les règles Firestore et pas uniquement dans React.
+
+### Exactitude des données
+
+7. Les heures réalisées correspondent exclusivement aux heures réelles des séances validées.
+8. Les séances annulées ou non validées ne sont jamais comptabilisées.
+9. Les séances reportées ne sont pas comptabilisées deux fois.
+10. Les crédits correspondent aux validations académiques officielles.
+11. Les présences correspondent aux données officielles de pointage et de feuille d'appel.
+12. Une absence de relevé de présence ne devient pas automatiquement une absence injustifiée.
+13. Les anciennes séances sans compte rendu affichent « Contenu non renseigné ».
+
+### Fonctionnalités
+
+14. L'étudiant accède à tous ses cours correspondant à son inscription académique.
+15. L'enseignant ne voit que les enseignements qui lui sont affectés.
+16. L'administration peut consulter le pilotage global selon ses permissions.
+17. Les filtres et recherches fonctionnent correctement.
+18. Les exports CSV respectent les filtres et les permissions.
+
+### Interface
+
+19. L'interface est responsive.
+20. Les états vides, chargements et erreurs sont correctement gérés.
+21. Les indicateurs sont compréhensibles et cohérents.
+22. La navigation entre tableau de bord, cours et séances fonctionne correctement.
+
+### Tests techniques
+
+23. Les fonctions de calcul possèdent des tests unitaires.
+24. Les règles Firestore sont testées avec différents rôles.
+25. Les tests couvrent les cas limites : données absentes, cours sans séance, heures invalides, doublons et changements de groupe.
+26. Les trois phases sont testables indépendamment.
+
+---
+
+# 14. Hors périmètre
+
+Les fonctionnalités suivantes ne sont pas incluses dans cette livraison :
+
+- Notifications automatiques de retard pédagogique.
+- Export PDF du parcours étudiant.
+- Nouveau portail parent.
+- Refonte du système de notation.
+- Refonte du système de pointage QR.
+- Refonte complète de l'emploi du temps.
+- Modification des règles de validation académique LMD.
+
+Les modules existants doivent continuer à fonctionner normalement.
+
+---
+
+# 15. Ordre d'exécution recommandé
+
+### Étape 1 – Sécurisation et préparation des données
+
+- Audit des règles Firestore.
+- Séparation des rapports publics et privés.
+- Protection des présences individuelles.
+- Vérification des données historiques.
+- Vérification des calculs de volumes horaires.
+
+### Étape 2 – Développement du portail étudiant
+
+- Tableau de bord.
+- Cartes de cours.
+- Progression horaire.
+- Historique des séances.
+- Présences individuelles.
+- Devoirs et ressources.
+- Notes publiées.
+
+### Étape 3 – Développement du portail enseignant
+
+- Tableau de bord.
+- Liste des enseignements.
+- Séances.
+- Actions à effectuer.
+- Statistiques et historique.
+
+### Étape 4 – Développement du portail administratif
+
+- Tableau de bord global.
+- Pilotage des volumes.
+- Alertes et anomalies.
+- Assiduité.
+- Export CSV.
+
+### Étape 5 – Tests et validation
+
+- Tests unitaires.
+- Tests de sécurité Firestore.
+- Tests de permissions.
+- Tests fonctionnels par rôle.
+- Tests responsive.
+- Vérification de la compatibilité avec les modules existants.
+
+---
+
+# 16. Consigne finale de développement
+
+Le développement doit impérativement s'intégrer à l'architecture existante d'EBM Institute.
+
+Avant toute modification :
+
+1. Examiner les composants existants.
+2. Examiner `AppContext.tsx`, `types/index.ts`, `firestore.rules` et `rbacPermissions.ts`.
+3. Identifier les fonctions et composants déjà disponibles.
+4. Réutiliser les fonctionnalités existantes.
+5. Ne pas créer de doublons fonctionnels.
+6. Préserver les données existantes et les fonctionnalités opérationnelles.
+
+Ne pas modifier inutilement les autres modules de l'application.
+
+Ne pas supprimer ou réinitialiser de données existantes.
+
+Ne pas remplacer une fonctionnalité opérationnelle par une version simplifiée.
+
+Chaque phase doit être livrée avec ses tests et être pleinement fonctionnelle avant de passer à la suivante.
+
+**Résultat attendu :** un portail académique moderne, professionnel, intuitif et sécurisé, permettant à l'étudiant de suivre son parcours, à l'enseignant de piloter ses enseignements et à la direction d'assurer le contrôle pédagogique de l'ensemble d'EBM Institute.

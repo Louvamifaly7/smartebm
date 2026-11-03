@@ -1,0 +1,963 @@
+# CAHIER DES CHARGES GÉNÉRAL
+# REFONTE DU MODULE GESTION ACADÉMIQUE > ÉTUDIANTS
+## Répertoire, inscriptions individuelles, inscriptions collectives et réinscriptions annuelles
+**Projet : EBM Institute – Application de gestion scolaire et universitaire**
+
+---
+
+# PARTIE I – OBJECTIFS ET ORIENTATION GÉNÉRALE
+
+## 1. Objectif principal
+
+Refondre le module « Gestion académique > Étudiants » de l'application EBM Institute afin de le rendre plus moderne, professionnel, ergonomique et adapté à la gestion d'un établissement d'enseignement supérieur.
+
+Le module doit être exclusivement centré sur :
+- La gestion administrative des étudiants.
+- La gestion des dossiers individuels.
+- Les inscriptions académiques.
+- Les réinscriptions annuelles.
+- L'affectation aux mentions, parcours, niveaux et groupes.
+- Le suivi des promotions.
+- La gestion des cartes étudiantes.
+
+La gestion financière doit être entièrement séparée et réservée au menu Finance.
+
+L'objectif est de permettre au service de scolarité de gérer efficacement plusieurs centaines ou milliers d'étudiants, sans ressaisie inutile et sans duplication des dossiers.
+
+## 2. Principes fondamentaux
+
+Le développement doit respecter cinq principes :
+
+1. Un étudiant possède un seul dossier personnel permanent.
+2. Une inscription académique est une opération distincte de la création du compte étudiant.
+3. Un étudiant peut avoir plusieurs inscriptions correspondant à différentes années académiques.
+4. Les anciennes inscriptions, notes, présences et historiques doivent être conservés.
+5. Les opérations individuelles et collectives doivent être possibles.
+
+Ne pas reconstruire inutilement les fonctionnalités déjà opérationnelles. Effectuer une refonte ciblée et préserver les données existantes.
+
+---
+
+# PARTIE II – REFONTE DU RÉPERTOIRE DES ÉTUDIANTS
+
+## 3. Nouvelle organisation de l'interface
+
+Transformer la page actuelle en un véritable répertoire académique.
+
+Ajouter les espaces suivants :
+
+- Répertoire des étudiants.
+- Nouvelle inscription.
+- Inscription collective.
+- Réinscription collective.
+- Suivi des campagnes d'inscription.
+
+Conserver les fonctionnalités existantes de recherche, de création, d'importation, de consultation et de gestion des cartes.
+
+## 4. Indicateurs du répertoire
+
+Afficher quatre indicateurs principaux :
+
+1. Nombre d'étudiants actifs.
+2. Nombre de dossiers administratifs complets.
+3. Nombre de dossiers administratifs incomplets.
+4. Nombre d'inscriptions en attente.
+
+Les chiffres doivent provenir des données réelles de l'application.
+
+Supprimer tous les indicateurs financiers de cette interface.
+
+## 5. Recherche et identification
+
+Conserver et améliorer les fonctionnalités suivantes :
+
+- Recherche instantanée par nom.
+- Recherche par prénom.
+- Recherche par matricule.
+- Recherche par email.
+- Recherche par numéro CIN.
+- Lecture des cartes par douchette USB.
+- Lecture des QR codes par caméra.
+
+La recherche doit être rapide et permettre d'ouvrir directement la fiche individuelle de l'étudiant.
+
+Prévoir une identification fiable même lorsque l'étudiant possède plusieurs inscriptions historiques.
+
+## 6. Filtres académiques
+
+Mettre à disposition les filtres suivants :
+
+- Année académique.
+- Domaine / Mention / Filière.
+- Parcours.
+- Niveau.
+- Groupe / Promotion.
+- Statut de l'inscription.
+- État du dossier administratif.
+
+Supprimer le filtre « Situation financière ».
+
+Les filtres doivent pouvoir être combinés.
+
+## 7. Tableau des étudiants
+
+Organiser le tableau avec les colonnes suivantes :
+
+1. Sélection.
+2. Matricule.
+3. Photo et identité.
+4. Mention / Filière.
+5. Parcours.
+6. Niveau.
+7. Groupe / Promotion.
+8. Année académique.
+9. Statut de l'inscription.
+10. Complétude du dossier.
+11. Actions.
+
+Actions disponibles :
+- Consulter la fiche.
+- Modifier la fiche.
+- Afficher la carte.
+- Imprimer la carte.
+- Consulter l'historique académique.
+
+Améliorations ergonomiques :
+- Afficher intégralement les matricules.
+- Éviter les coupures excessives des noms.
+- Utiliser des statuts visuels clairs.
+- Permettre le tri par nom, matricule, groupe, niveau et date d'inscription.
+- Prévoir une pagination de 25, 50 et 100 étudiants.
+- Permettre la sélection multiple.
+- Permettre l'exportation CSV.
+- Prévoir l'impression des listes.
+
+Les opérations collectives doivent être accessibles depuis une barre d'actions dédiée.
+
+---
+
+# PARTIE III – FICHE INDIVIDUELLE DE L'ÉTUDIANT
+
+## 8. Organisation de la fiche individuelle
+
+Conserver les informations et fonctionnalités déjà présentes dans StudentProfileForm.tsx.
+
+Réorganiser la fiche en rubriques :
+
+### A. Identité et état civil
+- Matricule.
+- Civilité.
+- Nom.
+- Prénom.
+- Date de naissance.
+- Lieu de naissance.
+- Nationalité.
+- CIN ou pièce d'identité.
+- Photo.
+
+### B. Coordonnées
+- Adresse.
+- Téléphone.
+- Email personnel.
+- Email institutionnel.
+
+### C. Parents et tuteurs
+- Nom du père.
+- Nom de la mère.
+- Responsable légal.
+- Téléphone du responsable.
+- Adresse du responsable.
+- Personne à contacter en cas d'urgence.
+
+### D. Parcours académique
+- Années académiques.
+- Mentions et filières.
+- Parcours.
+- Niveaux.
+- Groupes.
+- Historique des inscriptions.
+- Changements d'affectation.
+
+### E. Situation professionnelle
+- Profession.
+- Employeur.
+- Statut professionnel.
+- Autres informations utiles.
+
+### F. Documents administratifs
+- Diplôme de baccalauréat.
+- Relevés de notes.
+- CIN.
+- Acte de naissance si exigé.
+- Photo.
+- Autres documents justificatifs.
+
+### G. Sécurité du compte
+- Compte utilisateur associé.
+- Email de connexion.
+- Statut du compte.
+- Procédure de réinitialisation du mot de passe.
+
+### H. Résultats académiques
+- Notes.
+- Moyennes.
+- Crédits.
+- Semestres.
+- Décisions de délibération.
+
+### I. Carte étudiante
+- QR code.
+- Code-barres.
+- Numéro de carte.
+- Date de délivrance.
+- Date d'expiration si applicable.
+- Impression et réédition.
+
+Ne pas supprimer les informations déjà enregistrées dans les dossiers existants.
+
+---
+
+# PARTIE IV – INSCRIPTIONS INDIVIDUELLES
+
+## 9. Création d'une nouvelle inscription
+
+Remplacer le formulaire actuel trop limité par un assistant d'inscription guidé.
+
+L'assistant doit comporter quatre étapes.
+
+### ÉTAPE 1 – Identification de l'étudiant
+
+Informations :
+- Matricule.
+- Nom.
+- Prénom.
+- Civilité.
+- Date de naissance.
+- Lieu de naissance.
+- CIN.
+- Téléphone.
+- Email.
+- Adresse.
+- Photo.
+
+Le matricule doit pouvoir être généré automatiquement selon les règles existantes d'EBM.
+
+Autoriser une saisie manuelle pour les agents habilités.
+
+Avant toute création, rechercher les éventuels doublons.
+
+Si l'étudiant existe déjà, proposer d'utiliser son dossier existant plutôt que de créer un nouveau compte.
+
+### ÉTAPE 2 – Affectation académique
+
+L'affectation doit respecter l'ordre hiérarchique suivant :
+
+1. Année académique.
+2. Domaine / Mention / Filière.
+3. Parcours.
+4. Niveau : L1, L2, L3, M1 ou M2.
+5. Groupe / Promotion.
+
+Les listes doivent être dynamiques et dépendantes les unes des autres.
+
+Exemple :
+
+- Année : 2026-2027.
+- Mention : Sciences et Technologies.
+- Parcours : Informatique et Génie Logiciel.
+- Niveau : L1.
+- Groupe : L1-INFO-A.
+
+Lorsqu'une mention est sélectionnée, seuls ses parcours doivent être proposés.
+
+Lorsqu'un parcours et un niveau sont sélectionnés, seuls les groupes correspondants doivent apparaître.
+
+Afficher pour chaque groupe :
+- Code.
+- Nom.
+- Effectif actuel.
+- Capacité maximale si configurée.
+- Nombre de places disponibles.
+
+Prévoir une option « Sans affectation immédiate ».
+
+Ne jamais sélectionner automatiquement le premier groupe disponible.
+
+### ÉTAPE 3 – Admission et documents
+
+Informations :
+- Première inscription.
+- Admission sur dossier.
+- Concours.
+- Équivalence.
+- Transfert.
+- Mode de formation : présentiel, hybride ou en ligne.
+- Régime de formation.
+- Date d'inscription.
+- Statut administratif.
+
+Prévoir une checklist des documents administratifs.
+
+Les documents obligatoires doivent être configurables selon la formation et le type d'admission.
+
+### ÉTAPE 4 – Récapitulatif et validation
+
+Afficher un récapitulatif complet :
+
+- Identité.
+- Matricule.
+- Année académique.
+- Mention.
+- Parcours.
+- Niveau.
+- Groupe.
+- Type d'admission.
+- Statut.
+- Documents reçus et manquants.
+
+Actions :
+- Retour pour modification.
+- Enregistrer comme brouillon.
+- Valider l'inscription.
+- Imprimer la fiche d'inscription.
+
+Après validation, générer la carte étudiante lorsque nécessaire.
+
+---
+
+# PARTIE V – INSCRIPTIONS COLLECTIVES
+
+## 10. Objectif
+
+Créer une fonctionnalité permettant d'inscrire plusieurs nouveaux étudiants dans une même année académique, sans devoir ouvrir et remplir individuellement chaque formulaire.
+
+Cette fonctionnalité est particulièrement importante lors des rentrées universitaires.
+
+## 11. Deux méthodes d'inscription collective
+
+### MÉTHODE A – Saisie directe
+
+L'agent sélectionne une seule fois les informations communes :
+
+- Année académique.
+- Mention.
+- Parcours.
+- Niveau.
+- Groupe.
+
+Il peut ensuite ajouter plusieurs étudiants dans un tableau de saisie.
+
+Colonnes :
+- Nom.
+- Prénom.
+- Date de naissance.
+- CIN.
+- Téléphone.
+- Email.
+- Adresse.
+
+Prévoir l'ajout et la suppression de lignes avant validation.
+
+Le matricule est généré automatiquement selon les règles EBM.
+
+### MÉTHODE B – Importation Excel / CSV
+
+Permettre de télécharger un modèle Excel ou CSV.
+
+L'agent remplit les informations et importe le fichier.
+
+Le système doit :
+1. Lire le fichier.
+2. Prévisualiser les lignes.
+3. Vérifier les champs obligatoires.
+4. Détecter les doublons.
+5. Identifier les étudiants déjà présents dans la base.
+6. Vérifier la cohérence des données.
+7. Permettre de corriger les erreurs.
+8. Valider les lignes correctes.
+9. Générer un rapport final.
+
+Les informations communes de formation peuvent être définies dans l'assistant plutôt que répétées dans chaque ligne.
+
+Utiliser un véritable parseur CSV compatible avec les accents, les guillemets, les virgules dans les champs et les différents séparateurs.
+
+Ne jamais affecter automatiquement un étudiant à un groupe de remplacement si le groupe demandé est introuvable.
+
+Une erreur sur une ligne ne doit pas empêcher l'importation des autres lignes valides.
+
+## 12. Prévisualisation et validation collective
+
+Avant l'enregistrement, afficher :
+
+- Nombre total d'étudiants à inscrire.
+- Nombre de dossiers valides.
+- Nombre de dossiers incomplets.
+- Nombre de doublons.
+- Nombre d'erreurs.
+- Nombre de places disponibles.
+
+Permettre de corriger les lignes incorrectes.
+
+La validation collective doit être sécurisée et produire un rapport détaillé.
+
+---
+
+# PARTIE VI – RÉINSCRIPTIONS ANNUELLES ET COLLECTIVES
+
+## 13. Objectif
+
+Créer une fonctionnalité spécifique de réinscription annuelle.
+
+Il s'agit d'une des fonctionnalités prioritaires du projet.
+
+Le système doit permettre de retrouver les anciens étudiants et de les inscrire dans une nouvelle année académique sans recréer leurs comptes et sans ressaisir leurs informations personnelles.
+
+## 14. Réinscription individuelle
+
+L'agent recherche l'étudiant par :
+- Matricule.
+- Nom.
+- Prénom.
+- CIN.
+
+L'application récupère automatiquement son dossier.
+
+L'agent choisit :
+- Nouvelle année académique.
+- Mention.
+- Parcours.
+- Nouveau niveau.
+- Nouveau groupe.
+- Type de réinscription.
+
+Il peut ensuite valider la nouvelle inscription.
+
+## 15. Réinscription collective
+
+Créer un assistant en cinq étapes.
+
+### ÉTAPE 1 – Sélection de la promotion d'origine
+
+Filtres :
+- Année académique d'origine.
+- Mention / Filière.
+- Parcours.
+- Niveau.
+- Groupe.
+
+Afficher automatiquement les étudiants correspondants.
+
+### ÉTAPE 2 – Sélection des étudiants
+
+Afficher :
+- Matricule.
+- Nom et prénom.
+- Groupe actuel.
+- Résultat de délibération.
+- Décision académique.
+- Statut d'inscription.
+
+Prévoir :
+- Tout sélectionner.
+- Tout désélectionner.
+- Sélection individuelle.
+- Sélection par groupe.
+- Filtrage par décision académique.
+
+Exclure les étudiants déjà inscrits dans l'année cible.
+
+### ÉTAPE 3 – Définition de la nouvelle affectation
+
+Choisir :
+- Année académique de destination.
+- Mention.
+- Parcours.
+- Niveau.
+- Groupe.
+
+Proposer automatiquement le niveau supérieur lorsque les conditions académiques le permettent.
+
+L'agent doit pouvoir confirmer ou modifier cette proposition.
+
+Gérer les situations particulières :
+
+- Passage au niveau supérieur.
+- Redoublement.
+- Passage conditionnel.
+- Réorientation.
+- Changement de parcours.
+- Transfert.
+- Suspension ou interruption.
+
+Permettre de modifier individuellement l'affectation de chaque étudiant avant validation.
+
+### ÉTAPE 4 – Prévisualisation
+
+Présenter :
+- Nombre total sélectionné.
+- Nombre d'inscriptions possibles.
+- Nombre de doublons.
+- Nombre d'étudiants non éligibles.
+- Nombre de dossiers à vérifier.
+- Nombre de places disponibles par groupe.
+
+Bloquer la validation des opérations comportant des anomalies empêchant l'inscription.
+
+Les étudiants nécessitant une décision académique particulière doivent être clairement identifiés.
+
+### ÉTAPE 5 – Validation collective
+
+Permettre de valider toutes les inscriptions éligibles en une seule opération.
+
+Afficher un rapport final :
+
+- Inscriptions réussies.
+- Inscriptions ignorées.
+- Inscriptions en erreur.
+- Motifs des erreurs.
+
+Ne jamais créer de nouveaux comptes utilisateurs lors d'une réinscription.
+
+Conserver les anciens matricules, comptes, résultats, présences et historiques.
+
+## 16. Gestion des cas particuliers
+
+Le système doit gérer :
+
+- Étudiant admis en année supérieure.
+- Étudiant redoublant.
+- Étudiant admis sous condition.
+- Étudiant réorienté.
+- Étudiant changeant de groupe.
+- Étudiant changeant de parcours.
+- Étudiant transféré.
+- Étudiant interrompant ses études.
+- Étudiant reprenant ses études après une interruption.
+- Étudiant ayant terminé son cursus.
+
+Le passage automatique au niveau supérieur ne doit jamais remplacer la décision académique officielle.
+
+---
+
+# PARTIE VII – SUIVI DES CAMPAGNES D'INSCRIPTION
+
+## 17. Tableau de bord des campagnes
+
+Créer une interface permettant de suivre les inscriptions et réinscriptions pour chaque année académique.
+
+Indicateurs :
+
+- Effectif attendu.
+- Nouveaux étudiants inscrits.
+- Anciens étudiants réinscrits.
+- Inscriptions validées.
+- Inscriptions en attente.
+- Inscriptions rejetées.
+- Étudiants non encore réinscrits.
+- Taux d'avancement.
+
+Prévoir des filtres :
+- Année académique.
+- Mention.
+- Parcours.
+- Niveau.
+- Groupe.
+- Type d'inscription.
+
+## 18. Suivi par promotion
+
+Permettre à la direction de visualiser l'évolution des effectifs.
+
+Exemple :
+
+| Niveau | Effectif attendu | Réinscrits | En attente |
+|---|---:|---:|---:|
+| L1 | 150 | 120 | 30 |
+| L2 | 125 | 100 | 25 |
+| L3 | 90 | 75 | 15 |
+| M1 | 80 | 65 | 15 |
+| M2 | 55 | 45 | 10 |
+
+Les chiffres doivent être calculés à partir des inscriptions réelles.
+
+Prévoir l'exportation Excel/CSV et l'impression.
+
+---
+
+# PARTIE VIII – ARCHITECTURE DES DONNÉES
+
+## 19. Séparation entre étudiant et inscription académique
+
+Mettre en place une séparation claire entre l'identité permanente de l'étudiant et ses inscriptions annuelles.
+
+Créer ou adapter les entités suivantes :
+
+### A. User / Student
+
+Contient les informations personnelles permanentes :
+
+- ID.
+- Matricule.
+- Identité.
+- Coordonnées.
+- Documents.
+- Photo.
+- Informations du compte.
+
+Un étudiant possède un seul dossier personnel.
+
+### B. StudentEnrollment
+
+Entité représentant une inscription académique.
+
+Chaque inscription comporte :
+
+- ID unique.
+- Student ID.
+- Année académique.
+- Mention / Filière ID.
+- Parcours ID.
+- Niveau.
+- Groupe ID.
+- Date d'inscription.
+- Type d'inscription.
+- Mode de formation.
+- Régime de formation.
+- Statut administratif.
+- Décision académique de référence.
+- Agent responsable.
+- Date de création.
+- Date de validation.
+- Historique des modifications.
+
+Un étudiant peut avoir plusieurs inscriptions correspondant à différentes années académiques.
+
+### C. StudentGroup
+
+Contient :
+- Identifiant.
+- Code.
+- Nom.
+- Année académique.
+- Mention.
+- Parcours.
+- Niveau.
+- Capacité maximale.
+- Statut.
+
+### D. Filière / Mention
+
+Conserver les structures pédagogiques existantes et leurs relations avec les parcours.
+
+### E. AcademicYear
+
+Gérer les années académiques et leurs statuts.
+
+## 20. Historique et intégrité
+
+Ne jamais écraser une ancienne inscription lors d'un changement de groupe ou de niveau.
+
+Conserver :
+- Anciennes inscriptions.
+- Anciens groupes.
+- Anciens parcours.
+- Anciennes décisions.
+- Anciennes notes.
+- Anciennes présences.
+
+Prévoir un historique des changements d'affectation.
+
+Un étudiant ne doit pas posséder deux inscriptions actives identiques pour la même année académique et le même cursus, sauf règle particulière explicitement autorisée.
+
+Prévoir des contrôles contre les doubles inscriptions et les traitements simultanés.
+
+---
+
+# PARTIE IX – SÉPARATION FINANCIÈRE
+
+## 21. Retrait des fonctionnalités financières
+
+Supprimer du répertoire académique :
+
+- Total des impayés.
+- Total des paiements.
+- Régularité financière.
+- Filtres financiers.
+- Tri par impayés.
+- Montants dus.
+- Encaissement rapide.
+- Historique des paiements affiché directement dans le répertoire.
+
+Déplacer ces fonctionnalités dans :
+
+**Gestion financière > Finance**
+
+La fiche individuelle peut proposer un accès contrôlé vers le dossier financier de l'étudiant via le module Finance, selon les permissions de l'utilisateur.
+
+Le module académique ne doit pas effectuer de calculs financiers.
+
+Le statut financier ne doit pas être confondu avec le statut administratif ou académique de l'inscription.
+
+Si une règle financière conditionne une inscription, elle doit être gérée par un mécanisme de contrôle explicite, avec les autorisations appropriées, et non par un mélange des deux modules.
+
+---
+
+# PARTIE X – CORRECTIONS ACADÉMIQUES ET TECHNIQUES
+
+## 22. Correction du calcul des moyennes
+
+Corriger les anomalies actuelles du calcul des moyennes.
+
+Exigences :
+
+- Ne jamais générer de notes fictives.
+- Ne jamais attribuer automatiquement une moyenne de 12/20.
+- Ne pas remplacer une absence de note par une valeur arbitraire.
+- Ne pas laisser les valeurs NaN apparaître dans l'interface.
+- Afficher « Non disponible » lorsqu'aucune note exploitable n'est enregistrée.
+- Calculer les moyennes uniquement à partir des résultats réellement enregistrés et validés.
+- Respecter les règles de pondération et de validation académique de l'établissement.
+
+Les résultats académiques doivent rester cohérents avec le module Notes et Délibérations.
+
+## 23. Sécurité et autorisations
+
+Respecter les permissions des différents profils :
+
+- Administrateur.
+- Direction.
+- Service de scolarité.
+- Enseignant.
+- Étudiant.
+
+Définir précisément les droits de création, consultation, modification, validation, transfert et annulation des inscriptions.
+
+Prévoir un journal d'audit des opérations importantes.
+
+Ne jamais utiliser la date de naissance comme mot de passe permanent.
+
+Privilégier une activation sécurisée du compte étudiant par lien temporaire ou mot de passe provisoire avec changement obligatoire.
+
+## 24. Gestion des opérations collectives
+
+Les opérations collectives doivent être sécurisées.
+
+Prévoir :
+- Protection contre les doubles clics.
+- Protection contre les doubles traitements.
+- Contrôle des inscriptions déjà existantes.
+- Traitement des erreurs par étudiant.
+- Possibilité de reprendre un traitement interrompu.
+- Journal des opérations.
+- Rapport final.
+
+Ne jamais annoncer une inscription comme réussie avant confirmation de son enregistrement effectif.
+
+Prévoir une procédure d'annulation ou de correction tracée, sans suppression sauvage de l'historique.
+
+---
+
+# PARTIE XI – DESIGN ET ERGONOMIE
+
+## 25. Principes de conception
+
+Adopter une interface moderne, claire et cohérente avec l'identité visuelle d'EBM Institute.
+
+Privilégier :
+- Une interface épurée.
+- Une navigation simple.
+- Des formulaires guidés.
+- Des tableaux lisibles.
+- Des boutons d'action clairement identifiés.
+- Des indicateurs académiques utiles.
+- Des couleurs discrètes et cohérentes.
+- Une compatibilité ordinateur, tablette et mobile.
+
+Les assistants d'inscription doivent afficher une progression claire et conserver les données saisies lors du passage d'une étape à une autre.
+
+Ne pas surcharger le répertoire avec trop d'indicateurs ou de colonnes.
+
+Les fonctionnalités collectives doivent être facilement accessibles.
+
+---
+
+# PARTIE XII – CONTRAINTES DE DÉVELOPPEMENT
+
+## 26. Audit préalable obligatoire
+
+Avant toute modification, examiner le code existant et identifier les dépendances.
+
+Fichiers à examiner en priorité :
+
+1. StudentManagement.tsx.
+2. StudentProfileForm.tsx.
+3. StudentCardModal.tsx.
+4. AppContext.tsx.
+5. types/index.ts.
+6. AcademicYearManagement.tsx.
+7. GradesView.tsx.
+8. Les composants de gestion des groupes.
+9. Les composants de gestion des mentions et parcours.
+10. Les règles Firestore.
+11. Les fonctions d'importation et d'exportation.
+
+Identifier également les dépendances avec :
+
+- Gestion des notes.
+- Délibérations.
+- Présences.
+- Emplois du temps.
+- Cartes étudiantes.
+- Comptes utilisateurs.
+- Finance.
+- Moodle.
+
+Ne pas supposer que les composants ou fonctions existent sans avoir vérifié le code.
+
+## 27. Migration des données existantes
+
+Effectuer une migration progressive et sécurisée.
+
+Examiner les anciennes données stockées dans User.groupId, User.parcoursId et les autres champs académiques existants.
+
+Migrer les informations vers le nouveau modèle StudentEnrollment sans perte de données.
+
+Ne pas supprimer les anciens champs avant d'avoir vérifié :
+- La réussite de la migration.
+- La cohérence des données.
+- La compatibilité avec les autres modules.
+- La possibilité de revenir à l'ancien fonctionnement en cas de problème.
+
+Prévoir une sauvegarde préalable.
+
+## 28. Préservation des fonctionnalités existantes
+
+Ne pas casser :
+
+- La recherche instantanée.
+- La lecture des QR codes.
+- La lecture des codes-barres.
+- La création individuelle.
+- Les fiches étudiantes.
+- L'import CSV.
+- L'export CSV.
+- L'impression des cartes.
+- La génération des matricules.
+- Les relations avec les groupes.
+- Les résultats académiques.
+
+Toutes les fonctionnalités doivent être testées après la refonte.
+
+---
+
+# PARTIE XIII – PLAN DE TESTS ET VALIDATION
+
+## 29. Tests fonctionnels obligatoires
+
+### Répertoire
+- Recherche par matricule.
+- Recherche par nom.
+- Recherche par email.
+- Filtres combinés.
+- Pagination.
+- Export CSV.
+- Lecture QR et code-barres.
+
+### Inscription individuelle
+- Création d'un nouvel étudiant.
+- Affectation à une mention.
+- Affectation à un parcours.
+- Affectation à un niveau.
+- Affectation à un groupe.
+- Inscription sans groupe.
+- Détection des doublons.
+
+### Inscription collective
+- Ajout de plusieurs étudiants.
+- Import CSV.
+- Import Excel si pris en charge.
+- Détection des doublons.
+- Correction des erreurs.
+- Groupe introuvable.
+- Groupe complet.
+- Validation partielle.
+- Rapport final.
+
+### Réinscription
+- Passage L1 vers L2.
+- Passage L2 vers L3.
+- Passage L3 vers M1.
+- Passage M1 vers M2.
+- Redoublement.
+- Réorientation.
+- Changement de groupe.
+- Changement de parcours.
+- Étudiant déjà inscrit dans l'année cible.
+- Étudiant sans décision de délibération.
+- Réinscription collective partielle.
+
+### Intégrité des données
+- Conservation des anciens comptes.
+- Conservation des matricules.
+- Conservation des notes.
+- Conservation des présences.
+- Conservation des groupes historiques.
+- Absence de duplication des étudiants.
+- Absence de duplication des inscriptions.
+- Cohérence avec Finance et Moodle.
+
+## 30. Critères de réception
+
+Le développement sera considéré comme terminé lorsque :
+
+1. Le répertoire sera entièrement recentré sur la gestion académique.
+2. Les informations financières auront été retirées de cette interface.
+3. La création individuelle fonctionnera correctement.
+4. L'inscription collective permettra de traiter plusieurs nouveaux étudiants.
+5. La réinscription collective permettra de traiter une promotion entière.
+6. Les changements de niveau et de groupe seront historisés.
+7. Les comptes étudiants ne seront jamais dupliqués lors des réinscriptions.
+8. Les anciennes notes et présences seront conservées.
+9. Les imports et exports fonctionneront correctement.
+10. Les droits d'accès seront respectés.
+11. Les tests de non-régression seront concluants.
+12. L'application sera utilisable sur ordinateur, tablette et mobile.
+
+---
+
+# RÉSULTAT FINAL ATTENDU
+
+EBM Institute doit disposer d'un véritable système de gestion académique universitaire permettant :
+
+- De créer un étudiant une seule fois.
+- De gérer son dossier administratif permanent.
+- De l'inscrire dans une mention, un parcours, un niveau et un groupe.
+- D'inscrire simultanément plusieurs nouveaux étudiants.
+- De réinscrire collectivement les anciennes promotions.
+- De gérer les passages en année supérieure et les redoublements.
+- De suivre les campagnes de rentrée académique.
+- De conserver l'intégralité de l'historique universitaire.
+- De gérer les cartes étudiantes et l'identification par QR code.
+- De séparer totalement la gestion académique et la gestion financière.
+
+**PRIORITÉ DE DÉVELOPPEMENT :**
+
+1. Refonte du répertoire des étudiants et séparation financière.
+2. Mise en place du modèle d'inscription académique historisé.
+3. Assistant de nouvelle inscription individuelle.
+4. Inscription collective et importation améliorée.
+5. Réinscription annuelle individuelle et collective.
+6. Tableau de bord des campagnes d'inscription.
+7. Tests complets, migration et sécurisation des données.
+
+**INSTRUCTION FINALE AU DÉVELOPPEUR :**
+
+Procéder par étapes, examiner systématiquement le code existant avant toute modification et privilégier la réutilisation des fonctionnalités déjà opérationnelles.
+
+Ne pas effectuer une réécriture complète de l'application.
+
+Ne pas supprimer de données ni modifier les règles métier existantes sans justification.
+
+Chaque étape doit être testée et validée avant de passer à la suivante.
+
+Le résultat doit être un module robuste, évolutif et adapté à la gestion de plusieurs milliers d'étudiants d'EBM Institute.

@@ -46,6 +46,11 @@ import {
   ChatConversationMessage,
   ChatConversation,
   TypingIndicatorEntry,
+  SessionPrivateReport,
+  SessionReportRevision,
+  SessionReportStatus,
+  SessionAnomalyCategory,
+  SessionAnomalyReport,
 } from '../types';
 import {
   initialAuditLogs,
@@ -153,6 +158,7 @@ import {
   saveChatPreferencesToFirestore,
   fetchChatPreferencesFromFirestore,
   subscribeToCrossTabChatEvents,
+  compareMessages,
 } from '../services/chatRealtimeService';
 
 interface CourseHourlyStats {
@@ -210,7 +216,42 @@ interface AppContextType {
   updateSession: (id: string, updates: Partial<TimetableSession>, reason?: string) => { success: boolean; error?: string };
   rescheduleSession: (id: string, newDate: string, newStartTime: string, newEndTime: string, newRoomId: string, reason: string) => { success: boolean; error?: string };
   cancelSession: (id: string, reason: string) => void;
-  validateSession: (id: string) => void;
+  validateSession: (
+    id: string,
+    reportData?: TimetableSession['report'] & {
+      revisionReason?: string;
+      isCancelledDuringValidation?: boolean;
+      cancellationCategory?: TimetableSession['cancellationCategory'];
+      cancellationReason?: string;
+    }
+  ) => { success: boolean; error?: string };
+  requestCorrection: (
+    id: string,
+    reason: string,
+    directionObservations?: string,
+    isRejection?: boolean
+  ) => { success: boolean; error?: string };
+  publishSessionReport: (
+    id: string,
+    directionObservations?: string
+  ) => { success: boolean; error?: string };
+  confirmSessionRealizedWithoutReport: (
+    id: string,
+    actualHours?: number
+  ) => { success: boolean; error?: string };
+  reportSessionAnomaly: (
+    sessionId: string,
+    category: SessionAnomalyCategory,
+    description: string
+  ) => { success: boolean; error?: string };
+  resolveSessionAnomaly: (
+    sessionId: string,
+    anomalyId: string,
+    status: 'RESOLVED' | 'REJECTED',
+    resolutionNote: string
+  ) => { success: boolean; error?: string };
+  sessionPrivateReports: SessionPrivateReport[];
+  getSessionPrivateReport: (sessionId: string) => SessionPrivateReport | undefined;
   deleteSession: (id: string) => void;
   purgeAllSessions: () => { success: boolean; count: number; error?: string };
   purgeWeekSessions: (startDateStr: string, endDateStr: string) => { success: boolean; count: number; error?: string };
@@ -223,7 +264,8 @@ interface AppContextType {
   // User & Account actions
   changePassword: (userId: string, newPassword: string) => boolean;
   toggleUserStatus: (userId: string) => void;
-  createStudent: (student: Partial<User>) => { success: boolean; error?: string };
+  createStudent: (student: Partial<User>) => { success: boolean; student?: User; error?: string };
+  generateNextStudentMatricule: (academicYear?: string) => string;
   importStudents: (rows: ImportStudentRow[]) => ImportResult;
   toggleGoogleCalendarLink: (userId: string, email?: string) => void;
 
@@ -293,10 +335,24 @@ interface AppContextType {
     groupId: string,
     extra?: {
       parcoursId?: string;
-      inscriptionType?: 'INSCRIPTION' | 'REINSCRIPTION';
+      inscriptionType?: StudentInscription['inscriptionType'];
+      trainingMode?: StudentInscription['trainingMode'];
+      trainingRegime?: StudentInscription['trainingRegime'];
       academicStatus?: StudentInscription['academicStatus'];
+      specialCaseType?: StudentInscription['specialCaseType'];
+      referenceDecision?: string;
+      validationReason?: string;
       documents?: StudentInscription['documents'];
+      status?: StudentInscription['status'];
+      inscriptionDate?: string;
+      notes?: string;
+      allowOverride?: boolean;
     }
+  ) => { success: boolean; error?: string; inscription?: StudentInscription };
+  updateEnrollment: (
+    enrollmentId: string,
+    updates: Partial<StudentInscription>,
+    reason?: string
   ) => { success: boolean; error?: string; inscription?: StudentInscription };
 
   // Grades / Évaluations LMD & Délibérations du Jury
@@ -510,6 +566,7 @@ const STORAGE_KEYS = {
   RESOURCES: 'ebm_resources_v3',
   CUSTOM_ROLES: 'ebm_custom_roles_v3',
   PROFILE_REQUESTS: 'ebm_profile_requests_v3',
+  SESSION_PRIVATE_REPORTS: 'ebm_session_private_reports_v3',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -629,15 +686,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return filterOutDeleted(safeJsonParse<Course[]>(saved, initialCourses), 'courses');
   });
 
-  const [rooms, setRooms] = useState<Room[]>(() => {
+  const [roomsState, setRoomsState] = useState<Room[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.ROOMS);
-    return filterOutDeleted(safeJsonParse<Room[]>(saved, initialRooms), 'rooms');
+    const parsed = filterOutDeleted(safeJsonParse<Room[]>(saved, initialRooms), 'rooms');
+    return parsed.sort((a, b) => (a.name || a.code || '').localeCompare(b.name || b.code || '', 'fr', { numeric: true, sensitivity: 'base' }));
   });
 
-  const [groups, setGroups] = useState<StudentGroup[]>(() => {
+  const setRooms = (updater: Room[] | ((prev: Room[]) => Room[])) => {
+    setRoomsState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      return [...next].sort((a, b) =>
+        (a.name || a.code || '').localeCompare(b.name || b.code || '', 'fr', { numeric: true, sensitivity: 'base' })
+      );
+    });
+  };
+
+  const rooms = roomsState;
+
+  const [groupsState, setGroupsState] = useState<StudentGroup[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.GROUPS);
-    return filterOutDeleted(safeJsonParse<StudentGroup[]>(saved, initialGroups), 'groups');
+    const parsed = filterOutDeleted(safeJsonParse<StudentGroup[]>(saved, initialGroups), 'groups');
+    return parsed.sort((a, b) => (a.code || a.name || '').localeCompare(b.code || b.name || '', 'fr', { numeric: true, sensitivity: 'base' }));
   });
+
+  const setGroups = (updater: StudentGroup[] | ((prev: StudentGroup[]) => StudentGroup[])) => {
+    setGroupsState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      return [...next].sort((a, b) =>
+        (a.code || a.name || '').localeCompare(b.code || b.name || '', 'fr', { numeric: true, sensitivity: 'base' })
+      );
+    });
+  };
+
+  const groups = groupsState;
 
   const [filieres, setFilieres] = useState<Filiere[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.FILIERES);
@@ -898,6 +979,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return filterOutDeleted(safeJsonParse<StudentInscription[]>(saved, initialInscriptions), 'inscriptions');
   });
 
+  // Progressive non-destructive migration (Section 20): Ensure every existing student has an initial StudentInscription record
+  useEffect(() => {
+    const students = users.filter((u) => u.role === 'STUDENT');
+    if (students.length === 0) return;
+    const missingStudents = students.filter(
+      (st) => !inscriptions.some((insc) => insc.studentId === st.id)
+    );
+    if (missingStudents.length === 0) return;
+
+    const migrated: StudentInscription[] = missingStudents.map((st) => {
+      const grp = groups.find((g) => g.id === st.groupId);
+      const filId = grp?.filiereId || st.filiereId || filieres[0]?.id || 'fil-1';
+      const lvl = grp?.level || st.currentLevel || 'L1';
+      const acYear = grp?.academicYear || st.academicYearJoined || selectedAcademicYear || '2026-2027';
+      return {
+        id: `insc-${st.id}-${acYear}`,
+        studentId: st.id,
+        studentUid: st.uid || st.id,
+        academicYear: acYear,
+        filiereId: filId,
+        parcoursId: st.parcoursId || grp?.parcoursId,
+        level: lvl,
+        groupId: st.groupId || '',
+        inscriptionType: 'PREMIERE_INSCRIPTION',
+        trainingMode: st.studyMode === 'HYBRIDE' ? 'HYBRIDE' : st.studyMode === 'EN_LIGNE' ? 'EN_LIGNE' : st.studyMode === 'ALTERNANCE' ? 'ALTERNANCE' : 'PRESENTIEL',
+        trainingRegime: st.trainingRegime === 'CONTINU' ? 'CONTINU' : st.trainingRegime === 'SALARIE' ? 'SALARIE' : 'INITIAL',
+        academicStatus: 'NOUVEAU',
+        specialCaseType: 'NORMAL',
+        dossierComplete: st.administrativeFolderStatus === 'COMPLET',
+        documents: {
+          cinOrBirthCert: true,
+          baccOriginal: true,
+          photosId: Boolean(st.avatarUrl || st.photoUrl),
+          medicalCert: true,
+          financialClearance: true,
+          registrationFormSigned: true,
+        },
+        inscriptionDate: st.enrollmentDate || '2026-09-01',
+        status: st.enrollmentStatus === 'EN_ATTENTE' ? 'PENDING' : st.enrollmentStatus === 'SUSPENDUE' ? 'SUSPENDED' : 'CONFIRMED',
+        agentName: 'Migration Automatique SIS',
+        createdAt: st.enrollmentDate || '2026-09-01T08:00:00.000Z',
+        validatedAt: st.enrollmentDate || '2026-09-01T08:00:00.000Z',
+        history: [
+          {
+            id: `hist-init-${st.id}`,
+            timestamp: st.enrollmentDate || '2026-09-01T08:00:00.000Z',
+            authorName: 'Système SIS EBM',
+            action: 'CREATION',
+            newGroupId: st.groupId || '',
+            newLevel: lvl,
+            newParcoursId: st.parcoursId || grp?.parcoursId,
+            newStatus: 'CONFIRMED',
+            reason: 'Migration non destructive du dossier étudiant existant',
+          },
+        ],
+      };
+    });
+
+    setInscriptions((prev) => {
+      const next = [...prev];
+      migrated.forEach((m) => {
+        if (!next.some((i) => i.studentId === m.studentId && i.academicYear === m.academicYear)) {
+          next.push(m);
+          syncDocToFirestore('inscriptions', m);
+        }
+      });
+      return next;
+    });
+  }, [users, groups, filieres, selectedAcademicYear]);
+
   const [grades, setGrades] = useState<EcGrade[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.GRADES);
     if (!saved) return filterOutDeleted(initialGrades, 'grades');
@@ -1028,6 +1179,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return filterOutDeleted(safeJsonParse<ProfileChangeRequest[]>(saved, []), 'profileChangeRequests');
   });
 
+  const [sessionPrivateReports, setSessionPrivateReports] = useState<SessionPrivateReport[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.SESSION_PRIVATE_REPORTS);
+    return filterOutDeleted(safeJsonParse<SessionPrivateReport[]>(saved, []), 'sessionPrivateReports');
+  });
+
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(() => isCloudBridgeActive());
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'IDLE' | 'SYNCING' | 'SYNCED' | 'ERROR'>('IDLE');
@@ -1145,6 +1301,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bindCollection<AuditLog>('auditLogs', setAuditLogs),
         bindCollection<ChatMessage>('chatMessages', setChatMessages),
         bindCollection<ChatConversation>('conversations', setChatConversations),
+        bindCollection<SessionPrivateReport>('sessionPrivateReports', setSessionPrivateReports),
       ];
     };
 
@@ -1245,99 +1402,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAuthenticated, currentUserId]);
 
   // Sync state to localStorage with QuotaExceededError protection (P57)
+  // Sync state to localStorage with debouncing and memory footprint capping (Lightweight Optimization)
   useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.USERS, users);
-  }, [users]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.COURSES, courses);
-  }, [courses]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.ROOMS, rooms);
-  }, [rooms]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.GROUPS, groups);
-  }, [groups]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.FILIERES, filieres);
-  }, [filieres]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.SESSIONS, sessions);
-  }, [sessions]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.NOTIFICATIONS, notifications);
-  }, [notifications]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.AUDIT_LOGS, auditLogs);
-  }, [auditLogs]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.CURRENT_USER_ID, currentUserId);
-  }, [currentUserId]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.SELECTED_YEAR, selectedAcademicYear);
-  }, [selectedAcademicYear]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.UES, ues);
-  }, [ues]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.ECS, ecs);
-  }, [ecs]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.INSCRIPTIONS, inscriptions);
-  }, [inscriptions]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.GRADES, grades);
-  }, [grades]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.QR_SESSIONS, qrSessions);
-  }, [qrSessions]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.MESSAGES, internalMessages);
-  }, [internalMessages]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.POSTS, groupPosts);
-  }, [groupPosts]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.FEES, fees);
-  }, [fees]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.PAYMENTS, payments);
-  }, [payments]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.CASH_DAYS, cashRegisterDays);
-  }, [cashRegisterDays]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.HOMEWORK, homework);
-  }, [homework]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, submissions);
-  }, [submissions]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.RESOURCES, learningResources);
-  }, [learningResources]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.ACADEMIC_YEARS, academicYears);
-  }, [academicYears]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.CHAT_MESSAGES, chatMessages);
-  }, [chatMessages]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.PARCOURS, parcours);
-  }, [parcours]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.ACADEMIC_RULES, academicRules);
-  }, [academicRules]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.DELIBERATIONS, deliberations);
-  }, [deliberations]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.BACKUPS, savedBackups.slice(0, 3));
-  }, [savedBackups]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.CUSTOM_ROLES, customRoles);
-  }, [customRoles]);
-  useEffect(() => {
-    safeLocalStorageSet(STORAGE_KEYS.PROFILE_REQUESTS, profileChangeRequests);
-  }, [profileChangeRequests]);
+    const handler = setTimeout(() => {
+      safeLocalStorageSet(STORAGE_KEYS.USERS, users);
+      safeLocalStorageSet(STORAGE_KEYS.COURSES, courses);
+      safeLocalStorageSet(STORAGE_KEYS.ROOMS, rooms);
+      safeLocalStorageSet(STORAGE_KEYS.GROUPS, groups);
+      safeLocalStorageSet(STORAGE_KEYS.FILIERES, filieres);
+      safeLocalStorageSet(STORAGE_KEYS.SESSIONS, sessions);
+      safeLocalStorageSet(STORAGE_KEYS.NOTIFICATIONS, notifications.slice(0, 150));
+      safeLocalStorageSet(STORAGE_KEYS.AUDIT_LOGS, auditLogs.slice(0, 100));
+      safeLocalStorageSet(STORAGE_KEYS.CURRENT_USER_ID, currentUserId);
+      safeLocalStorageSet(STORAGE_KEYS.SELECTED_YEAR, selectedAcademicYear);
+      safeLocalStorageSet(STORAGE_KEYS.UES, ues);
+      safeLocalStorageSet(STORAGE_KEYS.ECS, ecs);
+      safeLocalStorageSet(STORAGE_KEYS.INSCRIPTIONS, inscriptions);
+      safeLocalStorageSet(STORAGE_KEYS.GRADES, grades);
+      safeLocalStorageSet(STORAGE_KEYS.QR_SESSIONS, qrSessions);
+      safeLocalStorageSet(STORAGE_KEYS.MESSAGES, internalMessages);
+      safeLocalStorageSet(STORAGE_KEYS.POSTS, groupPosts);
+      safeLocalStorageSet(STORAGE_KEYS.FEES, fees);
+      safeLocalStorageSet(STORAGE_KEYS.PAYMENTS, payments);
+      safeLocalStorageSet(STORAGE_KEYS.CASH_DAYS, cashRegisterDays);
+      safeLocalStorageSet(STORAGE_KEYS.HOMEWORK, homework);
+      safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, submissions);
+      safeLocalStorageSet(STORAGE_KEYS.RESOURCES, learningResources);
+      safeLocalStorageSet(STORAGE_KEYS.ACADEMIC_YEARS, academicYears);
+      safeLocalStorageSet(STORAGE_KEYS.CHAT_MESSAGES, chatMessages.slice(-200));
+      safeLocalStorageSet(STORAGE_KEYS.PARCOURS, parcours);
+      safeLocalStorageSet(STORAGE_KEYS.ACADEMIC_RULES, academicRules);
+      safeLocalStorageSet(STORAGE_KEYS.DELIBERATIONS, deliberations);
+      safeLocalStorageSet(STORAGE_KEYS.BACKUPS, savedBackups.slice(0, 3));
+      safeLocalStorageSet(STORAGE_KEYS.CUSTOM_ROLES, customRoles);
+      safeLocalStorageSet(STORAGE_KEYS.PROFILE_REQUESTS, profileChangeRequests);
+      safeLocalStorageSet(STORAGE_KEYS.SESSION_PRIVATE_REPORTS, sessionPrivateReports);
+    }, 800);
+
+    return () => clearTimeout(handler);
+  }, [
+    users, courses, rooms, groups, filieres, sessions, notifications, auditLogs,
+    currentUserId, selectedAcademicYear, ues, ecs, inscriptions, grades, qrSessions,
+    internalMessages, groupPosts, fees, payments, cashRegisterDays, homework,
+    submissions, learningResources, academicYears, chatMessages, parcours,
+    academicRules, deliberations, savedBackups, customRoles, profileChangeRequests,
+    sessionPrivateReports
+  ]);
 
   // Restore any courses or sessions whose groupIds were accidentally rebound to auto-generated `grp-l1-*` groups
   // back to the user's real group (such as G1A2627) so G1A2627 appears everywhere as expected.
@@ -1645,7 +1755,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       details,
       platform,
     };
-    setAuditLogs((prev) => [newLog, ...prev]);
+    setAuditLogs((prev) => [newLog, ...prev].slice(0, 100));
     if (isAuthenticated) {
       syncDocToFirestore('auditLogs', newLog);
     }
@@ -1661,7 +1771,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isReadAndroid: false,
       pushStatus: 'DELIVERED',
     };
-    setNotifications((prev) => [newNotif, ...prev]);
+    setNotifications((prev) => [newNotif, ...prev].slice(0, 150));
     syncDocToFirestore('notifications', newNotif);
     setActivePushBanner(newNotif);
   };
@@ -2096,56 +2206,758 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const validateSession = (id: string) => {
-    if (!canUserPerformOperation(currentUser, 'VALIDATION', customRoles)) {
+  const getSessionPrivateReport = (sessionId: string): SessionPrivateReport | undefined => {
+    if (!currentUser || currentUser.role === 'STUDENT' || currentUser.role === 'PARENT') {
+      return undefined;
+    }
+    const found = sessionPrivateReports.find((r) => r.id === sessionId || r.sessionId === sessionId);
+    if (found) return found;
+    // Legacy fallback if older session had private fields embedded
+    const sess = sessions.find((s) => s.id === sessionId);
+    if (
+      sess?.report &&
+      (sess.report.remarks ||
+        sess.report.incident ||
+        sess.report.teacherPresence ||
+        sess.report.difficultiesEncountered ||
+        sess.report.directionObservations)
+    ) {
+      return {
+        id: sessionId,
+        sessionId,
+        remarks: sess.report.remarks,
+        difficultiesEncountered: sess.report.difficultiesEncountered,
+        directionObservations: sess.report.directionObservations,
+        incident: sess.report.incident,
+        teacherPresence: sess.report.teacherPresence || 'PRESENT',
+        replacementName: sess.report.replacementName,
+        writtenBy: sess.report.writtenBy,
+        writtenAt: sess.report.writtenAt,
+        revisions: sess.report.revisions,
+      };
+    }
+    return undefined;
+  };
+
+  const validateSession = (
+    id: string,
+    reportData?: TimetableSession['report'] & {
+      revisionReason?: string;
+      isCancelledDuringValidation?: boolean;
+      cancellationCategory?: TimetableSession['cancellationCategory'];
+      cancellationReason?: string;
+    }
+  ): { success: boolean; error?: string } => {
+    const current = sessions.find((s) => s.id === id);
+    if (!current) return { success: false, error: 'Séance introuvable' };
+
+    const isOwnTeacherValidating =
+      currentUser.role === 'TEACHER' && current.teacherId === currentUser.id;
+    const isAdminOrDirection = ['ADMIN', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(
+      currentUser.role
+    );
+
+    if (
+      !isOwnTeacherValidating &&
+      !isAdminOrDirection &&
+      !canUserPerformOperation(currentUser, 'VALIDATION', customRoles)
+    ) {
       showAppToast({
         title: 'Accès refusé (RBAC)',
-        message: 'Seule la Direction des études ou un profil habilité peut valider les heures réalisées.',
+        message:
+          'Seule la Direction des études, l’enseignant titulaire ou un profil habilité peut saisir ou valider le compte rendu de la séance.',
         type: 'error',
       });
-      return;
+      return { success: false, error: 'Accès refusé' };
+    }
+
+    const isCancelledMode = Boolean(
+      reportData?.isCancelledDuringValidation ||
+        reportData?.teacherPresence === 'ABSENT_UNNOTIFIED' ||
+        reportData?.teacherPresence === 'ABSENT_NOTIFIED'
+    );
+
+    const targetReportStatus: SessionReportStatus =
+      reportData?.reportStatus || (isAdminOrDirection ? 'PUBLISHED' : 'PUBLISHED');
+
+    if (!isCancelledMode && targetReportStatus !== 'DRAFT') {
+      if (!reportData || !reportData.content || reportData.content.trim().length < 20) {
+        return {
+          success: false,
+          error: 'Le contenu du compte rendu est obligatoire (minimum 20 caractères).',
+        };
+      }
+    } else if (!reportData) {
+      return { success: false, error: 'Données du compte rendu manquantes.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const actualHours = isCancelledMode
+      ? 0
+      : typeof reportData.actualHours === 'number' && !Number.isNaN(reportData.actualHours)
+      ? reportData.actualHours
+      : current.durationHours;
+
+    const existingPrivate = sessionPrivateReports.find((r) => r.id === id || r.sessionId === id);
+    const existingPublic = current.report;
+    const prevRevisions: SessionReportRevision[] =
+      existingPrivate?.revisions || existingPublic?.revisions || [];
+
+    // Section 2.7: Once published, any modification must go through the historized revision mechanism
+    const wasAlreadyPublished =
+      existingPublic &&
+      (existingPublic.reportStatus === 'PUBLISHED' ||
+        (!existingPublic.reportStatus && current.status === 'COMPLETED_VALIDATED'));
+
+    // Build revision history entry if a previous report already existed (Recommendation #2 & Section 2.7)
+    let nextRevisions: SessionReportRevision[] = [...prevRevisions];
+    if (existingPublic && existingPublic.content) {
+      const hasChanged =
+        existingPublic.content !== (reportData.content || '').trim() ||
+        (existingPublic.chapterTitle || '') !== (reportData.chapterTitle || '').trim() ||
+        (existingPublic.objectives || '') !== (reportData.objectives || '').trim() ||
+        existingPublic.actualHours !== actualHours ||
+        (existingPublic.homework || '') !== (reportData.homework || '') ||
+        (existingPublic.nextSessionPlan || '') !== (reportData.nextSessionPlan || '') ||
+        (existingPrivate?.remarks || existingPublic.remarks || '') !== (reportData.remarks || '') ||
+        (existingPrivate?.difficultiesEncountered || '') !==
+          (reportData.difficultiesEncountered || '') ||
+        (existingPrivate?.incident || existingPublic.incident || '') !==
+          (reportData.incident || '') ||
+        (existingPrivate?.teacherPresence || existingPublic.teacherPresence || 'PRESENT') !==
+          (reportData.teacherPresence || 'PRESENT');
+
+      if (hasChanged || current.correctionRequested || wasAlreadyPublished) {
+        const revisionEntry: SessionReportRevision = {
+          id: generateUniqueId('rev'),
+          versionNumber: prevRevisions.length + 1,
+          modifiedAt: nowIso,
+          modifiedBy: currentUser.name,
+          modifiedByRole: currentUser.role,
+          reason:
+            reportData.revisionReason ||
+            current.correctionReason ||
+            (wasAlreadyPublished
+              ? 'Révision officielle après publication'
+              : 'Mise à jour / correction du compte rendu'),
+          previousContent: existingPublic.content,
+          previousChapterTitle: existingPublic.chapterTitle,
+          previousObjectives: existingPublic.objectives,
+          previousActualHours: existingPublic.actualHours,
+          previousHomework: existingPublic.homework,
+          previousNextSessionPlan: existingPublic.nextSessionPlan,
+          previousRemarks: existingPrivate?.remarks ?? existingPublic.remarks,
+          previousDifficulties: existingPrivate?.difficultiesEncountered,
+          previousDirectionObservations: existingPrivate?.directionObservations,
+          previousIncident: existingPrivate?.incident ?? existingPublic.incident,
+          previousTeacherPresence:
+            existingPrivate?.teacherPresence ?? existingPublic.teacherPresence ?? 'PRESENT',
+          previousReplacementName:
+            existingPrivate?.replacementName ?? existingPublic.replacementName,
+          previousReportStatus: existingPublic.reportStatus,
+        };
+        nextRevisions = [revisionEntry, ...prevRevisions];
+      }
+    }
+
+    const publicRevisions: SessionReportRevision[] = nextRevisions.map((rev) => ({
+      id: rev.id,
+      versionNumber: rev.versionNumber,
+      modifiedAt: rev.modifiedAt,
+      modifiedBy: rev.modifiedBy,
+      modifiedByRole: rev.modifiedByRole,
+      reason: rev.reason,
+      previousContent: rev.previousContent,
+      previousChapterTitle: rev.previousChapterTitle,
+      previousObjectives: rev.previousObjectives,
+      previousActualHours: rev.previousActualHours,
+      previousHomework: rev.previousHomework,
+      previousNextSessionPlan: rev.previousNextSessionPlan,
+      previousReportStatus: rev.previousReportStatus,
+    }));
+
+    const isValidatedOrPublished =
+      targetReportStatus === 'VALIDATED' || targetReportStatus === 'PUBLISHED';
+
+    const cancellationCategory =
+      reportData.cancellationCategory ||
+      (reportData.teacherPresence === 'ABSENT_UNNOTIFIED'
+        ? 'ABSENT_UNNOTIFIED'
+        : reportData.teacherPresence === 'ABSENT_NOTIFIED'
+        ? 'ABSENT_NOTIFIED'
+        : isCancelledMode
+        ? 'OTHER'
+        : undefined);
+
+    // Public report persisted on `sessions` collection (safe for student read — zero confidential fields)
+    const publicReport: NonNullable<TimetableSession['report']> = {
+      content: isCancelledMode
+        ? (reportData.content || 'Cours annulé (séance non tenue — 0h comptabilisée).').trim()
+        : (reportData.content || '').trim(),
+      actualHours,
+      reportStatus: targetReportStatus,
+      ...(reportData.chapterTitle ? { chapterTitle: reportData.chapterTitle.trim() } : {}),
+      ...(reportData.objectives ? { objectives: reportData.objectives.trim() } : {}),
+      ...(reportData.plannedContent ? { plannedContent: reportData.plannedContent.trim() } : {}),
+      ...(reportData.keyTakeaways ? { keyTakeaways: reportData.keyTakeaways.trim() } : {}),
+      ...(reportData.pedagogicalMethods
+        ? { pedagogicalMethods: reportData.pedagogicalMethods.trim() }
+        : {}),
+      ...(reportData.exercisesAndPracticalWork
+        ? { exercisesAndPracticalWork: reportData.exercisesAndPracticalWork.trim() }
+        : {}),
+      ...(reportData.homework ? { homework: reportData.homework.trim() } : {}),
+      ...(reportData.nextSessionPlan ? { nextSessionPlan: reportData.nextSessionPlan.trim() } : {}),
+      ...(reportData.attachments && reportData.attachments.length > 0
+        ? { attachments: reportData.attachments }
+        : existingPublic?.attachments
+        ? { attachments: existingPublic.attachments }
+        : {}),
+      createdAt: existingPublic?.createdAt || existingPublic?.writtenAt || nowIso,
+      submittedAt:
+        targetReportStatus !== 'DRAFT'
+          ? existingPublic?.submittedAt || nowIso
+          : existingPublic?.submittedAt,
+      submittedBy:
+        targetReportStatus !== 'DRAFT'
+          ? existingPublic?.submittedBy || currentUser.name
+          : existingPublic?.submittedBy,
+      ...(isValidatedOrPublished
+        ? {
+            validatedAt: reportData.validatedAt || existingPublic?.validatedAt || nowIso,
+            validatedBy: reportData.validatedBy || existingPublic?.validatedBy || currentUser.name,
+          }
+        : {}),
+      ...(targetReportStatus === 'PUBLISHED'
+        ? {
+            publishedAt: reportData.publishedAt || existingPublic?.publishedAt || nowIso,
+            publishedBy: reportData.publishedBy || existingPublic?.publishedBy || currentUser.name,
+          }
+        : {}),
+      writtenBy: reportData.writtenBy || existingPublic?.writtenBy || currentUser.name,
+      writtenAt: existingPublic?.writtenAt || reportData.writtenAt || nowIso,
+      updatedAt: nowIso,
+      ...(publicRevisions.length > 0 ? { revisions: publicRevisions } : {}),
+    };
+
+    // Private report persisted in `sessionPrivateReports/{sessionId}` (restricted to staff in firestore.rules)
+    const privateReport: SessionPrivateReport = {
+      id,
+      sessionId: id,
+      teacherPresence:
+        reportData.teacherPresence ||
+        (cancellationCategory === 'ABSENT_UNNOTIFIED'
+          ? 'ABSENT_UNNOTIFIED'
+          : cancellationCategory === 'ABSENT_NOTIFIED'
+          ? 'ABSENT_NOTIFIED'
+          : existingPrivate?.teacherPresence || 'PRESENT'),
+      ...(cancellationCategory ? { cancellationCategory } : {}),
+      ...(reportData.remarks ? { remarks: reportData.remarks.trim() } : {}),
+      ...(reportData.difficultiesEncountered
+        ? { difficultiesEncountered: reportData.difficultiesEncountered.trim() }
+        : existingPrivate?.difficultiesEncountered
+        ? { difficultiesEncountered: existingPrivate.difficultiesEncountered }
+        : {}),
+      ...(reportData.directionObservations
+        ? { directionObservations: reportData.directionObservations.trim() }
+        : existingPrivate?.directionObservations
+        ? { directionObservations: existingPrivate.directionObservations }
+        : {}),
+      ...(reportData.teacherPresence === 'REPLACED' && reportData.replacementName
+        ? { replacementName: reportData.replacementName.trim() }
+        : {}),
+      ...(reportData.incident ? { incident: reportData.incident.trim() } : {}),
+      writtenBy: reportData.writtenBy || existingPrivate?.writtenBy || currentUser.name,
+      writtenAt: existingPrivate?.writtenAt || reportData.writtenAt || nowIso,
+      updatedAt: nowIso,
+      ...(nextRevisions.length > 0 ? { revisions: nextRevisions } : {}),
+    };
+
+    const actionType = isCancelledMode
+      ? 'ANNULATION'
+      : targetReportStatus === 'DRAFT'
+      ? 'BROUILLON_CR'
+      : targetReportStatus === 'SUBMITTED'
+      ? 'SOUMISSION_CR'
+      : targetReportStatus === 'PUBLISHED'
+      ? 'PUBLICATION_CR'
+      : 'VALIDATION';
+
+    const cancellationLabel =
+      cancellationCategory === 'ABSENT_UNNOTIFIED'
+        ? 'Enseignant absent sans avoir prévenu (0h)'
+        : cancellationCategory === 'ABSENT_NOTIFIED'
+        ? 'Enseignant absent excusé / ayant prévenu (0h)'
+        : cancellationCategory === 'TECHNICAL_ISSUE'
+        ? 'Problème technique / Salle indisponible (0h)'
+        : cancellationCategory === 'FORCE_MAJEURE'
+        ? 'Force majeure (0h)'
+        : reportData.cancellationReason || 'Cours annulé lors du contrôle de séance (0h)';
+
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: actionType,
+      details: isCancelledMode
+        ? `Cours annulé lors de la validation (${cancellationLabel}). Non comptabilisé dans les heures réalisées (0h).`
+        : `Compte rendu [${targetReportStatus}] (${actualHours}h / ${current.durationHours}h prévues). Extrait : "${(reportData.content || '').trim().slice(0, 50)}..."${
+            nextRevisions.length > prevRevisions.length
+              ? ` [Version v${nextRevisions.length + 1} après modification]`
+              : ''
+          }`,
+      reason: isCancelledMode ? cancellationLabel : reportData.revisionReason,
+    };
+
+    const nextSessionStatus: TimetableSession['status'] = isCancelledMode
+      ? 'CANCELLED'
+      : targetReportStatus === 'DRAFT'
+      ? current.status
+      : 'COMPLETED_VALIDATED';
+
+    const updatedSession: TimetableSession = {
+      ...current,
+      status: nextSessionStatus,
+      isRealizedConfirmed: isCancelledMode
+        ? false
+        : targetReportStatus !== 'DRAFT'
+        ? true
+        : current.isRealizedConfirmed,
+      ...(isCancelledMode
+        ? {
+            cancellationDate: nowIso,
+            cancellationCategory,
+            cancellationReason:
+              reportData.cancellationReason ||
+              (cancellationCategory === 'ABSENT_UNNOTIFIED'
+                ? 'Cours annulé (enseignant absent)'
+                : cancellationLabel),
+          }
+        : {}),
+      ...(isValidatedOrPublished && !isCancelledMode
+        ? {
+            validatedAt: publicReport.validatedAt || nowIso,
+            validatedBy: publicReport.validatedBy || currentUser.name,
+          }
+        : {}),
+      ...(targetReportStatus === 'PUBLISHED' && !isCancelledMode
+        ? {
+            publishedAt: publicReport.publishedAt || nowIso,
+            publishedBy: publicReport.publishedBy || currentUser.name,
+          }
+        : {}),
+      updatedAt: nowIso,
+      report: publicReport,
+      correctionRequested: false,
+      correctionReason: undefined,
+      history: [historyItem, ...current.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
+    syncDocToFirestore('sessions', updatedSession);
+
+    if (isCancelledMode) {
+      releaseSessionSlotTransactionally(id, current.date);
+    }
+
+    setSessionPrivateReports((prev) => {
+      const filtered = prev.filter((r) => r.id !== id && r.sessionId !== id);
+      return [privateReport, ...filtered];
+    });
+    syncDocToFirestore('sessionPrivateReports', privateReport);
+
+    const course = courses.find((c) => c.id === current.courseId);
+
+    if (isCancelledMode) {
+      logAudit(
+        'ANNULATION_LORS_VALIDATION',
+        `Cours annulé lors de la validation de la séance ${id} (${course?.title || current.eventTitle}) le ${current.date} : ${cancellationLabel}.`
+      );
+
+      const affectedStudents = users.filter(
+        (u) => u.role === 'STUDENT' && u.groupId && current.groupIds.includes(u.groupId)
+      );
+      affectedStudents.forEach((student) => {
+        triggerNotification({
+          recipientId: student.id,
+          recipientRole: 'STUDENT',
+          title: `⚠️ Cours annulé : ${course?.title || current.eventTitle || 'Cours'}`,
+          message: `La séance du ${current.date} (${current.startTime}-${current.endTime}) a été enregistrée comme annulée (0h).`,
+          type: 'CANCEL',
+          sessionId: id,
+        });
+      });
+
+      if (current.teacherId && current.teacherId !== 'EXTERNAL_SPEAKER') {
+        triggerNotification({
+          recipientId: current.teacherId,
+          recipientRole: 'TEACHER',
+          title:
+            cancellationCategory === 'ABSENT_UNNOTIFIED'
+              ? `🚨 Constat d'absence non signalée : ${course?.title || current.eventTitle || 'Cours'}`
+              : `⚠️ Séance enregistrée comme annulée : ${course?.title || current.eventTitle || 'Cours'}`,
+          message: `La séance du ${current.date} (${current.startTime}-${current.endTime}) a été marquée annulée (${cancellationLabel}).`,
+          type: 'CANCEL',
+          sessionId: id,
+        });
+      }
+    } else {
+      logAudit(
+        'VALIDATION_HEURES',
+        `${actionType} séance ${id} (${course?.title || current.eventTitle}): ${actualHours}h réalisées (Statut CR: ${targetReportStatus}).`
+      );
+
+      if (
+        current.teacherId &&
+        current.teacherId !== 'EXTERNAL_SPEAKER' &&
+        currentUser.id !== current.teacherId
+      ) {
+        triggerNotification({
+          recipientId: current.teacherId,
+          recipientRole: 'TEACHER',
+          title: `✅ Compte rendu ${targetReportStatus === 'PUBLISHED' ? 'publié' : 'validé'} (${actualHours}h)`,
+          message: `Votre compte rendu de ${course?.title || current.eventTitle || 'Cours'} du ${current.date} a été ${targetReportStatus === 'PUBLISHED' ? 'validé et publié' : 'validé'}.`,
+          type: 'SUCCESS',
+          sessionId: id,
+        });
+      }
+    }
+
+    return { success: true };
+  };
+
+  const publishSessionReport = (
+    id: string,
+    directionObservations?: string
+  ): { success: boolean; error?: string } => {
+    const isAdminOrDirection = ['ADMIN', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(
+      currentUser.role
+    );
+    if (!isAdminOrDirection && !canUserPerformOperation(currentUser, 'VALIDATION', customRoles)) {
+      return {
+        success: false,
+        error: 'Seule la Direction ou l’administration pédagogique peut publier un compte rendu.',
+      };
     }
 
     const current = sessions.find((s) => s.id === id);
-    if (!current) return;
+    if (!current || !current.report) {
+      return { success: false, error: 'Aucun compte rendu à publier pour cette séance.' };
+    }
 
     const nowIso = new Date().toISOString();
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id !== id) return s;
-        const historyItem = {
-          id: generateUniqueId('h'),
-          timestamp: nowIso,
-          authorName: currentUser.name,
-          action: 'VALIDATION',
-          details: `Séance validée comme réalisée (${s.durationHours}h ajoutées au compteur officiel)`,
-        };
-        const updatedSession: TimetableSession = {
-          ...s,
-          status: 'COMPLETED_VALIDATED',
-          validatedAt: nowIso,
-          validatedBy: currentUser.name,
-          updatedAt: nowIso,
-          history: [historyItem, ...s.history],
-        };
-        syncDocToFirestore('sessions', updatedSession);
-        return updatedSession;
-      })
-    );
+    const updatedReport: NonNullable<TimetableSession['report']> = {
+      ...current.report,
+      reportStatus: 'PUBLISHED',
+      validatedAt: current.report.validatedAt || nowIso,
+      validatedBy: current.report.validatedBy || currentUser.name,
+      publishedAt: nowIso,
+      publishedBy: currentUser.name,
+      updatedAt: nowIso,
+    };
+
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: 'PUBLICATION',
+      details: `Compte rendu validé et publié officiellement pour l'espace étudiant.`,
+    };
+
+    const updatedSession: TimetableSession = {
+      ...current,
+      status: 'COMPLETED_VALIDATED',
+      isRealizedConfirmed: true,
+      validatedAt: updatedReport.validatedAt,
+      validatedBy: updatedReport.validatedBy,
+      publishedAt: nowIso,
+      publishedBy: currentUser.name,
+      report: updatedReport,
+      correctionRequested: false,
+      correctionReason: undefined,
+      updatedAt: nowIso,
+      history: [historyItem, ...current.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
+    syncDocToFirestore('sessions', updatedSession);
+
+    if (directionObservations && directionObservations.trim()) {
+      const existingPriv = sessionPrivateReports.find((r) => r.id === id || r.sessionId === id);
+      const nextPriv: SessionPrivateReport = {
+        id,
+        sessionId: id,
+        teacherPresence: existingPriv?.teacherPresence || 'PRESENT',
+        ...(existingPriv || {}),
+        directionObservations: directionObservations.trim(),
+        writtenBy: existingPriv?.writtenBy || current.report.writtenBy || currentUser.name,
+        writtenAt: existingPriv?.writtenAt || current.report.writtenAt || nowIso,
+        updatedAt: nowIso,
+      };
+      setSessionPrivateReports((prev) => [
+        nextPriv,
+        ...prev.filter((r) => r.id !== id && r.sessionId !== id),
+      ]);
+      syncDocToFirestore('sessionPrivateReports', nextPriv);
+    }
 
     const course = courses.find((c) => c.id === current.courseId);
-    logAudit('VALIDATION_HEURES', `Validation séance ${id} (${course?.title}): ${current.durationHours}h réalisées.`);
+    logAudit(
+      'PUBLICATION_CR',
+      `Publication officielle du CR de la séance ${id} (${course?.title || current.eventTitle}) par ${currentUser.name}`
+    );
+
+    return { success: true };
+  };
+
+  const confirmSessionRealizedWithoutReport = (
+    id: string,
+    actualHours?: number
+  ): { success: boolean; error?: string } => {
+    const current = sessions.find((s) => s.id === id);
+    if (!current) return { success: false, error: 'Séance introuvable' };
+
+    const isOwnTeacher = currentUser.role === 'TEACHER' && current.teacherId === currentUser.id;
+    const isStaff = ['ADMIN', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(currentUser.role);
+    if (!isOwnTeacher && !isStaff) {
+      return { success: false, error: 'Droits insuffisants pour confirmer la réalisation de la séance.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    const hours =
+      typeof actualHours === 'number' && actualHours >= 0 ? actualHours : current.durationHours;
+
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: 'REALISATION_CONFIRMEE_SANS_CR',
+      details: `Séance marquée comme réalisée (${hours}h) en attente de compte rendu.`,
+    };
+
+    const updatedSession: TimetableSession = {
+      ...current,
+      isRealizedConfirmed: true,
+      updatedAt: nowIso,
+      history: [historyItem, ...current.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
+    syncDocToFirestore('sessions', updatedSession);
+    logAudit(
+      'CONFIRMATION_SEANCE_SANS_CR',
+      `Séance ${id} confirmée réalisée (${hours}h) sans CR — en attente de rédaction.`
+    );
+    return { success: true };
+  };
+
+  const requestCorrection = (
+    id: string,
+    reason: string,
+    directionObservations?: string,
+    isRejection?: boolean
+  ): { success: boolean; error?: string } => {
+    if (
+      !['ADMIN', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(currentUser.role) &&
+      !canUserPerformOperation(currentUser, 'VALIDATION', customRoles)
+    ) {
+      showAppToast({
+        title: 'Accès refusé (RBAC)',
+        message: 'Seule la Direction des études ou un profil habilité peut demander une correction ou rejeter un CR.',
+        type: 'error',
+      });
+      return { success: false, error: 'Accès refusé' };
+    }
+    if (!reason.trim()) {
+      return { success: false, error: 'Le motif est obligatoire.' };
+    }
+
+    const current = sessions.find((s) => s.id === id);
+    if (!current) return { success: false, error: 'Séance introuvable' };
+
+    const nowIso = new Date().toISOString();
+    const statusLabel: SessionReportStatus = isRejection ? 'REJECTED' : 'CORRECTION_REQUESTED';
+
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: isRejection ? 'REJET_CR' : 'CORRECTION_REQUESTED',
+      details: `${isRejection ? 'Compte rendu rejeté' : 'Correction demandée'} : ${reason}`,
+      reason,
+    };
+
+    const updatedSession: TimetableSession = {
+      ...current,
+      correctionRequested: true,
+      correctionReason: reason.trim(),
+      correctionRequestedAt: nowIso,
+      correctionRequestedBy: currentUser.name,
+      report: current.report
+        ? {
+            ...current.report,
+            reportStatus: statusLabel,
+            updatedAt: nowIso,
+          }
+        : undefined,
+      updatedAt: nowIso,
+      history: [historyItem, ...current.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === id ? updatedSession : s)));
+    syncDocToFirestore('sessions', updatedSession);
+
+    const existingPriv = sessionPrivateReports.find((r) => r.id === id || r.sessionId === id);
+    const nextPriv: SessionPrivateReport = {
+      id,
+      sessionId: id,
+      teacherPresence: existingPriv?.teacherPresence || 'PRESENT',
+      ...(existingPriv || {}),
+      rejectionReason: reason.trim(),
+      ...(directionObservations && directionObservations.trim()
+        ? { directionObservations: directionObservations.trim() }
+        : {}),
+      writtenBy: existingPriv?.writtenBy || current.report?.writtenBy || currentUser.name,
+      writtenAt: existingPriv?.writtenAt || current.report?.writtenAt || nowIso,
+      updatedAt: nowIso,
+    };
+    setSessionPrivateReports((prev) => [
+      nextPriv,
+      ...prev.filter((r) => r.id !== id && r.sessionId !== id),
+    ]);
+    syncDocToFirestore('sessionPrivateReports', nextPriv);
+
+    const course = courses.find((c) => c.id === current.courseId);
+    logAudit(
+      isRejection ? 'REJET_CR' : 'CORRECTION_SEANCE',
+      `${isRejection ? 'Rejet' : 'Correction demandée'} pour la séance ${id} (${course?.title || current.eventTitle}). Motif: ${reason}`
+    );
 
     if (current.teacherId && current.teacherId !== 'EXTERNAL_SPEAKER') {
       triggerNotification({
         recipientId: current.teacherId,
         recipientRole: 'TEACHER',
-        title: `✅ Séance validée (${current.durationHours}h)`,
-        message: `Votre séance de ${course?.title || current.eventTitle || 'Cours'} du ${current.date} a été validée par la direction des études.`,
-        type: 'SUCCESS',
+        title: `⚠️ ${isRejection ? 'CR rejeté' : 'Correction demandée'} : ${course?.title || current.eventTitle || 'Cours'}`,
+        message: `${isRejection ? 'Votre compte rendu a été rejeté' : 'Une correction a été demandée'} pour la séance du ${current.date}. Motif : ${reason}`,
+        type: 'WARNING',
         sessionId: id,
       });
     }
+
+    return { success: true };
+  };
+
+  const reportSessionAnomaly = (
+    sessionId: string,
+    category: SessionAnomalyCategory,
+    description: string
+  ): { success: boolean; error?: string } => {
+    if (!currentUser) return { success: false, error: 'Non authentifié' };
+    if (!description || description.trim().length < 10) {
+      return {
+        success: false,
+        error: 'Veuillez décrire l’anomalie de manière précise (minimum 10 caractères).',
+      };
+    }
+
+    const current = sessions.find((s) => s.id === sessionId);
+    if (!current) return { success: false, error: 'Séance introuvable' };
+
+    const nowIso = new Date().toISOString();
+    const anomalyEntry: SessionAnomalyReport = {
+      id: generateUniqueId('anom'),
+      sessionId,
+      courseId: current.courseId,
+      reportedById: currentUser.id,
+      reportedByName: currentUser.name,
+      reportedByRole: currentUser.role,
+      reportedByMatricule: currentUser.matricule,
+      reportedAt: nowIso,
+      category,
+      description: description.trim(),
+      status: 'OPEN',
+    };
+
+    const historyItem = {
+      id: generateUniqueId('h'),
+      timestamp: nowIso,
+      authorName: currentUser.name,
+      action: 'ANOMALIE',
+      details: `Signalement d'anomalie [${category}] : ${description.trim()}`,
+    };
+
+    const updatedSession: TimetableSession = {
+      ...current,
+      anomalyReports: [anomalyEntry, ...(current.anomalyReports || [])],
+      updatedAt: nowIso,
+      history: [historyItem, ...current.history],
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? updatedSession : s)));
+    syncDocToFirestore('sessions', updatedSession);
+
+    const course = courses.find((c) => c.id === current.courseId);
+    logAudit(
+      'SIGNALEMENT_ANOMALIE_SEANCE',
+      `Signalement [${category}] sur la séance ${sessionId} (${course?.title || current.eventTitle}) par ${currentUser.name} (${currentUser.role}) : ${description.trim()}`
+    );
+
+    // Notify Direction & Scolarité
+    const staffRecipients = users.filter((u) =>
+      ['ADMIN', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(u.role)
+    );
+    staffRecipients.forEach((staff) => {
+      triggerNotification({
+        recipientId: staff.id,
+        recipientRole: staff.role,
+        title: `🚨 Anomalie signalée : ${course?.code || 'Cours'} (${current.date})`,
+        message: `${currentUser.name} (${currentUser.role}) a signalé une anomalie [${category}] : "${description.trim()}"`,
+        type: 'WARNING',
+        sessionId,
+      });
+    });
+
+    return { success: true };
+  };
+
+  const resolveSessionAnomaly = (
+    sessionId: string,
+    anomalyId: string,
+    status: 'RESOLVED' | 'REJECTED',
+    resolutionNote: string
+  ): { success: boolean; error?: string } => {
+    if (!['ADMIN', 'ACADEMIC_HEAD', 'SCOLARITE', 'SCHEDULER'].includes(currentUser.role)) {
+      return { success: false, error: 'Seule la Direction ou la Scolarité peut traiter un signalement.' };
+    }
+    const current = sessions.find((s) => s.id === sessionId);
+    if (!current) return { success: false, error: 'Séance introuvable' };
+
+    const nowIso = new Date().toISOString();
+    const updatedAnomalies = (current.anomalyReports || []).map((a) =>
+      a.id === anomalyId
+        ? {
+            ...a,
+            status,
+            resolutionNote: resolutionNote.trim() || undefined,
+            resolvedBy: currentUser.name,
+            resolvedAt: nowIso,
+          }
+        : a
+    );
+
+    const updatedSession: TimetableSession = {
+      ...current,
+      anomalyReports: updatedAnomalies,
+      updatedAt: nowIso,
+    };
+
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? updatedSession : s)));
+    syncDocToFirestore('sessions', updatedSession);
+    logAudit(
+      'TRAITEMENT_ANOMALIE_SEANCE',
+      `Signalement ${anomalyId} sur séance ${sessionId} marqué ${status} par ${currentUser.name}`
+    );
+    return { success: true };
   };
 
   const deleteSession = (id: string) => {
@@ -2469,18 +3281,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newLogs: UserModificationLog[] = [];
         const trackedKeys: (keyof User)[] = [
           'name',
+          'lastName',
+          'firstName',
+          'preferredName',
+          'gender',
+          'nationality',
+          'maritalStatus',
+          'cin',
+          'identityDocType',
+          'identityIssueDate',
+          'identityIssuePlace',
+          'identityVerificationStatus',
           'email',
+          'personalEmail',
           'phone',
+          'secondaryPhone',
+          'whatsappPhone',
           'address',
           'city',
           'birthDate',
           'birthPlace',
+          'birthCountry',
           'originSchool',
           'bacSeries',
           'linkedInUrl',
           'role',
           'groupId',
           'parcoursId',
+          'registrationStatus',
+          'admissionType',
+          'trainingMode',
+          'trainingRegime',
+          'employmentStatus',
+          'profession',
+          'employer',
           'department',
           'service',
           'jobTitle',
@@ -2690,30 +3524,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const createStudent = (studentData: Partial<User>) => {
-    if (!studentData.matricule || !studentData.name) {
-      return { success: false, error: 'Matricule et nom sont obligatoires.' };
+  const generateNextStudentMatricule = (academicYear?: string): string => {
+    const yearPrefix = (academicYear || selectedAcademicYear || '2026-2027').split('-')[0] || '2026';
+    const existingNums = users
+      .filter((u) => u.role === 'STUDENT' && u.matricule)
+      .map((u) => {
+        const m = u.matricule || '';
+        const match = m.match(/(\d{3,5})$/);
+        return match ? parseInt(match[1], 10) : 0;
+      });
+    const maxNum = existingNums.length > 0 ? Math.max(...existingNums, 100) : 100;
+    let candidateNum = maxNum + 1;
+    let candidate = `EBM-${yearPrefix}-${String(candidateNum).padStart(4, '0')}`;
+    const existingSet = new Set(users.map((u) => (u.matricule || '').toUpperCase()));
+    while (existingSet.has(candidate.toUpperCase())) {
+      candidateNum++;
+      candidate = `EBM-${yearPrefix}-${String(candidateNum).padStart(4, '0')}`;
+    }
+    return candidate;
+  };
+
+  const createStudent = (studentData: Partial<User>): { success: boolean; student?: User; error?: string } => {
+    const finalMatricule = (studentData.matricule || generateNextStudentMatricule()).trim().toUpperCase();
+    const fullName =
+      studentData.name?.trim() ||
+      `${(studentData.firstName || '').trim()} ${(studentData.lastName || '').trim()}`.trim();
+
+    if (!finalMatricule || !fullName) {
+      return { success: false, error: 'Matricule et nom complet sont obligatoires.' };
     }
 
-    const existing = users.find((u) => u.matricule?.toLowerCase() === studentData.matricule?.toLowerCase());
+    const existing = users.find((u) => u.matricule?.toLowerCase() === finalMatricule.toLowerCase());
     if (existing) {
-      return { success: false, error: `Le matricule ${studentData.matricule} existe déjà (RG-04).` };
+      return { success: false, error: `Le matricule ${finalMatricule} existe déjà (RG-04).` };
     }
 
     const birthDate = studentData.birthDate || '2005-01-01';
     const newStudent: User = {
-      id: generateUniqueId('user-student'),
-      matricule: studentData.matricule,
-      username: studentData.matricule,
-      name: studentData.name,
+      ...studentData,
+      id: studentData.id || generateUniqueId('user-student'),
+      matricule: finalMatricule,
+      username: finalMatricule,
+      name: fullName,
       civilite: studentData.civilite || 'M.',
-      lastName: studentData.lastName,
-      firstName: studentData.firstName,
-      email: studentData.email || `${studentData.matricule.toLowerCase()}@etudiant.ebm.edu`,
+      lastName: studentData.lastName || fullName.split(' ').slice(-1).join(' '),
+      firstName: studentData.firstName || fullName.split(' ').slice(0, -1).join(' ') || fullName,
+      email: studentData.email?.trim() || `${finalMatricule.toLowerCase()}@etudiant.ebm.edu`,
       phone: studentData.phone || '',
       phones: studentData.phones || (studentData.phone ? [studentData.phone] : []),
       role: 'STUDENT',
-      groupId: studentData.groupId || 'grp-l1-info-a',
+      groupId: studentData.groupId !== undefined ? studentData.groupId : '',
       subGroupId: studentData.subGroupId,
       parcoursId: studentData.parcoursId,
       birthDate,
@@ -2721,16 +3581,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       address: studentData.address || '',
       postalCode: studentData.postalCode || '101',
       city: studentData.city || 'Antananarivo',
+      cin: studentData.cin || '',
       originSchool: studentData.originSchool || '',
       bacSeries: studentData.bacSeries || 'Série C',
       linkedInUrl: studentData.linkedInUrl || '',
       parentContacts: studentData.parentContacts || [],
-      cardToken: `EBM-CARD-${studentData.matricule.slice(-4).toUpperCase()}-V1`,
+      cardToken: `EBM-CARD-${finalMatricule.slice(-4).toUpperCase()}-V1`,
       cardIssueNumber: 1,
       cardIssuedAt: getAntananarivoDateStr(),
       revokedCardTokens: [],
-      isAdult: true,
-      parentAccessConsent: {
+      isAdult: studentData.isAdult ?? true,
+      parentAccessConsent: studentData.parentAccessConsent || {
         academic: true,
         attendance: true,
         financial: true,
@@ -2738,58 +3599,193 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       passwordHash: hashPasswordSync(birthDate),
       mustChangePassword: true, // RG-03: Mandatory first change!
-      isActive: true,
+      isActive: studentData.isActive ?? true,
       googleCalendarLinked: false,
     };
 
     setUsers((prev) => [...prev, newStudent]);
     syncDocToFirestore('users', newStudent);
     logAudit('CREATION_ETUDIANT', `Création individuelle étudiant ${newStudent.name} (${newStudent.matricule}) - Carte: ${newStudent.cardToken}`);
-    return { success: true };
+    return { success: true, student: newStudent };
   };
 
   const importStudents = (rows: ImportStudentRow[]): ImportResult => {
     const createdStudents: User[] = [];
+    const createdInscriptions: StudentInscription[] = [];
     const errors: ImportResult['errors'] = [];
     let duplicateCount = 0;
     const existingMatricules = new Set(users.map((u) => u.matricule?.toUpperCase()).filter(Boolean));
+    const existingEmails = new Set(users.map((u) => u.email?.toLowerCase()).filter(Boolean));
+    const existingCins = new Set(users.map((u) => u.cin?.replace(/\s+/g, '').toUpperCase()).filter(Boolean));
     const batchMatricules = new Set<string>();
+    const batchEmails = new Set<string>();
+    const batchCins = new Set<string>();
+
+    // Track group seat consumption during the batch
+    const groupSeatCounts = new Map<string, number>();
+    groups.forEach((g) => {
+      const currentAssigned = users.filter((u) => u.role === 'STUDENT' && u.groupId === g.id).length;
+      groupSeatCounts.set(g.id, currentAssigned);
+    });
+
+    let autoMatCounter = 1;
 
     rows.forEach((row, index) => {
       const rowNum = index + 1;
-      const cleanMatricule = row.matricule?.trim().toUpperCase();
+      const targetYear = row.anneeAcademique?.trim() || selectedAcademicYear || '2026-2027';
+      const yearPrefix = targetYear.split('-')[0] || '2026';
 
+      let cleanMatricule = row.matricule?.trim().toUpperCase();
       if (!cleanMatricule) {
-        errors.push({ row: rowNum, matricule: 'VIDE', reason: 'Matricule manquant ou vide' });
+        // Generate unique matricule if blank
+        const base = generateNextStudentMatricule(targetYear);
+        const baseNum = parseInt(base.split('-').pop() || '100', 10) + autoMatCounter;
+        autoMatCounter++;
+        cleanMatricule = `EBM-${yearPrefix}-${String(baseNum).padStart(4, '0')}`;
+        while (existingMatricules.has(cleanMatricule) || batchMatricules.has(cleanMatricule)) {
+          autoMatCounter++;
+          cleanMatricule = `EBM-${yearPrefix}-${String(baseNum + autoMatCounter).padStart(4, '0')}`;
+        }
+      }
+
+      if (!row.nom?.trim() || !row.prenom?.trim()) {
+        errors.push({ row: rowNum, matricule: cleanMatricule, reason: 'Nom ou prénom obligatoire manquant' });
         return;
       }
 
-      if (!row.nom || !row.prenom) {
-        errors.push({ row: rowNum, matricule: cleanMatricule, reason: 'Nom ou prénom manquant' });
-        return;
-      }
-
-      // Check duplicates
       if (existingMatricules.has(cleanMatricule) || batchMatricules.has(cleanMatricule)) {
         duplicateCount++;
         errors.push({ row: rowNum, matricule: cleanMatricule, reason: `Matricule ${cleanMatricule} déjà existant dans la base ou le lot (RG-04)` });
         return;
       }
 
-      batchMatricules.add(cleanMatricule);
+      const cleanEmail = (row.email?.trim() || `${cleanMatricule.toLowerCase()}@etudiant.ebm.edu`).toLowerCase();
+      if (row.email?.trim() && (existingEmails.has(cleanEmail) || batchEmails.has(cleanEmail))) {
+        duplicateCount++;
+        errors.push({ row: rowNum, matricule: cleanMatricule, reason: `Email ${cleanEmail} déjà utilisé par un autre compte` });
+        return;
+      }
 
-      // Match group or fallback
-      const matchedGroup = groups.find((g) => g.code.toLowerCase() === row.groupe?.trim().toLowerCase()) || groups[0];
+      const cleanCin = row.cin?.replace(/\s+/g, '').toUpperCase();
+      if (cleanCin && (existingCins.has(cleanCin) || batchCins.has(cleanCin))) {
+        duplicateCount++;
+        errors.push({ row: rowNum, matricule: cleanMatricule, reason: `Numéro CIN ${row.cin} déjà enregistré` });
+        return;
+      }
+
+      // Section 11: NEVER fall back to groups[0] if the requested group does not exist!
+      const requestedGroupCode = row.groupe?.trim();
+      let matchedGroup: StudentGroup | undefined;
+      if (requestedGroupCode && requestedGroupCode.toUpperCase() !== 'SANS_GROUPE') {
+        matchedGroup = groups.find(
+          (g) => g.code.toLowerCase() === requestedGroupCode.toLowerCase() || g.id === requestedGroupCode
+        );
+        if (!matchedGroup) {
+          errors.push({
+            row: rowNum,
+            matricule: cleanMatricule,
+            reason: `Groupe "${requestedGroupCode}" introuvable dans le référentiel (aucune affectation de remplacement autorisée)`,
+          });
+          return;
+        }
+        // Check capacity
+        const maxCap = matchedGroup.maxCapacity || Math.max(matchedGroup.studentCount || 40, 40);
+        const currentUsed = groupSeatCounts.get(matchedGroup.id) || 0;
+        if (currentUsed >= maxCap) {
+          errors.push({
+            row: rowNum,
+            matricule: cleanMatricule,
+            reason: `Capacité maximale atteinte pour le groupe ${matchedGroup.code} (${currentUsed}/${maxCap} places)`,
+          });
+          return;
+        }
+      }
+
+      // Match filiere & parcours & level
+      const matchedFiliere =
+        filieres.find(
+          (f) =>
+            f.code.toLowerCase() === row.filiere?.trim().toLowerCase() ||
+            f.name.toLowerCase() === row.filiere?.trim().toLowerCase() ||
+            f.id === row.filiere?.trim()
+        ) || (matchedGroup ? filieres.find((f) => f.id === matchedGroup.filiereId) : undefined);
+
+      if (!matchedFiliere) {
+        errors.push({
+          row: rowNum,
+          matricule: cleanMatricule,
+          reason: `Mention / Filière "${row.filiere || ''}" introuvable`,
+        });
+        return;
+      }
+
+      const matchedParcours = row.parcours?.trim()
+        ? parcours.find(
+            (p) =>
+              p.code.toLowerCase() === row.parcours?.trim().toLowerCase() ||
+              p.name.toLowerCase() === row.parcours?.trim().toLowerCase() ||
+              p.id === row.parcours?.trim()
+          )
+        : matchedGroup?.parcoursId
+        ? parcours.find((p) => p.id === matchedGroup.parcoursId)
+        : undefined;
+
+      const validLevels = ['L1', 'L2', 'L3', 'M1', 'M2'];
+      const cleanLevel = (row.niveau?.trim().toUpperCase() || matchedGroup?.level || 'L1');
+      if (!validLevels.includes(cleanLevel)) {
+        errors.push({
+          row: rowNum,
+          matricule: cleanMatricule,
+          reason: `Niveau "${row.niveau}" invalide (attendu : L1, L2, L3, M1 ou M2)`,
+        });
+        return;
+      }
+
+      if (matchedGroup && matchedGroup.level !== cleanLevel) {
+        errors.push({
+          row: rowNum,
+          matricule: cleanMatricule,
+          reason: `Incohérence : le groupe ${matchedGroup.code} est de niveau ${matchedGroup.level} (et non ${cleanLevel})`,
+        });
+        return;
+      }
+
+      batchMatricules.add(cleanMatricule);
+      batchEmails.add(cleanEmail);
+      if (cleanCin) batchCins.add(cleanCin);
+      if (matchedGroup) {
+        groupSeatCounts.set(matchedGroup.id, (groupSeatCounts.get(matchedGroup.id) || 0) + 1);
+      }
+
       const birthDate = row.dateNaissance?.trim() || '2005-01-01';
+      const studentId = generateUniqueId(`user-import-${index}`);
 
       const newStudent: User = {
-        id: generateUniqueId(`user-import-${index}`),
+        id: studentId,
         matricule: cleanMatricule,
         username: cleanMatricule,
-        name: `${row.prenom.trim()} ${row.nom.trim()}`,
-        email: row.email?.trim() || `${cleanMatricule.toLowerCase()}@etudiant.ebm.edu`,
+        name: `${row.prenom.trim()} ${row.nom.trim().toUpperCase()}`,
+        lastName: row.nom.trim().toUpperCase(),
+        firstName: row.prenom.trim(),
+        email: cleanEmail,
+        phone: row.telephone?.trim() || '',
+        phones: row.telephone?.trim() ? [row.telephone.trim()] : [],
+        cin: row.cin?.trim() || '',
+        address: row.adresse?.trim() || '',
+        birthPlace: row.lieuNaissance?.trim() || 'Antananarivo',
         role: 'STUDENT',
-        groupId: matchedGroup.id,
+        groupId: matchedGroup ? matchedGroup.id : '',
+        parcoursId: matchedParcours?.id,
+        filiereId: matchedFiliere.id,
+        currentLevel: cleanLevel as User['currentLevel'],
+        academicYearJoined: targetYear,
+        enrollmentDate: getAntananarivoDateStr(),
+        enrollmentStatus: 'VALIDEE',
+        administrativeFolderStatus: 'INCOMPLET',
+        cardToken: `EBM-CARD-${cleanMatricule.slice(-4).toUpperCase()}-V1`,
+        cardIssueNumber: 1,
+        cardIssuedAt: getAntananarivoDateStr(),
+        revokedCardTokens: [],
         birthDate,
         passwordHash: hashPasswordSync(birthDate),
         mustChangePassword: true, // RG-03
@@ -2797,16 +3793,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         googleCalendarLinked: false,
       };
 
+      const newInscription: StudentInscription = {
+        id: generateUniqueId(`insc-${studentId}-${targetYear}`),
+        studentId,
+        studentUid: studentId,
+        academicYear: targetYear,
+        filiereId: matchedFiliere.id,
+        parcoursId: matchedParcours?.id,
+        level: cleanLevel,
+        groupId: matchedGroup ? matchedGroup.id : '',
+        inscriptionType: row.typeAdmission || 'PREMIERE_INSCRIPTION',
+        trainingMode: 'PRESENTIEL',
+        trainingRegime: 'INITIAL',
+        academicStatus: 'NOUVEAU',
+        specialCaseType: 'NORMAL',
+        dossierComplete: false,
+        documents: {
+          cinOrBirthCert: Boolean(row.cin?.trim()),
+          baccOriginal: false,
+          photosId: false,
+          medicalCert: false,
+          financialClearance: false,
+          registrationFormSigned: true,
+        },
+        inscriptionDate: getAntananarivoDateStr(),
+        status: 'CONFIRMED',
+        agentId: currentUser.id,
+        agentName: currentUser.name,
+        createdAt: new Date().toISOString(),
+        validatedAt: new Date().toISOString(),
+        history: [
+          {
+            id: generateUniqueId('hist'),
+            timestamp: new Date().toISOString(),
+            authorId: currentUser.id,
+            authorName: currentUser.name,
+            action: 'CREATION',
+            newGroupId: matchedGroup ? matchedGroup.id : '',
+            newParcoursId: matchedParcours?.id,
+            newLevel: cleanLevel,
+            newStatus: 'CONFIRMED',
+            reason: 'Inscription collective',
+          },
+        ],
+      };
+
       createdStudents.push(newStudent);
+      createdInscriptions.push(newInscription);
       existingMatricules.add(cleanMatricule);
+      existingEmails.add(cleanEmail);
+      if (cleanCin) existingCins.add(cleanCin);
     });
 
     if (createdStudents.length > 0) {
       setUsers((prev) => [...prev, ...createdStudents]);
+      setInscriptions((prev) => [...prev, ...createdInscriptions]);
       syncCollectionBatch('users', createdStudents);
+      syncCollectionBatch('inscriptions', createdInscriptions);
       logAudit(
         'IMPORTATION_MASSE',
-        `Importation de ${createdStudents.length} étudiants réussie. ${duplicateCount} doublons détectés, ${errors.length} rejets.`
+        `Inscription collective de ${createdStudents.length} étudiants réussie. ${duplicateCount} doublons détectés, ${errors.length} rejets.`
       );
     }
 
@@ -2857,7 +3903,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Completed & Validated by academic head (RG-09)
     const completedHours = courseSessions
       .filter((s) => s.status === 'COMPLETED_VALIDATED')
-      .reduce((acc, s) => acc + s.durationHours, 0);
+      .reduce((acc, s) => acc + (s.report?.actualHours ?? s.durationHours), 0);
 
     const remainingToComplete = Math.max(0, totalHours - completedHours);
     const remainingToSchedule = Math.max(0, totalHours - scheduledHours);
@@ -2881,7 +3927,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const totalCompleted = teacherSessions
       .filter((s) => s.status === 'COMPLETED_VALIDATED')
-      .reduce((acc, s) => acc + s.durationHours, 0);
+      .reduce((acc, s) => acc + (s.report?.actualHours ?? s.durationHours), 0);
 
     return {
       totalScheduled,
@@ -3110,12 +4156,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id !== id) return u;
-        const updated = { ...u, ...updates };
+        const newLogs: UserModificationLog[] = [];
+        const trackedTeacherKeys: (keyof User)[] = [
+          'name',
+          'lastName',
+          'firstName',
+          'preferredName',
+          'civilite',
+          'gender',
+          'birthDate',
+          'birthPlace',
+          'nationality',
+          'cin',
+          'identityDocType',
+          'identityVerificationStatus',
+          'staffMatricule',
+          'teacherStatus',
+          'email',
+          'personalEmail',
+          'workEmail',
+          'phone',
+          'secondaryPhone',
+          'whatsappPhone',
+          'officeLocation',
+          'academicRank',
+          'highestDiploma',
+          'almaMater',
+          'specialty',
+          'contractType',
+          'hireDate',
+          'recruitmentDate',
+          'department',
+          'jobTitle',
+          'weeklyMaxHours',
+          'hourlyRateAr',
+        ];
+        trackedTeacherKeys.forEach((key) => {
+          if (updates[key] !== undefined && String(updates[key]) !== String(u[key] ?? '')) {
+            newLogs.push({
+              id: generateUniqueId('mod'),
+              timestamp: new Date().toISOString(),
+              authorId: currentUser.id,
+              authorName: currentUser.name,
+              field: String(key),
+              oldValue: String(u[key] ?? 'Non renseigné'),
+              newValue: String(updates[key]),
+            });
+          }
+        });
+        const updated: User = {
+          ...u,
+          ...updates,
+          modificationHistory:
+            newLogs.length > 0
+              ? [...newLogs, ...(u.modificationHistory || [])]
+              : u.modificationHistory,
+        };
         syncDocToFirestore('users', updated);
         return updated;
       })
     );
-    logAudit('MODIFICATION_ENSEIGNANT', `Modification de l'enseignant ${id}`);
+    logAudit('MODIFICATION_ENSEIGNANT', `Modification du dossier enseignant ${id} par ${currentUser.name}`);
   };
 
   const deleteTeacher = (id: string) => {
@@ -3512,25 +4613,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     groupId: string,
     extra?: {
       parcoursId?: string;
-      inscriptionType?: 'INSCRIPTION' | 'REINSCRIPTION';
+      inscriptionType?: StudentInscription['inscriptionType'];
+      trainingMode?: StudentInscription['trainingMode'];
+      trainingRegime?: StudentInscription['trainingRegime'];
       academicStatus?: StudentInscription['academicStatus'];
+      specialCaseType?: StudentInscription['specialCaseType'];
+      referenceDecision?: string;
+      validationReason?: string;
       documents?: StudentInscription['documents'];
+      status?: StudentInscription['status'];
+      inscriptionDate?: string;
+      notes?: string;
+      allowOverride?: boolean;
     }
   ): { success: boolean; error?: string; inscription?: StudentInscription } => {
+    const registrationRef = `${studentId}_${academicYear}`;
     const existingForYear = inscriptions.find(
       (i) =>
         i.studentId === studentId &&
         i.academicYear === academicYear &&
-        i.filiereId === filiereId &&
-        (i.parcoursId || '') === (extra?.parcoursId || '')
+        i.status !== 'REJECTED'
     );
 
-    // ACC-017: Prevent duplicate enrollment for the same student, academic year and parcours
-    if (existingForYear && extra?.inscriptionType !== 'REINSCRIPTION') {
+    // Section 10.3 & ACC-017: Clé unique studentId + academicYear (empêcher deux inscriptions actives pour le même étudiant et la même année)
+    if (existingForYear && existingForYear.status === 'CONFIRMED' && !extra?.allowOverride) {
       const student = users.find((u) => u.id === studentId);
+      const existingFil = filieres.find((f) => f.id === existingForYear.filiereId);
       return {
         success: false,
-        error: `Doublon bloqué (ACC-017) : L’étudiant ${student?.name || studentId} (${student?.matricule || ''}) est déjà inscrit pour l’année ${academicYear} dans cette mention/parcours.`,
+        error: `Doublon bloqué (Clé ${registrationRef}) : L’étudiant ${student?.name || studentId} (${student?.matricule || ''}) possède déjà une inscription active (${existingFil?.code || existingForYear.filiereId} - ${existingForYear.level}) pour l’année ${academicYear}.`,
       };
     }
 
@@ -3540,44 +4651,205 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       photosId: true,
       medicalCert: true,
       financialClearance: true,
+      registrationFormSigned: true,
     };
-    const isComplete = Object.values(docs).every(Boolean);
+    const requiredDocValues = [
+      docs.cinOrBirthCert,
+      docs.baccOriginal,
+      docs.photosId,
+      docs.medicalCert,
+    ];
+    const isComplete = requiredDocValues.every(Boolean);
 
     const targetStudent = users.find((u) => u.id === studentId);
+    const finalStatus = extra?.status || 'CONFIRMED';
+    const nowIso = new Date().toISOString();
+    const normalizedGroupId = groupId ? groupId.trim() : '';
+
     const newInscription: StudentInscription = {
-      id: generateUniqueId(`insc-${studentId}-${academicYear}`),
+      id: existingForYear?.id || `insc-${studentId}-${academicYear}`,
       studentId,
       studentUid: targetStudent?.uid || studentId,
+      registrationReference: registrationRef,
       academicYear,
       filiereId,
       parcoursId: extra?.parcoursId,
       level,
-      groupId,
+      groupId: normalizedGroupId,
       inscriptionType: extra?.inscriptionType || 'INSCRIPTION',
+      trainingMode: extra?.trainingMode || 'PRESENTIEL',
+      trainingRegime: extra?.trainingRegime || 'INITIAL',
       academicStatus: extra?.academicStatus || 'NOUVEAU',
+      specialCaseType: extra?.specialCaseType || 'NORMAL',
+      referenceDecision: extra?.referenceDecision,
+      validationReason: extra?.validationReason,
       dossierComplete: isComplete,
       documents: docs,
-      inscriptionDate: getAntananarivoDateStr(),
-      status: 'CONFIRMED',
+      inscriptionDate: extra?.inscriptionDate || getAntananarivoDateStr(),
+      status: finalStatus,
+      agentId: currentUser.id,
+      agentName: currentUser.name,
+      createdAt: existingForYear?.createdAt || nowIso,
+      updatedAt: nowIso,
+      updatedBy: currentUser.name,
+      validatedAt: finalStatus === 'CONFIRMED' ? nowIso : undefined,
+      notes: extra?.notes,
+      history: [
+        ...(existingForYear?.history || []),
+        {
+          id: generateUniqueId('hist'),
+          timestamp: nowIso,
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          action: finalStatus === 'CONFIRMED' ? 'VALIDATION' : 'CREATION',
+          newGroupId: normalizedGroupId,
+          newParcoursId: extra?.parcoursId,
+          newLevel: level,
+          newStatus: finalStatus,
+          reason:
+            extra?.validationReason ||
+            (extra?.inscriptionType === 'REINSCRIPTION' || extra?.inscriptionType === 'REINSCRIPTION_INTERRUPTION'
+              ? `Réinscription annuelle (${extra?.specialCaseType || 'NORMAL'})`
+              : `Inscription académique (${extra?.inscriptionType || 'INSCRIPTION'})`),
+        },
+      ],
     };
+
+    // Never overwrite enrollments of OTHER academic years; only update/add for this (studentId, academicYear, filiereId)
     setInscriptions((prev) => {
-      const filtered = prev.filter((i) => !(i.studentId === studentId && i.academicYear === academicYear));
+      const filtered = prev.filter((i) => i.id !== newInscription.id);
       return [...filtered, newInscription];
     });
-    // Also update student's current groupId & parcoursId if this is for the active year
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === studentId
-          ? { ...u, groupId, parcoursId: extra?.parcoursId || u.parcoursId }
-          : u
-      )
-    );
+
+    // Synchronize student's current groupId, parcoursId, filiereId, currentLevel if confirmed or for active year
+    if (finalStatus !== 'REJECTED') {
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.id !== studentId) return u;
+          const updatedUser: User = {
+            ...u,
+            groupId: groupId !== undefined ? groupId : u.groupId,
+            parcoursId: extra?.parcoursId !== undefined ? extra.parcoursId : u.parcoursId,
+            filiereId: filiereId || u.filiereId,
+            currentLevel: (level as User['currentLevel']) || u.currentLevel,
+            administrativeFolderStatus: isComplete ? 'COMPLET' : 'INCOMPLET',
+            enrollmentStatus:
+              finalStatus === 'CONFIRMED'
+                ? 'VALIDEE'
+                : finalStatus === 'PENDING' || finalStatus === 'DRAFT'
+                ? 'EN_ATTENTE'
+                : finalStatus === 'SUSPENDED'
+                ? 'SUSPENDUE'
+                : u.enrollmentStatus,
+          };
+          syncDocToFirestore('users', updatedUser);
+          return updatedUser;
+        })
+      );
+    }
+
     syncDocToFirestore('inscriptions', newInscription);
     logAudit(
       extra?.inscriptionType === 'REINSCRIPTION' ? 'REINSCRIPTION_ETUDIANT' : 'INSCRIPTION_ETUDIANT',
-      `${extra?.inscriptionType === 'REINSCRIPTION' ? 'Réinscription' : 'Inscription'} de l’étudiant ${studentId} pour l’année ${academicYear} (Groupe: ${groupId}, Niveau: ${level})`
+      `${extra?.inscriptionType === 'REINSCRIPTION' ? 'Réinscription' : 'Inscription'} de l’étudiant ${targetStudent?.name || studentId} (${targetStudent?.matricule || ''}) pour l’année ${academicYear} (Groupe: ${groupId || 'Sans affectation'}, Niveau: ${level}, Statut: ${finalStatus})`
     );
     return { success: true, inscription: newInscription };
+  };
+
+  const updateEnrollment = (
+    enrollmentId: string,
+    updates: Partial<StudentInscription>,
+    reason?: string
+  ): { success: boolean; error?: string; inscription?: StudentInscription } => {
+    const existing = inscriptions.find((i) => i.id === enrollmentId);
+    if (!existing) {
+      return { success: false, error: 'Inscription introuvable.' };
+    }
+
+    const nowIso = new Date().toISOString();
+    let action: NonNullable<StudentInscription['history']>[number]['action'] = 'CHANGEMENT_STATUT';
+    if (updates.groupId !== undefined && updates.groupId !== existing.groupId) {
+      action = !existing.groupId ? 'AFFECTATION_INITIALE' : 'CHANGEMENT_GROUPE';
+    } else if (updates.parcoursId !== undefined && updates.parcoursId !== existing.parcoursId) {
+      action = 'CHANGEMENT_PARCOURS';
+    } else if (updates.level !== undefined && updates.level !== existing.level) {
+      action = 'CHANGEMENT_NIVEAU';
+    } else if (updates.status === 'CONFIRMED' && existing.status !== 'CONFIRMED') {
+      action = 'VALIDATION';
+    } else if (updates.status === 'SUSPENDED') {
+      action = 'SUSPENSION';
+    }
+
+    const mergedDocs = updates.documents || existing.documents;
+    const isComplete =
+      updates.dossierComplete !== undefined
+        ? updates.dossierComplete
+        : mergedDocs
+        ? Boolean(mergedDocs.cinOrBirthCert && mergedDocs.baccOriginal && mergedDocs.photosId && mergedDocs.medicalCert)
+        : existing.dossierComplete;
+
+    const updatedInscription: StudentInscription = {
+      ...existing,
+      ...updates,
+      dossierComplete: isComplete,
+      updatedAt: nowIso,
+      updatedBy: currentUser.name,
+      validatedAt:
+        updates.status === 'CONFIRMED' && !existing.validatedAt ? nowIso : existing.validatedAt,
+      history: [
+        ...(existing.history || []),
+        {
+          id: generateUniqueId('hist'),
+          timestamp: nowIso,
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          action,
+          previousGroupId: existing.groupId,
+          newGroupId: updates.groupId !== undefined ? updates.groupId : existing.groupId,
+          previousParcoursId: existing.parcoursId,
+          newParcoursId: updates.parcoursId !== undefined ? updates.parcoursId : existing.parcoursId,
+          previousLevel: existing.level,
+          newLevel: updates.level !== undefined ? updates.level : existing.level,
+          previousStatus: existing.status,
+          newStatus: updates.status !== undefined ? updates.status : existing.status,
+          reason: reason || (action === 'AFFECTATION_INITIALE' ? 'Affectation initiale au groupe' : 'Modification administrative de l’affectation'),
+        },
+      ],
+    };
+
+    setInscriptions((prev) => prev.map((i) => (i.id === enrollmentId ? updatedInscription : i)));
+    syncDocToFirestore('inscriptions', updatedInscription);
+
+    // Also keep the student User record synchronized if this enrollment belongs to the selectedAcademicYear or is their latest enrollment
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id !== existing.studentId) return u;
+        const updatedUser: User = {
+          ...u,
+          groupId: updatedInscription.groupId !== undefined ? updatedInscription.groupId : u.groupId,
+          parcoursId: updatedInscription.parcoursId !== undefined ? updatedInscription.parcoursId : u.parcoursId,
+          filiereId: updatedInscription.filiereId || u.filiereId,
+          currentLevel: (updatedInscription.level as User['currentLevel']) || u.currentLevel,
+          administrativeFolderStatus: updatedInscription.dossierComplete ? 'COMPLET' : 'INCOMPLET',
+          enrollmentStatus:
+            updatedInscription.status === 'CONFIRMED'
+              ? 'VALIDEE'
+              : updatedInscription.status === 'PENDING' || updatedInscription.status === 'DRAFT'
+              ? 'EN_ATTENTE'
+              : updatedInscription.status === 'SUSPENDED'
+              ? 'SUSPENDUE'
+              : u.enrollmentStatus,
+        };
+        syncDocToFirestore('users', updatedUser);
+        return updatedUser;
+      })
+    );
+
+    logAudit(
+      'MODIFICATION_INSCRIPTION_ACADEMIQUE',
+      `Mise à jour de l’inscription ${enrollmentId} (Étudiant: ${existing.studentId}, Action: ${action}, Motif: ${reason || 'N/A'})`
+    );
+    return { success: true, inscription: updatedInscription };
   };
 
   // Parcours CRUD (Configurable without code changes)
@@ -3880,7 +5152,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const exists = existingList.some((m) => m.id === message.id);
             const nextList = exists
               ? existingList.map((m) => (m.id === message.id ? message : m))
-              : [...existingList, message].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+              : [...existingList, message].sort(compareMessages);
             const nextMap = { ...prev, [conversation.id]: nextList };
             saveLocalMessagesByConv(nextMap);
             return nextMap;
@@ -4101,9 +5373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const prevMsg = byId.get(m.id);
             byId.set(m.id, prevMsg ? { ...prevMsg, ...m } : m);
           });
-          const merged = Array.from(byId.values()).sort((a, b) =>
-            a.createdAt.localeCompare(b.createdAt)
-          );
+          const merged = Array.from(byId.values()).sort(compareMessages);
           const next = { ...prev, [convId]: merged };
           saveLocalMessagesByConv(next);
           return next;
@@ -4391,9 +5661,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setChatMessagesByConv((prev) => {
-      const list = [...(prev[conversationId] || []), newMsg].sort((a, b) =>
-        a.createdAt.localeCompare(b.createdAt)
-      );
+      const list = [...(prev[conversationId] || []), newMsg].sort(compareMessages);
       const next = { ...prev, [conversationId]: list };
       saveLocalMessagesByConv(next);
       return next;
@@ -4578,7 +5846,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loadOlderConversationMessages = async (conversationId: string): Promise<number> => {
     const existing = chatMessagesByConv[conversationId] || [];
-    const oldest = existing[0]?.createdAt;
+    const oldest = existing.reduce<string | undefined>(
+      (min, m) => (!min || m.createdAt < min ? m.createdAt : min),
+      undefined
+    );
     const olderMsgs = await fetchPaginatedConversationMessages(conversationId, 40, oldest);
     if (olderMsgs.length > 0) {
       setChatMessagesByConv((prev) => {
@@ -4586,9 +5857,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const byId = new Map<string, ChatConversationMessage>();
         olderMsgs.forEach((m) => byId.set(m.id, m));
         currentList.forEach((m) => byId.set(m.id, m));
-        const merged = Array.from(byId.values()).sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt)
-        );
+        const merged = Array.from(byId.values()).sort(compareMessages);
         const next = { ...prev, [conversationId]: merged };
         saveLocalMessagesByConv(next);
         return next;
@@ -5774,13 +7043,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     changes: ProfileChangeRequest['changes'],
     reason: string
   ): ProfileChangeRequest => {
-    const student = users.find((u) => u.id === studentId);
+    const targetUser = users.find((u) => u.id === studentId);
     const req: ProfileChangeRequest = {
       id: generateUniqueId('pcreq'),
       studentId,
-      studentUid: student?.uid || studentId,
-      studentName: student?.name || 'Étudiant',
-      matricule: student?.matricule || 'N/A',
+      studentUid: targetUser?.uid || studentId,
+      studentName: targetUser?.name || 'Utilisateur',
+      matricule: targetUser?.matricule || targetUser?.staffMatricule || targetUser?.username || 'N/A',
+      userRole: targetUser?.role,
       requestedAt: new Date().toISOString(),
       status: 'PENDING',
       changes,
@@ -5798,11 +7068,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const approveProfileChangeRequest = (requestId: string, comment?: string) => {
     const req = profileChangeRequests.find((r) => r.id === requestId);
     if (!req) return;
+    const targetUser = users.find((u) => u.id === req.studentId);
     const updates: Partial<User> = {};
     req.changes.forEach((c) => {
-      updates[c.field] = c.newValue;
+      (updates as Record<string, unknown>)[c.field] = c.newValue;
     });
-    updateUser(req.studentId, updates);
+    if (targetUser?.role === 'TEACHER') {
+      updateTeacher(req.studentId, updates);
+    } else {
+      updateUser(req.studentId, updates);
+    }
     setProfileChangeRequests((prev) =>
       prev.map((r) => {
         if (r.id !== requestId) return r;
@@ -5811,7 +7086,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: 'APPROVED',
           reviewedBy: currentUser.name,
           reviewedAt: new Date().toISOString(),
-          reviewComment: comment || 'Validé par le service Scolarité.',
+          reviewComment: comment || 'Validé par l’administration.',
         };
         syncDocToFirestore('profileChangeRequests', updated);
         return updated;
@@ -5819,9 +7094,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     triggerNotification({
       recipientId: req.studentId,
-      recipientRole: 'STUDENT',
+      recipientRole: targetUser?.role || 'STUDENT',
       title: '✅ Rectification administrative approuvée',
-      message: `Votre demande de modification d'état civil a été validée par ${currentUser.name}.`,
+      message: `Votre demande de modification officielle a été validée par ${currentUser.name}.`,
       type: 'SUCCESS',
     });
     logAudit('VALIDATION_RECTIFICATION_ETAT_CIVIL', `Approbation de la demande ${requestId} pour ${req.studentName}`);
@@ -5830,6 +7105,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const rejectProfileChangeRequest = (requestId: string, comment?: string) => {
     const req = profileChangeRequests.find((r) => r.id === requestId);
     if (!req) return;
+    const targetUser = users.find((u) => u.id === req.studentId);
     setProfileChangeRequests((prev) =>
       prev.map((r) => {
         if (r.id !== requestId) return r;
@@ -5846,7 +7122,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     triggerNotification({
       recipientId: req.studentId,
-      recipientRole: 'STUDENT',
+      recipientRole: targetUser?.role || 'STUDENT',
       title: '⚠️ Demande de rectification refusée',
       message: `Motif : ${comment || 'Veuillez présenter un justificatif officiel au secrétariat.'}`,
       type: 'WARNING',
@@ -5955,19 +7231,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Selective student export: Teacher export strictly excludes telephone & private data (RG-17)
   const getSelectiveStudentExportData = (role: 'TEACHER' | 'ADMIN', groupId?: string) => {
-    const studentUsers = users.filter((u) => u.role === 'STUDENT' && (!groupId || u.groupId === groupId));
+    const studentUsers = users.filter((u) => {
+      if (u.role !== 'STUDENT') return false;
+      if (!groupId) return true;
+      const activeInsc = inscriptions.find(
+        (i) => i.studentId === u.id && i.academicYear === selectedAcademicYear && i.status !== 'REJECTED'
+      );
+      const effectiveGroupId = activeInsc ? activeInsc.groupId : u.groupId;
+      if (groupId === 'UNASSIGNED') return !effectiveGroupId;
+      return effectiveGroupId === groupId;
+    });
 
     if (role === 'TEACHER') {
       const headers = ['Matricule', 'Nom & Prénom', 'Filière', 'Niveau', 'Groupe', 'Statut Compte'];
       const rows = studentUsers.map((st) => {
-        const group = groups.find((g) => g.id === st.groupId);
-        const filiere = filieres.find((f) => f.id === group?.filiereId);
+        const activeInsc = inscriptions.find(
+          (i) => i.studentId === st.id && i.academicYear === selectedAcademicYear && i.status !== 'REJECTED'
+        );
+        const effectiveGroupId = activeInsc ? activeInsc.groupId : st.groupId;
+        const group = groups.find((g) => g.id === effectiveGroupId);
+        const filiere = filieres.find((f) => f.id === (activeInsc?.filiereId || group?.filiereId || st.filiereId));
         return [
           st.matricule || 'N/A',
           st.name,
-          filiere?.code || 'INFO',
-          group?.level || 'L1',
-          group?.code || 'L1-INFO-A',
+          filiere?.code || 'Non affecté',
+          activeInsc?.level || group?.level || st.currentLevel || 'N/A',
+          group?.code || 'Sans groupe',
           st.isActive ? 'Actif' : 'Désactivé',
         ];
       });
@@ -5990,8 +7279,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'Solde Restant (Ar)',
     ];
     const rows = studentUsers.map((st) => {
-      const group = groups.find((g) => g.id === st.groupId);
-      const filiere = filieres.find((f) => f.id === group?.filiereId);
+      const activeInsc = inscriptions.find(
+        (i) => i.studentId === st.id && i.academicYear === selectedAcademicYear && i.status !== 'REJECTED'
+      );
+      const effectiveGroupId = activeInsc ? activeInsc.groupId : st.groupId;
+      const group = groups.find((g) => g.id === effectiveGroupId);
+      const filiere = filieres.find((f) => f.id === (activeInsc?.filiereId || group?.filiereId || st.filiereId));
       const fin = getStudentFinancialSummary(st.id);
       return [
         st.matricule || 'N/A',
@@ -5999,9 +7292,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         st.birthDate || 'N/A',
         st.email,
         st.phone || 'Non renseigné',
-        filiere?.code || 'INFO',
-        group?.level || 'L1',
-        group?.code || 'L1-INFO-A',
+        filiere?.code || 'Non affecté',
+        activeInsc?.level || group?.level || st.currentLevel || 'N/A',
+        group?.code || 'Sans groupe',
         st.isActive ? 'Actif' : 'Désactivé',
         fin.totalFeesAr.toLocaleString() + ' Ar',
         fin.totalPaidAr.toLocaleString() + ' Ar',
@@ -6478,6 +7771,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rescheduleSession,
         cancelSession,
         validateSession,
+        requestCorrection,
+        publishSessionReport,
+        confirmSessionRealizedWithoutReport,
+        reportSessionAnomaly,
+        resolveSessionAnomaly,
+        sessionPrivateReports,
+        getSessionPrivateReport,
         deleteSession,
         purgeAllSessions,
         purgeWeekSessions,
@@ -6487,6 +7787,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         changePassword,
         toggleUserStatus,
         createStudent,
+        generateNextStudentMatricule,
         importStudents,
         toggleGoogleCalendarLink,
         addCourse,
@@ -6541,6 +7842,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteEc,
         duplicateMaquette,
         inscribeStudent,
+        updateEnrollment,
         grades,
         saveGrade,
         publishGrades,

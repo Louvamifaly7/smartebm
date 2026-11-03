@@ -9,8 +9,9 @@ import {
   query,
   orderBy,
   limit,
-  endBefore,
+  startAfter,
   writeBatch,
+  serverTimestamp,
 } from 'firebase/firestore';
 import {
   ref as rtdbRef,
@@ -72,9 +73,7 @@ function getDeviceLabel(): string {
 }
 
 function canUseFirestoreLive(): boolean {
-  const currentUser = auth.currentUser;
-  const hasRealUser = Boolean(currentUser && !currentUser.isAnonymous);
-  return hasRealUser || isCloudBridgeActive();
+  return Boolean(db);
 }
 
 // BroadcastChannel for instant zero-latency cross-tab synchronization on the same computer
@@ -939,10 +938,22 @@ export async function syncConversationToFirestore(conv: ChatConversation): Promi
   if (!canUseFirestoreLive()) return;
   try {
     await setDoc(doc(db, 'conversations', conv.id), conv, { merge: true });
-  } catch {
-    // Offline fallback handled via local storage
+  } catch (error) {
+    console.error('[chat] syncConversationToFirestore error:', error);
   }
 }
+
+export const msgTime = (m: any) => {
+  const server = m.serverCreatedAt?.toMillis?.();
+  if (server) return server;
+  const t = Date.parse(m.createdAt);
+  return Number.isNaN(t) ? 0 : t;
+};
+
+export const compareMessages = (
+  a: ChatConversationMessage & { serverCreatedAt?: any },
+  b: ChatConversationMessage & { serverCreatedAt?: any }
+) => msgTime(a) - msgTime(b) || (a.id || '').localeCompare(b.id || '');
 
 export async function saveMessageToSubcollection(
   conv: ChatConversation,
@@ -955,16 +966,17 @@ export async function saveMessageToSubcollection(
     const convRef = doc(db, 'conversations', conv.id);
     const msgRef = doc(db, 'conversations', conv.id, 'messages', message.id);
     batch.set(convRef, conv, { merge: true });
-    batch.set(msgRef, message, { merge: true });
+    batch.set(msgRef, { ...message, serverCreatedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
-  } catch {
-    // Offline fallback
+  } catch (error) {
+    console.error('[chat] saveMessageToSubcollection error:', error);
+    throw error;
   }
 }
 
 /**
  * Fetches a paginated slice of messages from `conversations/{conversationId}/messages`
- * ordered chronologically (latest `pageSize` messages, or older messages before `beforeCreatedAt`).
+ * ordered chronologically (latest `pageSize` messages, or older messages after `beforeCreatedAt`).
  */
 export async function fetchPaginatedConversationMessages(
   conversationId: string,
@@ -975,12 +987,13 @@ export async function fetchPaginatedConversationMessages(
   try {
     const msgsCol = collection(db, 'conversations', conversationId, 'messages');
     const q = beforeCreatedAt
-      ? query(msgsCol, orderBy('createdAt', 'desc'), endBefore(beforeCreatedAt), limit(pageSize))
+      ? query(msgsCol, orderBy('createdAt', 'desc'), startAfter(beforeCreatedAt), limit(pageSize))
       : query(msgsCol, orderBy('createdAt', 'desc'), limit(pageSize));
     const snap = await getDocs(q);
-    const list = snap.docs.map((d) => d.data() as ChatConversationMessage);
-    return list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  } catch {
+    const list = snap.docs.map((d) => d.data({ serverTimestamps: 'estimate' }) as ChatConversationMessage);
+    return list.sort(compareMessages);
+  } catch (error) {
+    console.error('[chat] fetchPaginatedConversationMessages error:', error);
     return [];
   }
 }
@@ -1002,13 +1015,16 @@ export function subscribeToConversationMessagesSubcollection(
       q,
       (snap) => {
         const list = snap.docs
-          .map((d) => d.data() as ChatConversationMessage)
-          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+          .map((d) => d.data({ serverTimestamps: 'estimate' }) as ChatConversationMessage)
+          .sort(compareMessages);
         onUpdate(list);
       },
-      () => {}
+      (error) => {
+        console.error('[chat] subscribeToConversationMessagesSubcollection error:', error);
+      }
     );
-  } catch {
+  } catch (error) {
+    console.error('[chat] subscribeToConversationMessagesSubcollection init error:', error);
     return () => {};
   }
 }

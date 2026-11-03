@@ -415,8 +415,8 @@ export const runSecurityAndSyncVerificationSuite = (): {
     passed:
       !deletedResurrected &&
       winnerSession?.roomId === 'room-new-cloud' &&
-      ALL_SYNC_COLLECTIONS.length === 29,
-    details: `Les 29 collections sont synchronisées en temps réel ; les suppressions (tombstones) et horodatages empêchent tout retour d'anciennes données.`,
+      ALL_SYNC_COLLECTIONS.length === 30,
+    details: `Les 30 collections sont synchronisées en temps réel ; les suppressions (tombstones) et horodatages empêchent tout retour d'anciennes données.`,
   });
 
   return {

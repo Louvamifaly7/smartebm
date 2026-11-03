@@ -83,7 +83,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       tabId === 'VOLUMES' ||
       tabId === 'DATA_MANAGEMENT' ||
       tabId === 'AUDIT' ||
-      tabId === 'EXPORT_STUDENTS'
+      tabId === 'EXPORT_STUDENTS' ||
+      tabId === 'MY_COURSES'
     ) {
       return true;
     }
@@ -124,6 +125,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label: currentUser?.role === 'STUDENT' ? 'Mon emploi du temps' : 'Emplois du temps',
           title: 'Planification hebdomadaire, détection de conflits et export PDF/iCal',
           icon: Calendar,
+        },
+        {
+          id: 'MY_COURSES',
+          label:
+            currentUser?.role === 'STUDENT'
+              ? 'Suivi des cours'
+              : currentUser?.role === 'TEACHER'
+              ? 'Mes enseignements'
+              : currentUser?.role === 'SCOLARITE' || currentUser?.role === 'SCHEDULER'
+              ? 'Suivi des enseignements'
+              : 'Pilotage des cours',
+          title: 'Suivi des cours, registres des séances, comptes rendus et indicateurs',
+          icon: BookOpen,
         },
         {
           id: 'ROOMS',

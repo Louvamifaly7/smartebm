@@ -33,7 +33,7 @@ import {
   PresenceStatus,
   User,
 } from '../types';
-import { canUserPublishOfficialAnnouncement } from '../services/chatRealtimeService';
+import { canUserPublishOfficialAnnouncement, compareMessages } from '../services/chatRealtimeService';
 import { showAppToast } from './ToastAndConfirmCenter';
 
 const PRESENCE_META: Record<
@@ -142,9 +142,13 @@ export const MessengerLiveChat: React.FC = () => {
     (c) => c.id === activeChatConversationId
   );
 
-  const activeMessages: ChatConversationMessage[] = activeChatConversationId
-    ? chatMessagesByConv[activeChatConversationId] || []
-    : [];
+  const activeMessages: ChatConversationMessage[] = React.useMemo(
+    () =>
+      activeChatConversationId
+        ? [...(chatMessagesByConv[activeChatConversationId] || [])].sort(compareMessages)
+        : [],
+    [chatMessagesByConv, activeChatConversationId]
+  );
 
   const activeTypingEntries = activeChatConversationId
     ? typingIndicatorsByConv[activeChatConversationId] || []

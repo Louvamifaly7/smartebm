@@ -20,13 +20,20 @@ interface StudentCardModalProps {
 }
 
 export const StudentCardModal: React.FC<StudentCardModalProps> = ({ student: initialStudent, onClose }) => {
-  const { users, groups, filieres, parcours, selectedAcademicYear, reissueStudentCard, currentUser } = useApp();
+  const { users, groups, filieres, parcours, inscriptions, selectedAcademicYear, reissueStudentCard, currentUser } = useApp();
 
   // Always read latest student state from context so reissuance updates immediately
   const student = users.find((u) => u.id === initialStudent.id) || initialStudent;
-  const group = groups.find((g) => g.id === student.groupId);
-  const filiere = filieres.find((f) => f.id === group?.filiereId);
-  const studentParcours = parcours.find((p) => p.id === student.parcoursId);
+  const activeInsc =
+    inscriptions.find((i) => i.studentId === student.id && i.academicYear === selectedAcademicYear && i.status !== 'REJECTED') ||
+    inscriptions.filter((i) => i.studentId === student.id && i.status !== 'REJECTED').sort((a, b) => b.academicYear.localeCompare(a.academicYear))[0];
+  const effectiveGroupId = activeInsc ? activeInsc.groupId : student.groupId;
+  const group = groups.find((g) => g.id === effectiveGroupId);
+  const effectiveFiliereId = activeInsc?.filiereId || group?.filiereId || student.filiereId;
+  const filiere = filieres.find((f) => f.id === effectiveFiliereId);
+  const effectiveParcoursId = activeInsc?.parcoursId || group?.parcoursId || student.parcoursId;
+  const studentParcours = parcours.find((p) => p.id === effectiveParcoursId);
+  const effectiveLevel = activeInsc?.level || group?.level || student.currentLevel || 'L1';
 
   const [reissueReason, setReissueReason] = useState('Carte perdue / endommagée');
   const [showReissueConfirm, setShowReissueConfirm] = useState(false);
@@ -88,8 +95,8 @@ export const StudentCardModal: React.FC<StudentCardModalProps> = ({ student: ini
               <h2>${escapeHtml(student.name)}</h2>
               <p><strong>Matricule :</strong> ${escapeHtml(student.matricule)}</p>
               <p><strong>Domaine :</strong> ${escapeHtml(filiere?.domaine || 'Sciences & Technologies')}</p>
-              <p><strong>Mention :</strong> ${escapeHtml(filiere?.name || 'Informatique')}</p>
-              <p><strong>Parcours / Niveau :</strong> ${escapeHtml(studentParcours?.code || 'Tronc Commun')} • ${escapeHtml(group?.level || 'L1')} (${escapeHtml(group?.code || '')})</p>
+              <p><strong>Mention :</strong> ${escapeHtml(filiere?.name || 'Non affectée')}</p>
+              <p><strong>Parcours / Niveau :</strong> ${escapeHtml(studentParcours?.code || 'Tronc Commun')} • ${escapeHtml(effectiveLevel)} (${escapeHtml(group?.code || 'Sans groupe')})</p>
             </div>
           </div>
           <div class="codes">

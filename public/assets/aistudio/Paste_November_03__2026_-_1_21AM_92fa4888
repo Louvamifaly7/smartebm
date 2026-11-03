@@ -1,0 +1,638 @@
+CAHIER DES CHARGES FONCTIONNEL ET TECHNIQUE
+Refonte complète du module « Gestion académique → Étudiants »
+EBM INSTITUTE
+Document de spécifications
+Projet : Refonte du cycle de vie administratif et académique des étudiants.
+Périmètre : Création des dossiers, inscriptions, réinscriptions, affectations aux groupes, tableau de bord, listes et exportations.
+Application existante : React 19 · TypeScript · Firebase · Cloud Firestore.
+Objectif : Simplifier le travail de la scolarité et garantir la cohérence des données académiques.
+PARTIE I — VISION GÉNÉRALE ET ORGANISATION
+1. Objectifs du projet
+La nouvelle version doit permettre de gérer tout le parcours administratif d'un étudiant depuis son entrée à EBM jusqu'à la fin de son cursus.
+Le système doit respecter quatre principes fondamentaux :
+1. Un étudiant possède une fiche personnelle unique et permanente.  
+2. Chaque année académique donne lieu à une inscription distincte.  
+3. L'affectation à un groupe est une opération indépendante de l'inscription.  
+4. Toutes les opérations doivent conserver un historique consultable.  
+Il faut notamment supprimer les doubles saisies et éviter de recréer une fiche personnelle lorsqu'un étudiant revient pour une nouvelle année académique.
+2. Nouvelle architecture du module
+Le menu principal doit comporter cinq espaces :
+Espace	Fonction
+1. Tableau de bord	Pilotage général des inscriptions
+2. Répertoire des étudiants	Création et gestion des fiches personnelles
+3. Inscriptions et réinscriptions	Gestion des inscriptions annuelles
+4. Affectation aux groupes	Répartition pédagogique
+5. Listes et exportations	Production de documents personnalisés
+Ces cinq espaces doivent être reliés entre eux, sans dupliquer les données.
+3. Parcours général d'un étudiant
+1. RÉPERTOIRE ÉTUDIANT
+L'étudiant existe déjà ? Récupérer sa fiche. Sinon, créer une nouvelle fiche personnelle.
+
+2. INSCRIPTION ACADÉMIQUE
+Définir l'année, la filière, le parcours et le niveau. Le groupe reste facultatif.
+
+3. AFFECTATION PÉDAGOGIQUE
+Affecter ultérieurement l'étudiant à un groupe compatible.
+
+4. SUIVI ADMINISTRATIF
+Consulter son historique, ses inscriptions, ses groupes et ses informations administratives.
+Important : les quatre opérations ne doivent pas être confondues. Un étudiant peut avoir une fiche créée sans être encore inscrit, être inscrit sans groupe ou être affecté à un groupe après plusieurs jours.
+PARTIE II — FONCTIONNALITÉS DÉTAILLÉES
+4. Espace 1 : Répertoire général des étudiants
+C'est la porte d'entrée du système.
+4.1. Création d'une nouvelle fiche étudiant
+L'administration doit pouvoir créer une fiche personnelle organisée en rubriques.
+Rubrique	Champs
+Identification	Matricule, nom, prénom(s), sexe
+État civil	Date de naissance, lieu de naissance, nationalité
+Identité officielle	CIN, date et lieu de délivrance
+Coordonnées	Téléphone principal, secondaire, email
+Adresse	Lot, quartier, commune, district, région
+Responsable	Nom, prénom, relation, téléphone, email
+Parcours antérieur	Dernier diplôme, établissement, année d'obtention
+Documents	Photo, CIN, acte de naissance, diplôme, relevés de notes
+Le formulaire doit être organisé en plusieurs onglets ou étapes pour éviter une longue page difficile à remplir.
+4.2. Génération du matricule
+Le système doit générer automatiquement un matricule unique.
+Exemple illustratif :
+EBM-2026-0001
+Règles :
+* Le matricule est attribué une seule fois.  
+* Il ne change pas lors des réinscriptions.  
+* Il ne change pas lors d'un changement de filière ou de groupe.  
+* Il ne doit jamais être réattribué à un autre étudiant.  
+* L'administration peut rechercher un étudiant avec ce matricule.  
+4.3. Recherche des étudiants existants
+Avant toute création, afficher un moteur de recherche instantané.
+Critères :
+* Matricule.  
+* Nom.  
+* Prénom.  
+* CIN.  
+* Téléphone.  
+* Email.  
+La recherche doit fonctionner avec une partie du nom ou du matricule.
+En cas de correspondance, présenter une petite fiche de résultat avec :
+* Photo si disponible.  
+* Nom et prénom.  
+* Matricule.  
+* Dernière année d'inscription.  
+* Dernière filière.  
+* Dernier niveau.  
+* Statut du dossier.  
+Actions disponibles :
+* Consulter la fiche.  
+* Modifier la fiche selon les permissions.  
+* Consulter l'historique.  
+* Sélectionner l'étudiant pour une inscription.  
+4.4. Détection des doublons
+Avant la création d'une nouvelle fiche, effectuer des vérifications sur :
+* CIN.  
+* Nom et prénom.  
+* Date de naissance.  
+* Téléphone.  
+* Email.  
+Prévoir trois résultats :
+* Aucun doublon probable : autoriser la création.  
+* Correspondance possible : demander une vérification.  
+* Correspondance certaine sur un identifiant unique : empêcher la création d'un doublon sans procédure exceptionnelle autorisée.  
+Deux personnes ayant le même nom ne doivent jamais être automatiquement considérées comme une seule personne.
+4.5. Historique personnel et académique
+Chaque fiche doit posséder les onglets suivants :
+1. Informations personnelles.  
+2. Informations de contact.  
+3. Responsables et contacts d'urgence.  
+4. Documents administratifs.  
+5. Historique des inscriptions.  
+6. Historique des affectations.  
+7. Historique des modifications administratives.  
+L'onglet « Historique académique » est particulièrement important : il doit afficher toutes les années de présence de l'étudiant à EBM.
+5. Espace 2 : Inscriptions et réinscriptions
+Fonctionnalité centrale
+L'inscription doit être effectuée uniquement après identification ou création de la fiche personnelle.
+5.1. Première fenêtre : Identification
+Présenter deux choix :
+* Rechercher un étudiant existant.  
+* Ajouter un nouvel étudiant.  
+Pour un étudiant existant, charger automatiquement sa fiche.
+Pour un nouvel étudiant, ouvrir le formulaire de création, puis poursuivre directement vers l'inscription académique après enregistrement.
+Ne pas obliger l'administration à quitter le processus pour retrouver la fiche créée.
+5.2. Deuxième fenêtre : Définition de l'inscription
+Afficher les paramètres académiques :
+Champ	Obligatoire
+Année académique	Oui
+Mention / Filière	Oui
+Parcours	Selon la maquette
+Niveau	Oui
+Type d'inscription	Oui
+Groupe	Non
+Régime de formation	Selon le programme
+Mode de formation	Selon le programme
+Le groupe ne doit jamais être exigé pour valider une inscription.
+5.3. Types d'inscription
+Prévoir les catégories suivantes :
+* Première inscription.  
+* Admission sur dossier.  
+* Admission par concours, si applicable.  
+* Admission par équivalence.  
+* Réinscription annuelle.  
+* Réinscription après interruption.  
+* Transfert.  
+* Réorientation.  
+Les types doivent être cohérents avec les catégories déjà présentes dans l'application. Ne pas créer de nouvelles valeurs redondantes.
+5.4. Réinscription intelligente
+Pour un ancien étudiant :
+1. Rechercher sa fiche personnelle.  
+2. Charger son historique académique.  
+3. Identifier sa dernière inscription.  
+4. Vérifier le résultat de son année précédente.  
+5. Déterminer son éligibilité au niveau suivant, au redoublement ou à une autre situation.  
+6. Proposer les choix académiques compatibles.  
+7. Valider la nouvelle inscription.  
+Exemple :
+Année	Niveau	Résultat
+2025-2026	L1	Année validée
+2026-2027	L2	Réinscription proposée
+Attention : la progression ne doit pas être automatique si les résultats ne sont pas encore officiellement validés.
+5.5. Inscription collective intelligente
+Supprimer le principe actuel consistant à saisir manuellement toutes les informations personnelles des étudiants dans un tableau.
+Le nouveau fonctionnement :
+* Sélectionner l'année académique.  
+* Sélectionner la filière.  
+* Sélectionner le parcours.  
+* Sélectionner le niveau.  
+* Choisir le type d'inscription.  
+* Afficher les étudiants éligibles.  
+* Sélectionner les étudiants.  
+* Valider collectivement.  
+Le tableau doit contenir :
+Colonne	Contenu
+Sélection	Case à cocher
+Matricule	Identifiant unique
+Étudiant	Nom et prénom
+Dernière inscription	Année et niveau
+Situation académique	Passant, redoublant, nouveau…
+Dossier	Complet ou incomplet
+Éligibilité	Autorisé, avertissement ou bloqué
+Action	Consulter la fiche
+La recherche instantanée doit permettre d'ajouter un étudiant existant à la sélection.
+Il faut distinguer trois états :
+* Éligible : sélection autorisée.  
+* À vérifier : sélection possible uniquement après contrôle ou autorisation.  
+* Bloqué : sélection interdite.  
+5.6. Validation finale
+Avant l'enregistrement, afficher une page récapitulative :
+* Année académique.  
+* Filière.  
+* Parcours.  
+* Niveau.  
+* Nombre d'étudiants sélectionnés.  
+* Nombre de dossiers incomplets.  
+* Nombre de conflits.  
+* Liste détaillée des étudiants.  
+L'administrateur confirme l'opération.
+Le système enregistre uniquement les inscriptions autorisées et présente un rapport de traitement.
+6. Espace 3 : Affectation aux groupes
+Cette fonctionnalité doit être totalement indépendante de l'inscription.
+6.1. Tableau de bord des affectations
+Afficher :
+* Total des étudiants inscrits.  
+* Total des étudiants affectés.  
+* Total des étudiants sans groupe.  
+* Nombre de groupes disponibles.  
+* Nombre de groupes complets.  
+* Nombre de places restantes.  
+6.2. Filtres académiques
+Les filtres doivent être dépendants les uns des autres :
+1. Année académique.  
+2. Mention / Filière.  
+3. Parcours.  
+4. Niveau.  
+5. Groupe de destination.  
+Le choix d'une filière doit limiter les parcours disponibles. Le choix d'un niveau doit limiter les groupes proposés.
+6.3. Liste des étudiants sans groupe
+Afficher uniquement les étudiants :
+* Possédant une inscription confirmée.  
+* Inscrits dans l'année académique sélectionnée.  
+* N'ayant aucune affectation active.  
+* Correspondant aux filtres académiques.  
+Permettre :
+* La recherche instantanée.  
+* La sélection individuelle.  
+* La sélection multiple.  
+* La sélection de tous les étudiants visibles.  
+* La consultation des fiches personnelles.  
+6.4. Affectation
+L'administrateur choisit un groupe de destination.
+Avant confirmation, afficher :
+* Code du groupe.  
+* Filière.  
+* Parcours.  
+* Niveau.  
+* Année académique.  
+* Effectif actuel.  
+* Capacité maximale.  
+* Places restantes.  
+Exemple :
+Indicateur	Valeur
+Groupe	L1-INFO-A
+Effectif actuel	35
+Capacité maximale	45
+Places disponibles	10
+Étudiants à affecter	8
+Affectation possible
+Si le nombre d'étudiants dépasse les places disponibles, bloquer l'opération ou demander une dérogation explicite à un administrateur habilité.
+6.5. Changement de groupe
+Permettre de transférer un étudiant d'un groupe vers un autre.
+Exiger :
+* Groupe d'origine.  
+* Groupe de destination.  
+* Motif du changement.  
+* Administrateur responsable.  
+* Date de l'opération.  
+Conserver l'ancienne affectation dans l'historique.
+Le changement de groupe ne doit pas créer une nouvelle inscription annuelle.
+7. Espace 4 : Tableau de bord général
+Le tableau de bord doit être la première page du module.
+Il doit être dynamique et actualisé à partir des données réelles.
+7.1. Indicateurs principaux
+Prévoir les cartes suivantes :
+* Total des étudiants inscrits pour l'année.  
+* Nouvelles inscriptions.  
+* Réinscriptions.  
+* Inscriptions en attente.  
+* Inscriptions confirmées.  
+* Inscriptions suspendues.  
+* Étudiants sans groupe.  
+* Étudiants affectés.  
+* Dossiers administratifs incomplets.  
+Les chiffres doivent être calculés à partir des inscriptions annuelles, et non du nombre total de profils étudiants.
+7.2. Graphiques
+Prévoir :
+* Inscriptions par filière.  
+* Inscriptions par niveau.  
+* Inscriptions par parcours.  
+* Inscriptions par groupe.  
+* Nouvelles inscriptions contre réinscriptions.  
+* Évolution mensuelle des inscriptions.  
+* Comparaison des années académiques.  
+7.3. Alertes administratives
+Afficher les alertes suivantes :
+* Étudiants inscrits mais non affectés.  
+* Dossiers incomplets.  
+* Inscriptions en attente de validation.  
+* Groupes ayant atteint leur capacité.  
+* Groupes presque complets.  
+* Étudiants présentant une situation académique à régulariser.  
+Chaque alerte doit être cliquable et ouvrir la liste correspondante.
+7.4. Filtres du tableau de bord
+* Année académique.  
+* Mention / Filière.  
+* Parcours.  
+* Niveau.  
+* Groupe.  
+* Statut.  
+Le changement d'année académique doit actualiser tous les indicateurs et graphiques.
+8. Espace 5 : Listes et exportations personnalisées
+Créer un générateur de listes administratives.
+8.1. Filtres
+* Année académique.  
+* Mention / Filière.  
+* Parcours.  
+* Niveau.  
+* Groupe.  
+* Type d'inscription.  
+* Statut d'inscription.  
+* Situation académique.  
+* Affecté / Non affecté.  
+* Dossier complet / Incomplet.  
+Possibilité de combiner plusieurs filtres.
+8.2. Colonnes personnalisables
+L'administrateur peut choisir les informations à inclure :
+* Matricule.  
+* Nom.  
+* Prénom(s).  
+* Sexe.  
+* Date de naissance.  
+* Lieu de naissance.  
+* CIN.  
+* Téléphone.  
+* Email.  
+* Adresse.  
+* Responsable.  
+* Filière.  
+* Parcours.  
+* Niveau.  
+* Groupe.  
+* Année académique.  
+* Type d'inscription.  
+* Statut.  
+* Date d'inscription.  
+8.3. Prévisualisation
+Avant l'exportation, afficher un tableau contenant exactement les colonnes et les étudiants qui seront exportés.
+Permettre de :
+* Réorganiser les colonnes.  
+* Trier les résultats.  
+* Choisir les étudiants à inclure.  
+* Modifier les filtres.  
+* Vérifier le nombre de résultats.  
+8.4. Formats
+* Excel .xlsx.  
+* CSV UTF-8.  
+* PDF.  
+* Impression.  
+Le PDF doit pouvoir comporter le logo EBM, le titre du document, l'année académique, la filière et la date de génération.
+8.5. Modèles de listes
+Permettre de sauvegarder des configurations personnalisées.
+Exemples :
+* Liste officielle de présence.  
+* Liste administrative avec contacts.  
+* Liste pédagogique pour enseignants.  
+* Liste des étudiants sans groupe.  
+* Liste des étudiants par promotion.  
+* Liste des dossiers incomplets.  
+Un modèle sauvegarde les filtres et les colonnes, mais les données sont recalculées au moment de chaque utilisation.
+Les données sensibles ne doivent être exportées que par les utilisateurs autorisés.
+PARTIE III — ARCHITECTURE TECHNIQUE ET INTÉGRATION
+9. Architecture actuelle à préserver
+L'analyse du ZIP fourni montre que plusieurs fonctionnalités existent déjà. Il faut les réorganiser plutôt que développer un deuxième système parallèle.
+Fichier existant	Travail à effectuer
+src/components/StudentManagement.tsx	Refonte de l'interface et séparation des fonctionnalités
+src/types/index.ts	Vérification et évolution des modèles de données
+src/context/AppContext.tsx	Centralisation des opérations d'inscription et d'affectation
+src/components/StudentExportModal.tsx	Évolution vers un générateur de listes personnalisées
+src/components/StudentCardModal.tsx	Réutilisation et amélioration de la fiche étudiant
+firestore.rules	Vérification des permissions et de la sécurité
+Quelques particularités techniques sont importantes :
+* L'application utilise actuellement le modèle User avec le rôle STUDENT pour représenter les profils étudiants.  
+* Le modèle StudentInscription existe déjà et contient les informations annuelles.  
+* Son champ groupId est de type chaîne de caractères et accepte actuellement une valeur vide.  
+* La fonction createStudent existe déjà.  
+* La fonction importStudents permet déjà l'importation collective.  
+* La fonction StudentExportModal permet actuellement un export sélectif CSV, principalement basé sur le groupe.  
+* Le traitement actuel de l'inscription collective exige encore la sélection d'un groupe dans certaines validations.  
+Il faut donc corriger cette dépendance au groupe, sans casser les autres modules.
+10. Architecture des données recommandée
+Conserver les collections existantes lorsque cela est possible.
+users
+Fiches personnelles permanentes des étudiants et comptes utilisateurs.
+
+inscriptions
+Une inscription par étudiant et année académique, avec filière, parcours, niveau et statut.
+
+groups
+Groupes pédagogiques, capacités et caractéristiques académiques.
+
+groupAssignments (à étudier)
+Historique des affectations et changements de groupe, si cet historique ne peut pas être représenté proprement dans le modèle existant.
+
+auditLogs
+Traçabilité des créations, validations, modifications et transferts.
+10.1. Modèle Student / User
+Conserver l'identifiant permanent du profil étudiant.
+Ne pas créer un nouveau profil à chaque inscription.
+Les informations personnelles restent dans le profil, tandis que les informations académiques annuelles restent dans StudentInscription.
+10.2. Modèle StudentInscription
+Conserver les champs existants :
+* id  
+* studentId  
+* studentUid  
+* academicYear  
+* filiereId  
+* parcoursId  
+* level  
+* groupId  
+* inscriptionType  
+* academicStatus  
+* inscriptionDate  
+* status  
+* agentId  
+* agentName  
+* createdAt  
+* validatedAt  
+* history  
+Prévoir également, si nécessaire, les champs de suivi :
+* updatedAt  
+* updatedBy  
+* validationReason  
+* registrationReference  
+Règle impérative : groupId doit être facultatif sur le plan fonctionnel. Une valeur vide ou absente signifie que l'étudiant est inscrit mais non affecté.
+10.3. Unicité des inscriptions
+Créer une clé de référence unique fondée sur :
+studentId + academicYear
+Cela permet d'empêcher deux inscriptions actives pour le même étudiant et la même année.
+Attention : une vérification dans l'interface ne suffit pas. Il faut également protéger l'écriture dans Firestore contre les opérations concurrentes, en utilisant une transaction ou un document d'identifiant déterministe et des contrôles adaptés aux règles de sécurité.
+Toute exception doit être explicitement autorisée et auditée.
+10.4. Historique des affectations
+Chaque changement de groupe doit conserver :
+* Identifiant de l'inscription.  
+* Ancien groupe.  
+* Nouveau groupe.  
+* Date du changement.  
+* Motif.  
+* Auteur de l'opération.  
+Il ne faut pas écraser l'historique précédent.
+11. Intégration avec les autres modules EBM
+C'est une exigence majeure.
+La refonte ne doit pas perturber les fonctionnalités existantes.
+Module	Relation à préserver
+Emplois du temps	Les groupes déterminent les étudiants concernés par les séances
+Présence / QR Code	L'étudiant doit être reconnu dans son groupe pédagogique
+Notes et délibérations	Les résultats doivent être liés à la bonne inscription et à la bonne année
+Finances	Les frais doivent rester associés au dossier et à l'année concernée
+Communication	Les messages collectifs doivent cibler les groupes corrects
+Espace étudiant	L'étudiant doit consulter sa situation académique et son groupe lorsqu'il est affecté
+Documents	Les documents administratifs doivent rester liés à la fiche personnelle
+Un étudiant inscrit sans groupe ne doit pas être considéré comme inexistant par les autres modules.
+Les modules nécessitant obligatoirement un groupe doivent afficher un état explicite « En attente d'affectation », plutôt que produire des erreurs silencieuses.
+12. Gestion des droits et permissions
+Prévoir des droits selon les responsabilités.
+Profil	Permissions principales
+ADMIN	Gestion complète
+ADMIN_STAFF	Gestion selon autorisations
+SCOLARITE	Création, inscription, réinscription et affectation
+SCHEDULER	Consultation des groupes et données nécessaires à la planification
+ACADEMIC_HEAD	Consultation et validation pédagogique selon ses attributions
+TEACHER	Consultation des listes pédagogiques autorisées
+STUDENT	Consultation de sa propre fiche et de son historique autorisé
+Les permissions doivent être vérifiées :
+* Dans l'interface.  
+* Dans les fonctions métier.  
+* Dans les règles Firestore.  
+Les utilisateurs ne doivent pas pouvoir contourner les restrictions en appelant directement les opérations de base de données.
+13. UI/UX : nouvelle interface graphique
+Créer une interface moderne avec une navigation claire.
+Principes graphiques :
+* Bleu marine institutionnel EBM.  
+* Fond gris clair.  
+* Cartes blanches.  
+* Boutons bien hiérarchisés.  
+* Icônes cohérentes.  
+* Tableaux compacts et lisibles.  
+* Filtres dynamiques.  
+* Recherche instantanée.  
+* Adaptation ordinateur et tablette.  
+13.1. Navigation
+Les cinq espaces doivent être accessibles depuis des onglets visibles en haut de la page.
+13.2. Formulaires
+Éviter les formulaires trop longs.
+Utiliser :
+* Des étapes successives.  
+* Des sections repliables.  
+* Des validations immédiates.  
+* Des messages d'erreur explicites.  
+* La sauvegarde de brouillon lorsque nécessaire.  
+13.3. Tableaux
+Prévoir :
+* En-têtes fixes.  
+* Recherche rapide.  
+* Tri des colonnes.  
+* Pagination.  
+* Sélection multiple.  
+* Actions groupées.  
+* Indication du nombre de résultats.  
+* Conservation des filtres lors du retour à la liste.  
+13.4. Messages système
+Exemples :
+Inscription réussie
+L'étudiant a été inscrit pour l'année académique 2026-2027.
+
+Affectation en attente
+L'inscription est confirmée, mais aucun groupe pédagogique n'a encore été attribué.
+
+Inscription impossible
+Cet étudiant possède déjà une inscription active pour cette année académique.
+
+PARTIE IV — MIGRATION, TESTS ET LIVRAISON
+14. Migration des données existantes
+Ne pas supprimer les anciennes inscriptions.
+Avant la mise en production :
+1. Sauvegarder les données Firestore.  
+2. Examiner les profils étudiants existants.  
+3. Identifier les inscriptions sans groupe.  
+4. Identifier les profils ayant des informations académiques directement enregistrées dans User.  
+5. Comparer les inscriptions et les groupes.  
+6. Identifier les doublons.  
+7. Vérifier les inscriptions des années précédentes.  
+8. Préparer une migration contrôlée si le nouveau modèle l'exige.  
+9. Vérifier les relations avec les autres modules.  
+La migration doit être réversible autant que possible et faire l'objet d'un rapport.
+15. Scénarios de tests obligatoires
+N°	Test	Résultat attendu
+1	Création d'un nouvel étudiant	Fiche personnelle créée
+2	Recherche d'un ancien étudiant	Fiche existante retrouvée
+3	Création d'un doublon	Alerte ou blocage
+4	Inscription sans groupe	Autorisée
+5	Inscription collective sans groupe	Autorisée
+6	Réinscription sans groupe	Autorisée si éligible
+7	Double inscription annuelle	Bloquée
+8	Passage L1 vers L2	Selon résultat validé
+9	Réinscription en redoublement	Selon décision académique
+10	Affectation ultérieure	Inscription conservée
+11	Affectation à un groupe incompatible	Bloquée
+12	Groupe complet	Blocage ou dérogation autorisée
+13	Changement de groupe	Historique conservé
+14	Export personnalisé	Colonnes et résultats exacts
+15	Tableau de bord	Statistiques exactes
+16	Accès enseignant	Données limitées
+17	Deux administrateurs simultanés	Aucun doublon
+18	Consultation des notes	Données historiques conservées
+19	Présence QR	Étudiant correctement identifié
+20	Retour à une ancienne année	Historique intact
+16. Phases de développement recommandées
+Ne pas tout développer en une seule modification massive.
+Phase	Développement
+1	Répertoire et création des fiches étudiants
+2	Inscription individuelle et réinscription sans groupe
+3	Inscription collective intelligente
+4	Affectation individuelle et collective
+5	Tableau de bord et statistiques
+6	Listes personnalisées et exportations
+7	Migration, sécurité et tests de non-régression
+Chaque phase doit être testée avant de passer à la suivante.
+17. Critères de réception du projet
+Le développement sera considéré comme terminé lorsque :
+* Un nouvel étudiant peut être créé sans inscription automatique.  
+* Un ancien étudiant peut être retrouvé sans création d'un nouveau profil.  
+* Une inscription peut être validée sans groupe.  
+* Une réinscription peut être effectuée sans groupe.  
+* Les inscriptions collectives fonctionnent sans ressaisie des informations personnelles.  
+* Les groupes peuvent être affectés ultérieurement.  
+* Les changements de groupe conservent leur historique.  
+* Les listes personnalisées fonctionnent.  
+* Le tableau de bord affiche les données réelles.  
+* Les droits d'accès sont respectés.  
+* Les autres modules EBM continuent de fonctionner.  
+* Les anciennes données sont conservées.   PARTIE V — CONSIGNES IMPÉRATIVES AU DÉVELOPPEUR OU À L'IA
+
+DIRECTIVES D'IMPLÉMENTATION — PROJET EBM
+Tu dois intervenir sur l'application EBM Institute existante et non créer une nouvelle application.
+1. Analyse préalable obligatoire
+Avant de modifier le code :
+* Examiner l'ensemble du module StudentManagement.
+* Examiner les modèles User, StudentInscription et StudentGroup.
+* Examiner les fonctions createStudent, importStudents et les fonctions de gestion des inscriptions dans AppContext.
+* Examiner StudentExportModal et StudentCardModal.
+* Examiner les règles Firestore.
+* Identifier les dépendances avec les notes, finances, emplois du temps, présences et communication.
+Produire un état des lieux technique des fonctions existantes à conserver, modifier ou remplacer.
+2. Principe de développement
+Réutiliser les données et fonctions existantes.
+Ne pas créer un deuxième système de gestion des étudiants.
+Ne pas dupliquer les fiches personnelles.
+Ne pas supprimer les anciennes inscriptions.
+Ne pas modifier inutilement les autres modules.
+3. Architecture fonctionnelle
+Mettre en place les cinq espaces :
+1. Tableau de bord.
+2. Répertoire des étudiants.
+3. Inscriptions et réinscriptions.
+4. Affectation aux groupes.
+5. Listes et exportations.
+Chaque espace doit posséder une responsabilité clairement définie.
+4. Règle essentielle du processus
+L'ordre de fonctionnement doit être :
+IDENTIFICATION OU CRÉATION DE LA FICHE ÉTUDIANT → INSCRIPTION OU RÉINSCRIPTION ACADÉMIQUE → AFFECTATION AU GROUPE.
+La fiche personnelle est unique et permanente.
+L'inscription est annuelle.
+L'affectation au groupe est indépendante.
+Un étudiant inscrit sans groupe doit être considéré comme régulièrement inscrit.
+5. Interdictions
+* Ne pas rendre le groupe obligatoire dans les inscriptions.
+* Ne pas créer un nouveau profil pour un ancien étudiant.
+* Ne pas créer une deuxième inscription active pour la même année.
+* Ne pas modifier l'année académique d'une ancienne inscription pour simuler une réinscription.
+* Ne pas supprimer les anciennes affectations.
+* Ne pas écraser les résultats académiques antérieurs.
+* Ne pas produire de statistiques fictives.
+* Ne pas contourner les permissions Firestore.
+* Ne pas supprimer une fonctionnalité existante sans analyse de ses dépendances.
+6. Qualité technique
+Toutes les opérations sensibles doivent être contrôlées côté serveur ou dans une architecture de données sécurisée.
+Prévoir les transactions nécessaires, les protections contre les doubles soumissions et les opérations simultanées.
+Les inscriptions collectives doivent fournir un rapport précis des opérations réussies et rejetées.
+Les opérations administratives doivent être journalisées.
+7. Déploiement
+Développer progressivement.
+Après chaque phase :
+* Vérifier TypeScript.
+* Vérifier la compilation.
+* Tester les fonctionnalités concernées.
+* Tester les relations avec les modules existants.
+* Corriger les régressions.
+* Préserver les données.
+Effectuer une sauvegarde avant toute migration de données.
+8. Livrables
+Fournir :
+* Les fichiers sources modifiés.
+* Les nouveaux composants.
+* Les éventuelles modifications des types.
+* Les modifications des règles Firestore.
+* Les éventuelles migrations.
+* Les tests réalisés.
+* Un rapport des modifications.
+* Les éventuels points restant à résoudre.
+Ne pas annoncer qu'une fonctionnalité est terminée si elle n'a pas été testée.
+OBJECTIF FINAL : disposer d'un véritable système de gestion universitaire, fiable, évolutif et facile à utiliser pour la Direction et la Scolarité d'EBM Institute.
+* 
+

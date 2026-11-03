@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { downloadCsvFile } from '../utils/csvExport';
 import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
+import { SessionValidationModal } from './SessionValidationModal';
 
 interface CourseVolumeTrackerProps {
   onNavigateToCreate?: () => void;
@@ -53,6 +54,7 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
   const [customDate, setCustomDate] = useState<string>(todayStr);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'TO_VALIDATE' | 'VALIDATED'>('ALL');
   const [validationBanner, setValidationBanner] = useState<string | null>(null);
+  const [validationModalSessionId, setValidationModalSessionId] = useState<string | null>(null);
 
   // Groups available according to selected Mention (Filière)
   const availableGroups = useMemo(() => {
@@ -225,22 +227,39 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
 
   const handleBatchValidateAllFiltered = () => {
     if (unvalidatedFilteredSessions.length === 0) return;
-    const count = unvalidatedFilteredSessions.length;
-    unvalidatedFilteredSessions.forEach((s) => validateSession(s.id));
+    let validatedCount = 0;
+    let missingReportCount = 0;
+    unvalidatedFilteredSessions.forEach((s) => {
+      if (s.report?.content && s.report.content.trim().length >= 20) {
+        validateSession(s.id, s.report);
+        validatedCount++;
+      } else {
+        missingReportCount++;
+      }
+    });
     setValidationBanner(
-      `${count} séance(s) ont été validées comme "Effectuées & Réalisées" en un clic.`
+      `${validatedCount} séance(s) validée(s). ${missingReportCount > 0 ? `${missingReportCount} séance(s) ignorée(s) (compte rendu manquant).` : ''}`
     );
-    setTimeout(() => setValidationBanner(null), 4000);
+    setTimeout(() => setValidationBanner(null), 5000);
   };
 
   const handleBatchValidateDay = (dayDate: string, daySessions: typeof filteredSessions) => {
     const pending = daySessions.filter((s) => s.status !== 'COMPLETED_VALIDATED');
     if (pending.length === 0) return;
-    pending.forEach((s) => validateSession(s.id));
+    let validatedCount = 0;
+    let missingReportCount = 0;
+    pending.forEach((s) => {
+      if (s.report?.content && s.report.content.trim().length >= 20) {
+        validateSession(s.id, s.report);
+        validatedCount++;
+      } else {
+        missingReportCount++;
+      }
+    });
     setValidationBanner(
-      `Toutes les séances du ${new Date(dayDate).toLocaleDateString('fr-FR')} (${pending.length} séance(s)) ont été validées.`
+      `Journée du ${new Date(dayDate).toLocaleDateString('fr-FR')} : ${validatedCount} validée(s). ${missingReportCount > 0 ? `${missingReportCount} ignorée(s) (compte rendu manquant).` : ''}`
     );
-    setTimeout(() => setValidationBanner(null), 4000);
+    setTimeout(() => setValidationBanner(null), 5000);
   };
 
   // CSV Exports for each state in Suivi Volumes Horaires
@@ -757,17 +776,15 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
                             ) : canValidate ? (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  validateSession(session.id);
-                                  setValidationBanner(
-                                    `Séance "${session.eventTitle || course?.title}" (${session.durationHours}h) validée.`
-                                  );
-                                  setTimeout(() => setValidationBanner(null), 3000);
-                                }}
-                                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                onClick={() => setValidationModalSessionId(session.id)}
+                                className={`px-3.5 py-2 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  session.report
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                }`}
                               >
                                 <CheckCircle2 className="w-4 h-4" />
-                                Valider cette séance ({session.durationHours}h)
+                                {session.report ? '📄 Rédigé / Valider' : 'Valider avec Compte Rendu'}
                               </button>
                             ) : (
                               <span className="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg font-semibold">
@@ -982,6 +999,12 @@ export const CourseVolumeTracker: React.FC<CourseVolumeTrackerProps> = () => {
           })}
         </div>
       </div>
+
+      <SessionValidationModal
+        isOpen={Boolean(validationModalSessionId)}
+        onClose={() => setValidationModalSessionId(null)}
+        sessionId={validationModalSessionId || ''}
+      />
     </div>
   );
 };

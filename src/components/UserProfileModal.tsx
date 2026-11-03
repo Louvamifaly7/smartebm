@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext';
 import { TeacherAvailabilitySlot, User, UserRole } from '../types';
 import { getRoleLabel, ROLE_LABELS } from '../utils/rbacPermissions';
 import { showAppToast } from './ToastAndConfirmCenter';
+import { StudentProfileForm, StudentDossierTab } from './StudentProfileForm';
+import { TeacherProfileForm, TeacherDossierTab } from './TeacherProfileForm';
 import {
   X,
   User as UserIcon,
@@ -150,7 +152,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [jobTitle, setJobTitle] = useState('');
   const [academicRank, setAcademicRank] = useState('');
   const [specialty, setSpecialty] = useState('');
-  const [contractType, setContractType] = useState<'PERMANENT' | 'VACATAIRE' | 'MISSIONNAIRE'>('VACATAIRE');
+  const [contractType, setContractType] = useState<NonNullable<User['contractType']>>('VACATAIRE');
   const [weeklyMaxHours, setWeeklyMaxHours] = useState<number>(18);
   const [hourlyRateAr, setHourlyRateAr] = useState<number>(40000);
   const [subjectsText, setSubjectsText] = useState('');
@@ -238,6 +240,49 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   const isTeacherProfile = userToView.role === 'TEACHER';
   const isStudentProfile = userToView.role === 'STUDENT';
+
+  if (isStudentProfile) {
+    const mappedTab: StudentDossierTab =
+      initialTab === 'CONTACT'
+        ? 'TAB_2_CONTACT'
+        : initialTab === 'JOB'
+        ? 'TAB_4_ACADEMIC'
+        : initialTab === 'SECURITY'
+        ? 'TAB_7_SECURITY'
+        : 'TAB_1_IDENTITY';
+
+    return (
+      <StudentProfileForm
+        student={userToView}
+        mode={isAdminOrStaff ? 'administration' : 'self-service'}
+        onClose={onClose}
+        initialEditMode={initialEditMode}
+        initialTab={mappedTab}
+        showAcademicAndFinanceExtensions={isAdminOrStaff}
+      />
+    );
+  }
+
+  if (isTeacherProfile) {
+    const mappedTeacherTab: TeacherDossierTab =
+      initialTab === 'CONTACT'
+        ? 'TAB_2_CONTACT'
+        : initialTab === 'JOB'
+        ? 'TAB_5_PEDAGOGY'
+        : initialTab === 'SECURITY'
+        ? 'TAB_7_SECURITY'
+        : 'TAB_1_IDENTITY';
+
+    return (
+      <TeacherProfileForm
+        teacher={userToView}
+        mode={isAdminOrStaff ? 'administration' : 'self-service'}
+        onClose={onClose}
+        initialEditMode={initialEditMode}
+        initialTab={mappedTeacherTab}
+      />
+    );
+  }
 
   const studentGroup = groups.find((g) => g.id === (groupId || userToView.groupId));
   const studentFiliere = filieres.find((f) => f.id === studentGroup?.filiereId);

@@ -35,6 +35,7 @@ import { exportTeacherScheduleToPDF } from '../utils/pdfExport';
 import { downloadCsvFile } from '../utils/csvExport';
 import { getAntananarivoDateStr } from '../utils/securityAndDateUtils';
 import { requestAppConfirm, showAppToast } from './ToastAndConfirmCenter';
+import { TeacherProfileForm, computeTeacherDossierCompleteness } from './TeacherProfileForm';
 
 interface TeacherManagementProps {
   onNavigateToCreate?: () => void;
@@ -90,10 +91,11 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
   // List Toolbar Filters (Section 3 of PDF)
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'INCOMPLETE' | 'SUSPENDED'>('ALL');
-  const [filterContract, setFilterContract] = useState<'ALL' | 'PERMANENT' | 'VACATAIRE' | 'MISSIONNAIRE'>('ALL');
+  const [filterContract, setFilterContract] = useState<
+    'ALL' | 'PERMANENT' | 'VACATAIRE' | 'CONTRACTUEL' | 'CONSULTANT' | 'INTERVENANT_EXTERNE' | 'MISSIONNAIRE'
+  >('ALL');
 
-  const isTeacherIncomplete = (t: User) =>
-    !t.phone || !t.specialty || !t.academicRank || !t.highestDiploma || (!isStudent && !t.cin);
+  const isTeacherIncomplete = (t: User) => computeTeacherDossierCompleteness(t).percentage < 80;
 
   const teachers = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -152,7 +154,7 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
   const [editSubjectsText, setEditSubjectsText] = useState<string>('');
   const [editHourlyRate, setEditHourlyRate] = useState<number>(40000);
   const [editWeeklyMax, setEditWeeklyMax] = useState<number>(18);
-  const [editContractType, setEditContractType] = useState<'PERMANENT' | 'VACATAIRE' | 'MISSIONNAIRE'>('VACATAIRE');
+  const [editContractType, setEditContractType] = useState<NonNullable<User['contractType']>>('VACATAIRE');
   const [editHireDate, setEditHireDate] = useState<string>('');
   const [editBankRib, setEditBankRib] = useState<string>('');
   const [editCin, setEditCin] = useState<string>('');
@@ -552,6 +554,9 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
             <option value="ALL">Tous les contrats</option>
             <option value="PERMANENT">Permanent</option>
             <option value="VACATAIRE">Vacataire</option>
+            <option value="CONTRACTUEL">Contractuel</option>
+            <option value="CONSULTANT">Consultant</option>
+            <option value="INTERVENANT_EXTERNE">Intervenant externe</option>
             <option value="MISSIONNAIRE">Missionnaire / Visiteur</option>
           </select>
 
@@ -767,6 +772,9 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                         {teacher.civilite ? `${teacher.civilite} ` : ''}{teacher.name}
                       </h3>
                       <div className="flex items-center gap-1 shrink-0">
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-mono font-bold">
+                          {computeTeacherDossierCompleteness(teacher).percentage}%
+                        </span>
                         {!teacher.isActive ? (
                           <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded text-[9px] font-bold">
                             Suspendu
@@ -777,7 +785,7 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 bg-[#1F8A83]/15 text-[#1F8A83] rounded text-[9px] font-bold">
-                            Actif
+                            Complet
                           </span>
                         )}
                       </div>
@@ -899,13 +907,22 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onNavigate
       </div>
 
       {/* =======================================================================
-          4. FICHE ENSEIGNANT EN 4 ONGLETS (Section 4 du PDF : Identité, Coordonnées, Informations métier, Compte & sécurité)
-             - Ouverture en mode consultation par défaut
-             - Bouton explicite « Modifier le profil »
-             - Zéro valeur personnelle fictive par défaut
-             - Indicateur de modifications non enregistrées & pied de modale fixe
+          4. DOSSIER ENSEIGNANT UNIQUE EN 7 ONGLETS (Partagé avec « Profil enseignant »)
          ======================================================================= */}
       {activeTeacher && (
+        <TeacherProfileForm
+          teacher={activeTeacher}
+          mode={canEditFinanceOrSchedule ? 'administration' : 'self-service'}
+          onClose={() => {
+            setSelectedTeacherId(null);
+            setIsEditingTeacherSheet(false);
+            setIsTeacherDirty(false);
+          }}
+          initialEditMode={isEditingTeacherSheet}
+        />
+      )}
+
+      {activeTeacher && Boolean(false) && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-[#DCE3EC] overflow-hidden my-4 max-h-[92vh] flex flex-col">
             {/* Modal Header (#17345B Institutional Navy) */}

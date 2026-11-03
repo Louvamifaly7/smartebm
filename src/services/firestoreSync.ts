@@ -45,6 +45,7 @@ export const ALL_SYNC_COLLECTIONS = [
   'auditLogs',
   'chatMessages',
   'conversations',
+  'sessionPrivateReports',
 ] as const;
 
 export type SyncCollectionName = (typeof ALL_SYNC_COLLECTIONS)[number];

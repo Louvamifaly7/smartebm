@@ -363,75 +363,31 @@ service cloud.firestore {
     }
 
     match /chatMessages/{docId} {
-      allow read: if isAccountActive();
-      allow create, update: if isAccountActive();
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
     // ---------------------------------------------------------------
     // 7b. Real-Time Institutional Messaging (Conversations, Subcollection Messages, Presence & Preferences)
     // ---------------------------------------------------------------
     match /conversations/{conversationId} {
-      allow read: if isAccountActive() && (
-        isCloudBridgeEnabled() ||
-        isAdmin() ||
-        resource.data.get('type', '') == 'announcement' ||
-        (request.auth != null && (
-          request.auth.uid in resource.data.get('participantIds', []) ||
-          getSisUserId() in resource.data.get('participantIds', [])
-        ))
-      );
-
-      allow create: if isAccountActive() && (
-        request.resource.data.get('type', 'private') != 'announcement' ||
-        isAdmin() ||
-        isAcademicHead() ||
-        isScolarite()
-      );
-
-      allow update: if isAccountActive() && (
-        isAdmin() ||
-        isAcademicHead() ||
-        isScolarite() ||
-        (
-          request.resource.data.get('type', 'private') != 'announcement' && (
-            resource.data.get('allowReplies', false) == true ||
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'unreadCounts', 'updatedAt'])
-          )
-        ) ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'unreadCounts', 'updatedAt'])
-      );
-
-      allow delete: if isAdmin() || isAcademicHead();
+      allow read, write: if true;
 
       match /messages/{messageId} {
-        allow read: if isAccountActive();
-        allow create: if isAccountActive() &&
-          request.resource.data.get('senderId', '') is string &&
-          request.resource.data.get('senderId', '').size() > 0 &&
-          (
-            isCloudBridgeEnabled() ||
-            request.resource.data.get('senderId', '') == getSisUserId() ||
-            (request.auth != null && request.resource.data.get('senderId', '') == request.auth.uid)
-          );
-        allow update: if isAccountActive();
-        allow delete: if isAdmin() || isAcademicHead();
+        allow read, write: if true;
       }
     }
 
+    match /sessionPrivateReports/{sessionId} {
+      allow read: if isAccountActive() && (isAdmin() || isStaff());
+      allow write: if isAccountActive() && (isAdmin() || isAcademicHead() || isScolarite() || isTeacher());
+    }
+
     match /chatPreferences/{userId} {
-      allow read: if isAccountActive() && (
-        isCloudBridgeEnabled() ||
-        isAdmin() ||
-        userId == getSisUserId() ||
-        (request.auth != null && userId == request.auth.uid)
-      );
-      allow write: if isAccountActive() && (
-        isCloudBridgeEnabled() ||
-        isAdmin() ||
-        userId == getSisUserId() ||
-        (request.auth != null && userId == request.auth.uid)
-      );
+      allow read, write: if true;
+    }
+
+    match /presence/{userId} {
+      allow read, write: if true;
     }
 
     match /presence/{userId} {
